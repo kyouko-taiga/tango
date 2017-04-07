@@ -20,5 +20,14 @@ if __name__ == '__main__':
     # Infer the types of the parsed expressions.
     types = infer_types(module)
 
-    for ((scope, name), inferred_type) in types.items():
-        print('%s.%s: %s' % (scope.name, name, inferred_type))
+    # import pprint
+    # printer = pprint.PrettyPrinter(indent=2)
+    # printer.pprint(types)
+    # exit(0)
+
+    for (symbol, inferred_type) in types.items():
+        if symbol is None:
+            continue
+
+        (scope, name) = symbol
+        print('%s.%s: %s' % (scope.name, name, ', '.join(map(str, inferred_type))))

@@ -70,3 +70,10 @@ class Visitor(object):
         # self.visit(node.operator)
         self.visit(node.left)
         self.visit(node.right)
+
+
+class Transformer(Visitor):
+
+    def visit(self, node):
+        method_name = 'visit_%s' % node.__class__.__name__
+        return getattr(self, method_name)(node)

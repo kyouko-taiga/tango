@@ -1,2 +1,2 @@
 cst x: Int = 0
-mut y = x
+mut y = x + 19

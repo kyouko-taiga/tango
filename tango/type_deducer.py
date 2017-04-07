@@ -1,3 +1,5 @@
+from itertools import product
+
 from .ast import Visitor
 from .parser import *
 
@@ -35,7 +37,10 @@ def infer_types(node):
 class TypeDeducer(Visitor):
 
     def __init__(self):
-        self.environment = {}
+        # (Scope, String) -> [Type]
+        self.environment = {
+            None: {},
+        }
 
     def visit_ConstantDecl(self, node):
         inferred = analyse(node, self.environment)
@@ -62,46 +67,65 @@ def analyse(node, environment):
     # If the node is a container declaration, we either can infer its type
     # from the definition (and the environment), or we introduce a new type
     # variable.
-    if isinstance(node, ConstantDecl) or isinstance(node, VariableDecl):
+    if isinstance(node, (ConstantDecl, VariableDecl)):
         # If there isn't neither a type annotation, nor an initializing value,
         # we have no choice but to introduce a new type variable.
         if not (node.type_annotation or node.initial_value):
             identifier = node.name
-            return TypeVariable()
+            return [TypeVariable()]
 
         # If there's an initializing value, we have to infer its type first.
         if node.initial_value:
-            initial_value_type = analyse(node.initial_value, environment)
+            initial_value_types = analyse(node.initial_value, environment)
 
             # If there's a type annotation as well, we should unify the type
             # it denotes with the one that was inferred from the initializing
             # value. This will not only check that the types match, but will
             # also try to infer specialization arguments of abstract types.
             if node.type_annotation:
-                unify(node.type_annotation, initial_value_type)
+                return unify([node.type_annotation], initial_value_types)
 
-            return initial_value_type
+            return initial_value_types
 
         # If there isn't an initializing value, the we should return the type
         # annotation.
-        return node.type_annotation
+        return [node.type_annotation]
 
     # If the node is a literal, its type was already inferred by the parser.
     if isinstance(node, Literal):
-        return node.type
+        return [node.type]
 
     # If the node is an assignment, we should infer and unify the type of both
     # sides' expressions.
     if isinstance(node, Assignment):
-        target_type = analyse(node.target, environment)
-        value_type = analyse(node.value, environment)
-        unify(target_type, value_type)
-        return target_type
+        target_types = analyse(node.target, environment)
+        value_types = analyse(node.value, environment)
+        return unify(target_types, value_types)
+
+    if instance(node, BinaryExpression):
+        operator_signatures = environment[]
 
     assert False, "no type inference for node '%s'" % node.__class__.__name__
 
 
 def unify(lhs, rhs):
+    results = []
+    for (t, u) in product(lhs, rhs):
+        try:
+            unify_single(t, u)
+            results.append(t)
+        except InferenceError:
+            pass
+
+    if not results:
+        raise InferenceError(
+            'no match found for [%s] x [%s]' %
+            (', '.join(map(str, lhs)), ', '.join(map(str, rhs))))
+
+    return results
+
+
+def unify_single(lhs, rhs):
     a = prune(lhs)
     b = prune(rhs)
 

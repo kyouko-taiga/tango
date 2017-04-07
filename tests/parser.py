@@ -271,7 +271,7 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize(
             '''enum E {
-                fun f() {}
+                fun f(cst self: Self) {}
             }'''))
         self.assertIsInstance(result, tango.EnumDecl)
         self.assertIsInstance(result.methods[0], tango.FunctionDecl)
@@ -304,7 +304,7 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize(
             '''struct S {
-                fun f() {}
+                fun f(cst self: Self) {}
             }'''))
         self.assertIsInstance(result, tango.StructDecl)
         self.assertIsInstance(result.methods[0], tango.FunctionDecl)

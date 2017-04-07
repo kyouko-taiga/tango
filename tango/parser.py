@@ -216,6 +216,21 @@ class Literal(object):
     def __str__(self):
         return str(self.value)
 
+class FunctionApplication(object):
+
+    def __init__(self, function, arguments):
+        self.function = function
+        self.arguments = arguments
+
+    @staticmethod
+    def from_parser(args):
+        return FunctionApplication(
+            function = args[0],
+            arguments = args[1])
+
+    def __str__(self):
+        return '%s(%s)' % (self.function, ', '.join(map(str, self.arguments)))
+
 pfx_op = op('not') >> token_value
 
 mul_op = (op('*') | op('/')) >> token_value
