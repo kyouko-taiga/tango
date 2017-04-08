@@ -68,7 +68,13 @@ class TypeDeducer(Visitor):
                 codomain = types[-1]))
             # TODO Handle generic parameters
 
-        self.environment[(node.name.__info__['scope'], node.name.name)] = function_types
+        key = (node.name.__info__['scope'], node.name.name)
+        if not key in self.environment:
+            self.environment[key] = []
+        self.environment[key].extend(function_types)
+
+        # Finally, we should continue the type inference in the function body.
+        self.visit(node.body)
 
     def visit_Assignment(self, node):
         analyse(node, self.environment)
@@ -195,7 +201,7 @@ def unify_single(lhs, rhs):
     # they are equivalent.
     if isinstance(a, BaseType) and isinstance(b, BaseType):
         if a != b:
-            raise InferenceError("types '%s' and '%s' doesn't match" % (a. b))
+            raise InferenceError("types '%s' and '%s' doesn't match" % (a, b))
         return [a]
 
     # TODO unify abstract types and generic functions
