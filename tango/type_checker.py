@@ -1,9 +1,10 @@
 from itertools import product
 
 from .ast import Visitor
-from .builtin import Type, builtin_scope
+from .builtin import builtin_scope
 from .errors import UndefinedSymbol, InferenceError
 from .parser import *
+from .types import BaseType, FunctionType
 
 
 class TypeVariable(object):
@@ -49,17 +50,49 @@ class TypeDeducer(Visitor):
         inferred = analyse(node, self.environment)
         self.environment[(node.name.__info__['scope'], node.name.name)] = inferred
 
+    def visit_FunctionDecl(self, node):
+        # We first need to infer the types of the function parameters.
+        parameter_types = []
+        for parameter in node.signature.parameters:
+            inferred = analyse(parameter, self.environment)
+            self.environment[(parameter.name.__info__['scope'], parameter.name.name)] = inferred
+            parameter_types.append(inferred)
+
+        # Once we've inferred the types of the function signature, we can
+        # create a type for the function itself.
+        return_types = [analyse(node.signature.return_type, self.environment)]
+        function_types = []
+        for types in product(*(parameter_types + return_types)):
+            function_types.append(FunctionType(
+                domain = types[0:-1],
+                codomain = types[-1]))
+            # TODO Handle generic parameters
+
+        self.environment[(node.name.__info__['scope'], node.name.name)] = function_types
+
     def visit_Assignment(self, node):
         analyse(node, self.environment)
 
 
 def analyse(node, environment):
+    # If the node is a literal, its type was already inferred by the parser.
+    if isinstance(node, Literal):
+        return [node.__info__['type']]
 
     # If the node is an identifier, we should simply try to get its type from
     # the environment.
     if isinstance(node, Identifier):
         try:
             return environment[(node.__info__['scope'], node.name)]
+        except KeyError:
+            raise UndefinedSymbol(node.name)
+
+    # If the node is a type identifier, we should try to get the type it
+    # refers to from the its associated scope.
+    if isinstance(node, TypeIdentifier):
+        try:
+            return environment[(node.name.__info__['scope'], node.name.name)]
+            # TODO Handle generic parameters
         except KeyError:
             raise UndefinedSymbol(node.name)
 
@@ -70,7 +103,6 @@ def analyse(node, environment):
         # If there isn't neither a type annotation, nor an initializing value,
         # we have no choice but to introduce a new type variable.
         if not (node.type_annotation or node.initial_value):
-            identifier = node.name
             return [TypeVariable()]
 
         # If there's an initializing value, we have to infer its type first.
@@ -86,13 +118,23 @@ def analyse(node, environment):
 
             return initial_value_types
 
-        # If there isn't an initializing value, the we should return the type
+        # If there isn't an initializing value, we should simply return the
+        # type annotation.
+        return analyse(node.type_annotation, environment)
+
+    # Function parameters can be seen as a container declaration within the
+    # function's scope. As such, if the node is a function parameter, we can
+    # use a similar strategy as for the the case of container declarations.
+    if isinstance(node, FunctionParameter):
+        # If there's a default value, we have to infer its type first, and
+        # unify it with the parameter's type annotation.
+        if node.default_value:
+            default_value_types = analyse(node.default_value, environment)
+            return unify([node.type_annotation], default_value_types)
+
+        # If there isn't any default value, we should simply return the type
         # annotation.
         return [node.type_annotation]
-
-    # If the node is a literal, its type was already inferred by the parser.
-    if isinstance(node, Literal):
-        return [node.__info__['type']]
 
     # If the node is an assignment, we should infer and unify the type of both
     # sides' expressions.
@@ -101,7 +143,7 @@ def analyse(node, environment):
         value_types = analyse(node.value, environment)
         return unify(target_types, value_types)
 
-    if instance(node, BinaryExpression):
+    if isinstance(node, BinaryExpression):
         operator_signatures = environment
 
     assert False, "no type inference for node '%s'" % node.__class__.__name__
@@ -151,12 +193,13 @@ def unify_single(lhs, rhs):
 
     # If both operands are resolved types, then we simply have to make sure
     # they are equivalent.
-    if isinstance(a, Type) and isinstance(b, Type):
+    if isinstance(a, BaseType) and isinstance(b, BaseType):
         if a != b:
             raise InferenceError("types '%s' and '%s' doesn't match" % (a. b))
         return [a]
 
     # TODO unify abstract types and generic functions
+    # TODO (?) check for types mutability
 
     else:
         assert False, 'not unified'

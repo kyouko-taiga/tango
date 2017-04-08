@@ -1,29 +1,11 @@
-class Type(object):
-
-    def __init__(self, name):
-        self.name = name
-
-    def __eq__(self, other):
-        return (type(self) == type(other)) and (self.name == other.name)
-
-    def __str__(self):
-        return '__builtin__.' + str(self.name)
+from .types import NominalType
 
 
-class FunctionType(Type):
-
-    def __init__(self, name, generic_parameters=None, domain=None, codomain=None):
-        super().__init__(name)
-        self.generic_parameters = generic_parameters or {}
-        self.domain = domain or []
-        self.codomain = codomain or Nothing
-
-
-Nothing  = Type('Nothing')
-Anything = Type('Anything')
-Int      = Type('Int')
-Double   = Type('Double')
-String   = Type('String')
+Nothing  = NominalType('Nothing')
+Anything = NominalType('Anything')
+Int      = NominalType('Int')
+Double   = NominalType('Double')
+String   = NominalType('String')
 
 
 class Scope(object):

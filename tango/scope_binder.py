@@ -2,6 +2,7 @@ from .ast import Transformer, Visitor
 from .builtin import Scope, builtin_scope
 from .errors import DuplicateDeclaration, UndefinedSymbol
 from .parser import *
+from .types import BaseType
 
 
 def bind_scopes(node):
@@ -146,12 +147,18 @@ class ScopeBinder(Visitor):
         # that we allow such default values to refer to the function itself,
         # so as to match the behaviour of container declarations.
         for parameter in node.signature.parameters:
+            self.visit(parameter.type_annotation)
             if parameter.default_value:
                 self.visit(parameter.default_value)
 
+        # Visit the return type of the function (unless it's been inferred as
+        # an actual type by the parser).
+        if not isinstance(node.signature.return_type, BaseType):
+            self.visit(node.signature.return_type)
+
         # Define the parameters of the function as the implicit declarations
         # of its block before visiting it.
-        self.implicit_declarations = {p.api_name.name: p for p in node.signature.parameters}
+        self.implicit_declarations = {p.name.name: p for p in node.signature.parameters}
         self.visit(node.body)
 
     def visit_EnumDecl(self, node):

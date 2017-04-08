@@ -192,6 +192,13 @@ assignment = (
     expression + op_('=') + expression
     >> make_assignment)
 
+def make_return_statement(args):
+    return ReturnStatement(value = args)
+
+return_statement = (
+    kw_('return') + expression
+    >> make_return_statement)
+
 def make_constant_decl(args):
     return ConstantDecl(
         name = args[0],
@@ -315,7 +322,8 @@ statement.define(
     function_decl |
     enum_decl |
     struct_decl |
-    assignment)
+    assignment |
+    return_statement)
 
 def make_module_decl(args):
     return ModuleDecl(

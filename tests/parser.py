@@ -87,6 +87,13 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.attributes[1].name, 'ref')
         self.assertEqual(result.type_annotation.name.name, 'Int')
 
+    def test_function_parameter_default_value(self):
+        parser = tango.function_parameter + skip(finished)
+
+        result = parser.parse(tango.tokenize('cst x: Int = 0'))
+        self.assertIsInstance(result, ast.FunctionParameter)
+        self.assertIsInstance(result.default_value, ast.Literal)
+
     def test_function_signature(self):
         parser = tango.function_signature + skip(finished)
 

@@ -1,6 +1,3 @@
-from .builtin import Type as BuiltinType
-
-
 class Node(object):
 
     def __init__(self):
@@ -107,6 +104,7 @@ class FunctionParameter(Node):
             attributes = list(filter(lambda attr: attr != 'mutable', self.attributes))
         else:
             mutability_modifier = 'cst'
+            attributes = []
 
         if attributes:
             attributes = ' '.join('@%s' % attribute for attribute in self.attributes) + ' '
@@ -172,6 +170,16 @@ class Assignment(Node):
 
     def __str__(self):
         return '%s = %s' % (self.target, self.value)
+
+
+class ReturnStatement(Node):
+
+    def __init__(self, value):
+        super().__init__()
+        self.value = value
+
+    def __str__(self):
+        return 'return %s' % self.value
 
 
 class ConstantDecl(Node):
