@@ -44,18 +44,18 @@ class TypeDeducer(Visitor):
 
     def visit_ConstantDecl(self, node):
         inferred = analyse(node, self.environment)
-        self.environment[(node.name.__info__['scope'], node.name.name)] = inferred
+        self.environment[(node.__info__['scope'], node.name)] = inferred
 
     def visit_VariableDecl(self, node):
         inferred = analyse(node, self.environment)
-        self.environment[(node.name.__info__['scope'], node.name.name)] = inferred
+        self.environment[(node.__info__['scope'], node.name)] = inferred
 
     def visit_FunctionDecl(self, node):
         # We first need to infer the types of the function parameters.
         parameter_types = []
         for parameter in node.signature.parameters:
             inferred = analyse(parameter, self.environment)
-            self.environment[(parameter.name.__info__['scope'], parameter.name.name)] = inferred
+            self.environment[(parameter.__info__['scope'], parameter.name)] = inferred
             parameter_types.append(inferred)
 
         # Once we've inferred the types of the function signature, we can
@@ -68,7 +68,7 @@ class TypeDeducer(Visitor):
                 codomain = types[-1]))
             # TODO Handle generic parameters
 
-        key = (node.name.__info__['scope'], node.name.name)
+        key = (node.__info__['scope'], node.name)
         if not key in self.environment:
             self.environment[key] = []
         self.environment[key].extend(function_types)
@@ -97,7 +97,7 @@ def analyse(node, environment):
     # refers to from the its associated scope.
     if isinstance(node, TypeIdentifier):
         try:
-            return environment[(node.name.__info__['scope'], node.name.name)]
+            return environment[(node.__info__['scope'], node.name)]
             # TODO Handle generic parameters
         except KeyError:
             raise UndefinedSymbol(node.name)
@@ -191,7 +191,7 @@ def unify_single(lhs, rhs):
     # refer to multiple types (because of overloading), we have to unify all
     # possible referred types.
     if isinstance(a, TypeIdentifier):
-        walked = a.name.__info__['scope'][a.name.name]
+        walked = a.__info__['scope'][a.name]
         return unify(walked, [b])
 
     if isinstance(b, TypeIdentifier):

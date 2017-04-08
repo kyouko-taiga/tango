@@ -38,16 +38,6 @@ class Identifier(Node):
         return self.name
 
 
-class OperatorIdentifier(Node):
-
-    def __init__(self, name):
-        super().__init__()
-        self.name = name
-
-    def __str__(self):
-        return str(self.name)
-
-
 class Block(Node):
 
     def __init__(self, statements=None):
@@ -269,12 +259,12 @@ class EnumCaseParameter(Node):
         return '%s: %s' % (self.name, self.type_annotation)
 
 
-class EnumCase(Node):
+class EnumCaseDecl(Node):
 
-    def __init__(self, name, parameters):
+    def __init__(self, name, parameters=None):
         super().__init__()
         self.name = name
-        self.parameters = parameters
+        self.parameters = parameters or []
 
     def __str__(self):
         if self.parameters:

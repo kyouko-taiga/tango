@@ -40,19 +40,16 @@ expression     = forward_decl()
 statement      = forward_decl()
 
 def make_identifier(token):
-    return Identifier(name = token.value)
+    return token.value
 
 identifier = (
     some(lambda token: token.type == 'identifier')
     >> make_identifier)
 
-def make_operator_identifier(token):
-    return OperatorIdentifier(name = token.value)
+pfx_op = op('not') >> make_identifier
 
-pfx_op = op('not') >> make_operator_identifier
-
-mul_op = (op('*') | op('/')) >> make_operator_identifier
-add_op = (op('+') | op('-')) >> make_operator_identifier
+mul_op = (op('*') | op('/')) >> make_identifier
+add_op = (op('+') | op('-')) >> make_identifier
 
 operator_identifier = pfx_op | mul_op | add_op
 
@@ -144,11 +141,16 @@ def make_string_literal(token):
 
 number_literal = token_of_type('number') >> make_number_literal
 string_literal = token_of_type('string') >> make_string_literal
-
 constant = number_literal | string_literal
-variable = identifier | operator_identifier
 
-citizen = constant | variable
+def make_variable_identifier(name):
+    return Identifier(name = name)
+
+variable_identifier = (
+    (identifier | operator_identifier)
+    >> make_variable_identifier)
+
+citizen = constant | variable_identifier
 
 def make_prefixed_expression(args):
     return PrefixedExpression(
@@ -296,24 +298,25 @@ enum_case_parameter_list = (
     enum_case_parameter + many(op_(',') + enum_case_parameter)
     >> flatten)
 
-def make_enum_case(args):
-    return EnumCase(
+def make_enum_case_decl(args):
+    return EnumCaseDecl(
         name = args[0],
         parameters = args[1])
 
-enum_case = (
-    kw_('case') + identifier + maybe(op_('(') + enum_case_parameter_list + op_(')'))
-    >> make_enum_case)
+enum_case_decl = (
+    kw_('case') + identifier +
+    maybe(op_('(') + enum_case_parameter_list + op_(')'))
+    >> make_enum_case_decl)
 
 def make_enum_decl(args):
     return EnumDecl(
         name = args[0],
         import_list = args[1],
         conformance_list = args[2],
-        cases = list(filter(lambda e: isinstance(e, EnumCase), args[3])),
+        cases = list(filter(lambda e: isinstance(e, EnumCaseDecl), args[3])),
         methods = list(filter(lambda e: isinstance(e, FunctionDecl),args[3])))
 
-enum_member = enum_case | function_decl
+enum_member = enum_case_decl | function_decl
 
 enum_body = (
     maybe(enum_member) + many(nl_ + enum_member)
