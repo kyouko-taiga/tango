@@ -193,11 +193,43 @@ assignment = (
     >> make_assignment)
 
 def make_return_statement(args):
-    return ReturnStatement(value = args)
+    return Return(value = args)
 
 return_statement = (
     kw_('return') + expression
     >> make_return_statement)
+
+def make_call_positional_argument(args):
+    return CallArgument(
+        attributes = args[0],
+        value = args[1])
+
+call_position_argument = (
+    many(op_('@') + identifier) + expression
+    >> make_call_positional_argument)
+
+def make_call_named_argument(args):
+    return CallArgument(
+        name = args[0],
+        attributes = args[1],
+        value = args[2])
+
+call_named_argument = (
+    identifier + op_(':') + many(op_('@') + identifier) + expression
+    >> make_call_named_argument)
+
+call_argument = call_named_argument | call_position_argument
+
+call_argument_list = (
+    call_argument + many(op_(',') + call_argument)
+    >> flatten)
+
+def make_call(args):
+    return Call(callee = args[0], arguments = args[1])
+
+call_statement = (
+    expression + op_('(') + maybe(call_argument_list) + op_(')')
+    >> make_call)
 
 def make_constant_decl(args):
     return ConstantDecl(
@@ -323,7 +355,8 @@ statement.define(
     enum_decl |
     struct_decl |
     assignment |
-    return_statement)
+    return_statement |
+    call_statement)
 
 def make_module_decl(args):
     return ModuleDecl(

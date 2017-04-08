@@ -172,7 +172,7 @@ class Assignment(Node):
         return '%s = %s' % (self.target, self.value)
 
 
-class ReturnStatement(Node):
+class Return(Node):
 
     def __init__(self, value):
         super().__init__()
@@ -180,6 +180,31 @@ class ReturnStatement(Node):
 
     def __str__(self):
         return 'return %s' % self.value
+
+
+class CallArgument(Node):
+
+    def __init__(self, value, name=None, attributes=None):
+        super().__init__()
+        self.value = value
+        self.name = name
+        self.attributes = attributes or []
+
+    def __str__(self):
+        if self.name:
+            return '%s: %s' % (self.name, self.value)
+        return str(self.value)
+
+
+class Call(Node):
+
+    def __init__(self, callee, arguments=None):
+        super().__init__()
+        self.callee = callee
+        self.arguments = arguments or []
+
+    def __str__(self):
+        return '%s(%s)'
 
 
 class ConstantDecl(Node):

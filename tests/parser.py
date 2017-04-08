@@ -72,19 +72,12 @@ class TestParser(unittest.TestCase):
         self.assertFalse(result.attributes)
         self.assertEqual(result.type_annotation.name.name, 'Int')
 
-        result = parser.parse(tango.tokenize('cst a x: @variadic Int'))
+        result = parser.parse(tango.tokenize('cst a x: @attr1 @attr2 Int'))
         self.assertIsInstance(result, ast.FunctionParameter)
         self.assertEqual(result.api_name.name, 'a')
         self.assertEqual(result.name.name, 'x')
-        self.assertEqual(result.attributes[0].name, 'variadic')
-        self.assertEqual(result.type_annotation.name.name, 'Int')
-
-        result = parser.parse(tango.tokenize('cst a x: @variadic @ref Int'))
-        self.assertIsInstance(result, ast.FunctionParameter)
-        self.assertEqual(result.api_name.name, 'a')
-        self.assertEqual(result.name.name, 'x')
-        self.assertEqual(result.attributes[0].name, 'variadic')
-        self.assertEqual(result.attributes[1].name, 'ref')
+        self.assertEqual(result.attributes[0].name, 'attr1')
+        self.assertEqual(result.attributes[1].name, 'attr2')
         self.assertEqual(result.type_annotation.name.name, 'Int')
 
     def test_function_parameter_default_value(self):
@@ -166,6 +159,61 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(result, ast.Assignment)
         self.assertEqual(result.target.name, 'x')
         self.assertEqual(result.value.value, '0')
+
+    def test_return_statement(self):
+        parser = tango.return_statement + skip(finished)
+
+        result = parser.parse(tango.tokenize('return 0'))
+        self.assertIsInstance(result, ast.Return)
+        self.assertEqual(result.value.value, '0')
+
+    def test_call_argument(self):
+        parser = tango.call_argument + skip(finished)
+
+        result = parser.parse(tango.tokenize('0'))
+        self.assertIsInstance(result, ast.CallArgument)
+        self.assertEqual(result.value.value, '0')
+        self.assertIsNone(result.name)
+        self.assertFalse(result.attributes)
+
+        result = parser.parse(tango.tokenize('@attr1 @attr2 0'))
+        self.assertIsInstance(result, ast.CallArgument)
+        self.assertEqual(result.attributes[0].name, 'attr1')
+        self.assertEqual(result.attributes[1].name, 'attr2')
+
+        result = parser.parse(tango.tokenize('x: 0'))
+        self.assertIsInstance(result, ast.CallArgument)
+        self.assertEqual(result.value.value, '0')
+        self.assertEqual(result.name.name, 'x')
+        self.assertFalse(result.attributes)
+
+        result = parser.parse(tango.tokenize('x: @attr1 @attr2 0'))
+        self.assertIsInstance(result, ast.CallArgument)
+        self.assertEqual(result.attributes[0].name, 'attr1')
+        self.assertEqual(result.attributes[1].name, 'attr2')
+
+    def test_call_statement(self):
+        parser = tango.call_statement + skip(finished)
+
+        result = parser.parse(tango.tokenize('f()'))
+        self.assertIsInstance(result, ast.Call)
+        self.assertEqual(result.callee.name, 'f')
+        self.assertFalse(result.arguments)
+
+        result = parser.parse(tango.tokenize('f(0, 1)'))
+        self.assertIsInstance(result, ast.Call)
+        self.assertEqual(result.arguments[0].value.value, '0')
+        self.assertEqual(result.arguments[1].value.value, '1')
+
+        result = parser.parse(tango.tokenize('f(x: 0, 1)'))
+        self.assertIsInstance(result, ast.Call)
+        self.assertEqual(result.arguments[0].value.value, '0')
+        self.assertEqual(result.arguments[1].value.value, '1')
+
+        result = parser.parse(tango.tokenize('f(x: 0, y: 1)'))
+        self.assertIsInstance(result, ast.Call)
+        self.assertEqual(result.arguments[0].value.value, '0')
+        self.assertEqual(result.arguments[1].value.value, '1')
 
     def test_function_decl(self):
         parser = tango.function_decl + skip(finished)
