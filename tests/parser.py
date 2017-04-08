@@ -57,14 +57,13 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('cst x: Int'))
         self.assertIsInstance(result, ast.FunctionParameter)
-        self.assertFalse(result.is_mutable)
         self.assertEqual(result.api_name.name, 'x')
         self.assertEqual(result.name.name, 'x')
         self.assertFalse(result.attributes)
         self.assertEqual(result.type_annotation.name.name, 'Int')
 
         result = parser.parse(tango.tokenize('mut x: Int'))
-        self.assertTrue(result.is_mutable)
+        self.assertIn('mutable', result.attributes)
 
         result = parser.parse(tango.tokenize('cst a x: Int'))
         self.assertIsInstance(result, ast.FunctionParameter)

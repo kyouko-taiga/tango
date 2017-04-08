@@ -95,17 +95,22 @@ type_identifier = (
     >> make_type_identifier)
 
 def make_function_parameter(args):
+    attributes = args[3] or []
+    if args[0].value == 'mut':
+        attributes.append('mutable')
+
     return FunctionParameter(
-        is_mutable = args[0].value == 'mut',
         name = args[2] or args[1],
         api_name = args[1],
-        attributes = args[3],
-        type_annotation = args[4])
+        attributes = attributes,
+        type_annotation = args[4],
+        default_value = args[5])
 
 function_parameter = (
     (kw('cst') | kw('mut')) +
     identifier + maybe(identifier) + op_(':') +
-    many(op_('@') + identifier) + type_signature
+    many(op_('@') + identifier) + type_signature +
+    maybe(op_('=') + expression)
     >> make_function_parameter)
 
 function_parameter_list = (

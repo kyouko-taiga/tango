@@ -92,23 +92,31 @@ class TypeIdentifier(Node):
 
 class FunctionParameter(Node):
 
-    def __init__(self, name, api_name, type_annotation, is_mutable, attributes):
+    def __init__(
+        self, name, api_name, type_annotation, attributes, default_value=None):
         super().__init__()
-        self.is_mutable = is_mutable
         self.name = name
         self.api_name = api_name
-        self.attributes = attributes
         self.type_annotation = type_annotation
+        self.attributes = attributes
+        self.default_value = default_value
 
     def __str__(self):
-        if self.attributes:
+        if 'mutable' in self.attributes:
+            mutability_modifier = 'mut'
+            attributes = list(filter(lambda attr: attr != 'mutable', self.attributes))
+        else:
+            mutability_modifier = 'cst'
+
+        if attributes:
             attributes = ' '.join('@%s' % attribute for attribute in self.attributes) + ' '
         else:
             attributes = ''
 
         if self.name != self.api_name:
-            return '%s %s: %s%s' % (self.api_name, self.name, attributes, self.type_annotation)
-        return '%s: %s%s' % (self.name, attributes, self.type_annotation)
+            return '%s %s %s: %s%s' % (
+                mutability_modifier, self.api_name, self.name, attributes, self.type_annotation)
+        return '%s %s: %s%s' % (mutability_modifier, self.name, attributes, self.type_annotation)
 
 
 class FunctionSignature(Node):

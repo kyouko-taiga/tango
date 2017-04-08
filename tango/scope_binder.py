@@ -137,10 +137,17 @@ class ScopeBinder(Visitor):
             if decls and (not isinstance(decls[0], FunctionDecl)):
                 raise DuplicateDeclaration(node.name.name)
 
-        # Insert the function's identifier in the current scope first, so that
-        # we can propertly refer to it in nested scopes.
+        # Insert the function's identifier in the current scope, so that we
+        # can propertly refer to it in nested scopes.
         self.current_scope.add(node.name.name, node)
         node.name.__info__['scope'] = self.current_scope
+
+        # Visit the default values of the function's parameters (if any). Note
+        # that we allow such default values to refer to the function itself,
+        # so as to match the behaviour of container declarations.
+        for parameter in node.signature.parameters:
+            if parameter.default_value:
+                self.visit(parameter.default_value)
 
         # Define the parameters of the function as the implicit declarations
         # of its block before visiting it.
