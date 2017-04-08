@@ -3,6 +3,9 @@ import re
 from funcparserlib.lexer import make_tokenizer, Token
 from funcparserlib.parser import some, a, many, maybe, finished, skip, forward_decl
 
+from .ast import *
+from .builtin import Nothing, Int, Double, String
+
 
 def tokenize(s):
     tokenizer = make_tokenizer([
@@ -11,8 +14,7 @@ def tokenize(s):
         ('space',      (r'[ \t\v]+',)),
         ('operator',   (r'(\->)|(not)|[=\+\-\*/:,&@<>{}\[\]\(\)]',)),
         ('identifier', (r'[^\W\d][\w]*',)),
-        ('integer',    (r'-?(0|([1-9][0-9]*))([Ee][+-][0-9]+)?',)),
-        ('decimal',       (r'-?(0|([1-9][0-9]*))(\.[0-9]+)([Ee][+-][0-9]+)?',)),
+        ('number',     (r'[-+]?(0|([1-9][0-9]*))(\.[0-9]+)?([Ee][+-]?[0-9]+)?',)),
         ('string',     (r'\'[^\']*\'',)),
     ])
 
@@ -24,9 +26,6 @@ def token_of_type(type):
 
 def flatten(args):
     return [args[0]] + args[1]
-
-def token_value(token):
-    return token.value
 
 op     = lambda value: a(Token('operator', value))
 kw     = lambda value: a(Token('identifier', value))
@@ -40,377 +39,197 @@ type_signature = forward_decl()
 expression     = forward_decl()
 statement      = forward_decl()
 
-class Identifier(object):
+def make_identifier(token):
+    return Identifier(name = token.value)
 
-    def __init__(self, name, scope=None, type=None):
-        self.name = name
-        self.scope = scope
-        self.type = type
+identifier = (
+    some(lambda token: token.type == 'identifier')
+    >> make_identifier)
 
-    @property
-    def qualname(self):
-        return '%s.%s' (self.scope.name or '__unbound__', self.name)
+def make_operator_identifier(token):
+    return OperatorIdentifier(name = token.value)
 
-    @staticmethod
-    def from_parser(token):
-        return Identifier(name=token.value)
+pfx_op = op('not') >> make_operator_identifier
 
-    def __str__(self):
-        return self.name
+mul_op = (op('*') | op('/')) >> make_operator_identifier
+add_op = (op('+') | op('-')) >> make_operator_identifier
 
-identifier = some(lambda token: token.type == 'identifier') >> Identifier.from_parser
+operator_identifier = pfx_op | mul_op | add_op
 
-class Block(object):
-
-    def __init__(self, statements=None):
-        self.statements = statements or []
-
-    @staticmethod
-    def from_parser(args):
-        return Block(statements = args[0])
-
-    def __str__(self):
-        if self.statements:
-            return '{%s\n}' % ''.join('\n%s' % statement for statement in self.statements)
-        return '{}'
+def make_statement_list(args):
+    if args[0] is None:
+        return args[1]
+    return flatten(args)
 
 statement_list = (
     maybe(statement) + many(nl_ + statement)
-    >> flatten)
+    >> make_statement_list)
+
+def make_block(statements):
+    return Block(statements = statements)
 
 block = (
     op_('{') + statement_list + nl_opt + op_('}')
-    >> Block.from_parser)
+    >> make_block)
 
-class SpecializationParameter(object):
-
-    def __init__(self, name, type_annotation):
-        self.name = name
-        self.type_annotation = type_annotation
-
-    @staticmethod
-    def from_parser(args):
-        return SpecializationParameter(
-            name = args[0],
-            type_annotation = args[1])
-
-    def __str__(self):
-        return '%s = %s' % (self.name, self.type_annotation)
+def make_specialization_parameter(args):
+    return SpecializationParameter(
+        name = args[0],
+        type_annotation = args[1])
 
 specialization_parameter = (
     identifier + op_('=') + type_signature
-    >> SpecializationParameter.from_parser)
+    >> make_specialization_parameter)
 
 specialization_parameter_list = (
     specialization_parameter + many(op_(',') + specialization_parameter)
     >> flatten)
 
-class TypeIdentifier(object):
-
-    def __init__(self, name, specialization_parameters=None):
-        self.name = name
-        self.specialization_parameters = specialization_parameters or []
-
-    @staticmethod
-    def from_parser(args):
-        return TypeIdentifier(
-            name = args[0],
-            specialization_parameters = args[1])
-
-    def __str__(self):
-        if self.specialization_parameters:
-            return '%s [%s]' % (self.name, ', '.join(map(str, self.specialization_parameters)))
-        return '%s' % self.name
-
-    def __repr__(self):
-        return 'TypeIdentifier(%s)' % str(self)
+def make_type_identifier(args):
+    return TypeIdentifier(
+        name = args[0],
+        specialization_parameters = args[1])
 
 type_identifier = (
     identifier + maybe(op_('[') + specialization_parameter_list + op_(']'))
-    >> TypeIdentifier.from_parser)
+    >> make_type_identifier)
 
-class FunctionParameter(object):
-
-    def __init__(self, name, api_name, type_annotation, is_mutable, attributes):
-        self.is_mutable = is_mutable
-        self.name = name
-        self.api_name = api_name
-        self.attributes = attributes
-        self.type_annotation = type_annotation
-
-    @staticmethod
-    def from_parser(args):
-        return FunctionParameter(
-            is_mutable = args[0].value == 'mut',
-            name = args[2] or args[1],
-            api_name = args[1],
-            attributes = args[3],
-            type_annotation = args[4])
-
-    def __str__(self):
-        if self.attributes:
-            attributes = ' '.join('@%s' % attribute for attribute in self.attributes) + ' '
-        else:
-            attributes = ''
-
-        if self.name != self.api_name:
-            return '%s %s: %s%s' % (self.api_name, self.name, attributes, self.type_annotation)
-        return '%s: %s%s' % (self.name, attributes, self.type_annotation)
+def make_function_parameter(args):
+    return FunctionParameter(
+        is_mutable = args[0].value == 'mut',
+        name = args[2] or args[1],
+        api_name = args[1],
+        attributes = args[3],
+        type_annotation = args[4])
 
 function_parameter = (
     (kw('cst') | kw('mut')) +
     identifier + maybe(identifier) + op_(':') +
     many(op_('@') + identifier) + type_signature
-    >> FunctionParameter.from_parser)
+    >> make_function_parameter)
 
 function_parameter_list = (
     function_parameter + many(op_(',') + function_parameter)
     >> flatten)
 
-class FunctionType(object):
+def make_function_signature(args):
+    return FunctionSignature(
+        parameters = args[0] or [],
+        return_type = args[1])
 
-    def __init__(self, parameters, return_type):
-        self.parameters = parameters
-        self.return_type = return_type
-
-    @staticmethod
-    def from_parser(args):
-        return FunctionType(
-            parameters = args[0] or [],
-            return_type = args[1])
-
-    def __str__(self):
-        return '(%s) -> %s' % (', '.join(map(str, self.parameters)), self.return_type)
-
-function_type = (
+function_signature = (
     op_('(') + maybe(function_parameter_list) + op_(')') +
     op_('->') + type_signature
-    >> FunctionType.from_parser)
+    >> make_function_signature)
 
-type_signature.define(function_type | type_identifier)
+type_signature.define(function_signature | type_identifier)
 
-class Literal(object):
+def make_number_literal(token):
+    result = Literal(value = token.value)
+    if ('.' in token.value) or ('e' in token.value) or ('E' in token.value):
+        result.__info__['type'] = Double
+    else:
+        result.__info__['type'] = Int
+    return result
 
-    def __init__(self, value, type):
-        self.value = value
-        self.type = type
+def make_string_literal(token):
+    result = Literal(value = token.value)
+    result.__info__['type'] = String
+    return result
 
-    @staticmethod
-    def make_integer(token):
-        return Literal(
-            value=token.value,
-            type=TypeIdentifier(name=Identifier(name='Int')))
+number_literal = token_of_type('number') >> make_number_literal
+string_literal = token_of_type('string') >> make_string_literal
 
-    @staticmethod
-    def make_double(token):
-        return Literal(
-            value=token.value,
-            type=TypeIdentifier(name=Identifier(name='Double')))
-
-    @staticmethod
-    def make_string(token):
-        return Literal(
-            value=token.value,
-            type=TypeIdentifier(name=Identifier(name='String')))
-
-    def __str__(self):
-        return str(self.value)
-
-class FunctionApplication(object):
-
-    def __init__(self, function, arguments):
-        self.function = function
-        self.arguments = arguments
-
-    @staticmethod
-    def from_parser(args):
-        return FunctionApplication(
-            function = args[0],
-            arguments = args[1])
-
-    def __str__(self):
-        return '%s(%s)' % (self.function, ', '.join(map(str, self.arguments)))
-
-pfx_op = op('not') >> token_value
-
-mul_op = (op('*') | op('/')) >> token_value
-add_op = (op('+') | op('-')) >> token_value
-
-integer_literal = token_of_type('integer') >> Literal.make_integer
-double_literal = token_of_type('decimal') >> Literal.make_double
-string_literal = token_of_type('string') >> Literal.make_string
-
-constant = double_literal | integer_literal | string_literal
-variable = identifier
+constant = number_literal | string_literal
+variable = identifier | operator_identifier
 
 citizen = constant | variable
 
-class PrefixedExpression(object):
-
-    def __init__(self, operator, operand):
-        self.operator = operator
-        self.operand = operand
-
-    @staticmethod
-    def from_parser(args):
-        return PrefixedExpression(
-            operator = args[0],
-            operand = args[1])
-
-    def __str__(self):
-        return '%s%s' % (self.operator, self.operand)
+def make_prefixed_expression(args):
+    return PrefixedExpression(
+        operator = args[0],
+        operand = args[1])
 
 pfx_expr = (
     pfx_op + expression
-    >> PrefixedExpression.from_parser)
+    >> make_prefixed_expression)
 
-class BinaryExpression(object):
+def make_binary_expression(args):
 
-    def __init__(self, operator, left, right):
-        self.operator = operator
-        self.left = left
-        self.right = right
+    # Implementation note:
+    # We receive a tuple (operand, [(operator, operand)]) from the parser.
+    # Would the parsed expression be `0 + 1 - 2`, `args` would be
+    # equivalent to (Literal(0), [('+', Literal(1)), ('-', Literal(2))]).
 
-    @staticmethod
-    def from_parser(args):
+    if args[1]:
+        return BinaryExpression(
+            left = args[0],
+            operator = args[1][0][0],
+            right = make_binary_expression((args[1][0][1], args[1][1:])))
 
-        # Implementation note:
-        # We receive a tuple (operand, [(operator, operand)]) from the parser.
-        # Would the parsed expression be `0 + 1 - 2`, `args` would be
-        # equivalent to (Literal(0), [('+', Literal(1)), ('-', Literal(2))]).
+    # Note that `make_binary_expression` will be called for the last operand,
+    # even if there isn't any binary expression left to create. Hence we can
+    # simply return the operand "as is".
+    return args[0]
 
-        if args[1]:
-            return BinaryExpression(
-                left = args[0],
-                operator = args[1][0][0],
-                right = BinaryExpression.from_parser((args[1][0][1], args[1][1:])))
-
-        # Note that `from_parser` will be called for the last operand, even if
-        # there isn't any binary expression left to create. Hence we can
-        # simply return the operand "as is".
-        return args[0]
-
-    def __str__(self):
-        return '%s %s %s' % (self.left, self.operator, self.right)
-
-mul_expr = citizen + many(mul_op + citizen) >> BinaryExpression.from_parser
-add_expr = mul_expr + many(add_op + mul_expr) >> BinaryExpression.from_parser
+mul_expr = citizen + many(mul_op + citizen) >> make_binary_expression
+add_expr = mul_expr + many(add_op + mul_expr) >> make_binary_expression
 bin_expr = add_expr
 
 expression.define(bin_expr)
 
-class Assignment(object):
-
-    def __init__(self, target, value):
-        self.target = target
-        self.value = value
-
-    @staticmethod
-    def from_parser(args):
-        return Assignment(
-            target = args[0],
-            value = args[1])
-
-    def __str__(self):
-        return '%s = %s' % (self.target, self.value)
+def make_assignment(args):
+    return Assignment(
+        target = args[0],
+        value = args[1])
 
 assignment = (
     expression + op_('=') + expression
-    >> Assignment.from_parser)
+    >> make_assignment)
 
-class FunctionDecl(object):
-
-    def __init__(self, name, signature, body, generic_parameters=None):
-        self.name = name
-        self.signature = signature
-        self.body = body
-        self.generic_parameters = generic_parameters or []
-
-    @staticmethod
-    def from_parser(args):
-        return FunctionDecl(
-            name = args[0],
-            generic_parameters = args[1],
-            signature = FunctionType(
-                parameters = args[2],
-                return_type = args[3] or TypeIdentifier(name=Identifier(name='Void'))),
-            body = args[4])
-
-    def __str__(self):
-        result = 'fun %s' % self.name
-        if self.generic_parameters:
-            result += '<%s>' % ', '.join(map(str, self.generic_parameters))
-        result += '%s %s' % (self.signature, self.body)
-        return result
-
-generic_parameters = (
-    type_identifier + many(op_(',') + type_identifier) >> flatten)
-
-function_decl = (
-    kw_('fun') + identifier +
-    maybe(op_('<') + generic_parameters + op_('>')) +
-    op_('(') + maybe(function_parameter_list) + op_(')') +
-    maybe(op_('->') + type_signature) +
-    block
-    >> FunctionDecl.from_parser)
-
-class ConstantDecl(object):
-
-    def __init__(self, name, type_annotation, initial_value, type=None):
-        self.name = name
-        self.type_annotation = type_annotation
-        self.initial_value = initial_value
-        self.type = type
-
-    @staticmethod
-    def from_parser(args):
-        return ConstantDecl(
-            name = args[0],
-            type_annotation = args[1],
-            initial_value = args[2])
-
-    def __str__(self):
-        result = 'cst %s' % self.name
-        if self.type_annotation is not None:
-            result += ': %s' % self.type_annotation
-        if self.initial_value is not None:
-            result += ' = %s' % self.initial_value
-        return result
+def make_constant_decl(args):
+    return ConstantDecl(
+        name = args[0],
+        type_annotation = args[1],
+        initial_value = args[2])
 
 constant_decl = (
     kw_('cst') + identifier +
     maybe(op_(':') + type_signature) +
     maybe(op_('=') + expression)
-    >> ConstantDecl.from_parser)
+    >> make_constant_decl)
 
-class VariableDecl(object):
-
-    def __init__(self, name, type_annotation, initial_value, type=None):
-        self.name = name
-        self.type_annotation = type_annotation
-        self.initial_value = initial_value
-        self.type = type
-
-    @staticmethod
-    def from_parser(args):
-        return VariableDecl(
-            name = args[0],
-            type_annotation = args[1],
-            initial_value = args[2])
-
-    def __str__(self):
-        result = 'mut %s' % self.name
-        if self.type_annotation is not None:
-            result += ': %s' % self.type_annotation
-        if self.initial_value is not None:
-            result += ' = %s' % self.initial_value
-        return result
+def make_variable_decl(args):
+    return VariableDecl(
+        name = args[0],
+        type_annotation = args[1],
+        initial_value = args[2])
 
 variable_decl = (
     kw_('mut') + identifier +
     maybe(op_(':') + type_signature) +
     maybe(op_('=') + expression)
-    >> VariableDecl.from_parser)
+    >> make_variable_decl)
+
+def make_function_decl(args):
+    return FunctionDecl(
+        name = args[0],
+        generic_parameters = args[1],
+        signature = FunctionSignature(
+            parameters = args[2] or [],
+            return_type = args[3] or Nothing),
+        body = args[4])
+
+generic_parameters = (
+    type_identifier + many(op_(',') + type_identifier) >> flatten)
+
+function_decl = (
+    kw_('fun') + (identifier | operator_identifier) +
+    maybe(op_('<') + generic_parameters + op_('>')) +
+    op_('(') + maybe(function_parameter_list) + op_(')') +
+    maybe(op_('->') + type_signature) +
+    block
+    >> make_function_decl)
 
 type_import_list = (
     type_identifier + many(op_(',') + type_identifier)
@@ -420,75 +239,35 @@ type_conformance_list = (
     type_identifier + many(op_('&') + type_identifier)
     >> flatten)
 
-class EnumCaseParameter(object):
-
-    def __init__(self, name, type_annotation):
-        self.name = name
-        self.type_annotation = type_annotation
-
-    @staticmethod
-    def from_parser(args):
-        return EnumCaseParameter(
-            name = args[0],
-            type_annotation = args[1])
-
-    def __str__(self):
-        return '%s: %s' % (self.name, self.type_annotation)
+def make_enum_case_parameter(args):
+    return EnumCaseParameter(
+        name = args[0],
+        type_annotation = args[1])
 
 enum_case_parameter = (
     identifier + op_(':') + type_signature
-    >> EnumCaseParameter.from_parser)
+    >> make_enum_case_parameter)
 
 enum_case_parameter_list = (
     enum_case_parameter + many(op_(',') + enum_case_parameter)
     >> flatten)
 
-class EnumCase(object):
-
-    def __init__(self, name, parameters):
-        self.name = name
-        self.parameters = parameters
-
-    @staticmethod
-    def from_parser(args):
-        return EnumCase(
-            name = args[0],
-            parameters = args[1])
-
-    def __str__(self):
-        if self.parameters:
-            return 'case %s(%s)' % (self.name, ', '.join(map(str, self.parameters)))
-        else:
-            return 'case %s' % self.name
+def make_enum_case(args):
+    return EnumCase(
+        name = args[0],
+        parameters = args[1])
 
 enum_case = (
     kw_('case') + identifier + maybe(op_('(') + enum_case_parameter_list + op_(')'))
-    >> EnumCase.from_parser)
+    >> make_enum_case)
 
-class EnumDecl(object):
-
-    def __init__(
-            self, name, cases=None, methods=None,
-            import_list=None, conformance_list=None):
-
-        self.name = name
-        self.cases = cases or []
-        self.methods = methods or []
-        self.import_list = import_list or []
-        self.conformance_list = conformance_list or []
-
-    @staticmethod
-    def from_parser(args):
-        return EnumDecl(
-            name = args[0],
-            import_list = args[1],
-            conformance_list = args[2],
-            cases = list(filter(lambda e: isinstance(e, EnumCase), args[3])),
-            methods = list(filter(lambda e: isinstance(e, FunctionDecl),args[3])))
-
-    def __str__(self):
-        cases = ''.join('\t%s\n' % case for case in self.cases)
-        return 'enum %s {\n%s}' % (self.name, cases)
+def make_enum_decl(args):
+    return EnumDecl(
+        name = args[0],
+        import_list = args[1],
+        conformance_list = args[2],
+        cases = list(filter(lambda e: isinstance(e, EnumCase), args[3])),
+        methods = list(filter(lambda e: isinstance(e, FunctionDecl),args[3])))
 
 enum_member = enum_case | function_decl
 
@@ -501,32 +280,16 @@ enum_decl = (
     maybe(kw_('import') + type_import_list) +
     maybe(op_(':') + type_conformance_list) +
     op_('{') + enum_body + nl_opt + op_('}')
-    >> EnumDecl.from_parser)
+    >> make_enum_decl)
 
-class StructDecl(object):
-
-    def __init__(
-            self, name, stored_properties=None, methods=None,
-            import_list=None, conformance_list=None):
-
-        self.name = name
-        self.stored_properties = stored_properties or []
-        self.methods = methods or []
-        self.import_list = import_list or []
-        self.conformance_list = conformance_list or []
-
-    @staticmethod
-    def from_parser(args):
-        return StructDecl(
-            name = args[0],
-            import_list = args[1],
-            conformance_list = args[2],
-            stored_properties = list(filter(
-                lambda e: isinstance(e, VariableDecl) or isinstance(e, ConstantDecl), args[3])),
-            methods = list(filter(lambda e: isinstance(e, FunctionDecl), args[3])))
-
-    def __str__(self):
-        pass
+def make_struct_decl(args):
+    return StructDecl(
+        name = args[0],
+        import_list = args[1],
+        conformance_list = args[2],
+        stored_properties = list(filter(
+            lambda e: isinstance(e, VariableDecl) or isinstance(e, ConstantDecl), args[3])),
+        methods = list(filter(lambda e: isinstance(e, FunctionDecl), args[3])))
 
 struct_member = variable_decl | constant_decl | function_decl
 
@@ -539,7 +302,7 @@ struct_decl = (
     maybe(kw_('import') + type_import_list) +
     maybe(op_(':') + type_conformance_list) +
     op_('{') + struct_body + nl_opt + op_('}')
-    >> StructDecl.from_parser)
+    >> make_struct_decl)
 
 statement.define(
     constant_decl |
@@ -549,24 +312,14 @@ statement.define(
     struct_decl |
     assignment)
 
-class ModuleDecl(object):
-
-    def __init__(self, name, statements):
-        self.name = name
-        self.statements = statements
-
-    @staticmethod
-    def from_parser(args):
-        return ModuleDecl(
-            name = '',
-            statements = args)
-
-    def __str__(self):
-        return '\n'.join(map(str, self.statements))
+def make_module_decl(args):
+    return ModuleDecl(
+        name = '',
+        body = Block(statements = args))
 
 module_decl = (
     statement_list + nl_opt
-    >> ModuleDecl.from_parser)
+    >> make_module_decl)
 
 parser = module_decl + skip(finished)
 

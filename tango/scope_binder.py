@@ -1,4 +1,6 @@
 from .ast import Transformer, Visitor
+from .builtin import Scope, builtin_scope
+from .errors import DuplicateDeclaration, UndefinedSymbol
 from .parser import *
 
 
@@ -7,112 +9,96 @@ def bind_scopes(node):
     binder.visit(node)
 
 
-class DuplicateDeclaration(Exception):
+class SymbolsExtractor(Transformer):
 
-    def __init__(self, name):
-        super().__init__(name)
+    def visit_Block(self, node):
+        symbols = set()
 
+        for i, statement in enumerate(node.statements):
+            if isinstance(statement, (ConstantDecl, VariableDecl)):
+                # Add the container's identifier to the current scope.
+                symbols.add(statement.name.name)
 
-class Scope(object):
+            if isinstance(statement, (FunctionDecl, EnumDecl, StructDecl)):
+                # Extract the symbols from the body of the type declaration.
+                node.statements[i] = self.visit(statement)
 
-    next_id = 0
+                # Add the name of the type declaration to the current scope.
+                symbols.add(statement.name.name)
 
-    def __init__(self, name, parent=None):
-        self.id = Scope.next_id
-        Scope.next_id += 1
+        node.__info__['symbols'] = symbols
+        return node
 
-        self.name = name
-        self.members = {}
+    def visit_EnumDecl(self, node):
+        symbols = set([c.name.name for c in node.cases])
+        for i, method in enumerate(node.methods):
+            node.methods[i] = self.visit(method)
+            symbols.add(node.name.name)
 
-        self.parent = parent
-        self.children = []
+        node.__info__['symbols'] = symbols
+        return node
 
-    @property
-    def uri(self):
-        if self.parent is None:
-            return str(self.id)
-        return '%s.%s' % (self.parent.uri, self.id)
+    def visit_StructEnum(self, node):
+        symbols = set([p.name.name for p in node.stored_properties])
+        for i, method in enumerate(node.methods):
+            node.methods[i] = self.visit(method)
+            symbols.add(node.name.name)
 
-    def defining_scope(self, name):
-        if name in self.members:
-            return self
-        if parent:
-            return parent.defining_scope(name)
-        return None
-
-    def __contains__(self, name):
-        return name in self.members
-
-    def __getitem__(self, name):
-        return self.members[name]
-        # if name in self.members:
-        #     return self.members[name]
-        # if self.parent is not None:
-        #     return self.parent[name]
-        # raise KeyError(name)
-
-    def __setitem__(self, name, value):
-        self.members[name] = value
-
-    def __hash__(self):
-        return hash(self.id)
-
-    def __eq__(self, other):
-        return self.id == other.id
-
-
-class SymbolExtractor(Transformer):
-
-    def search_for_symbols(self, node):
-        symbols = []
-        if isinstance(node, (ModuleDecl, Block)):
-            for i, statement in enumerate(node.statements):
-                if isinstance(statement, (ConstantDecl, VariableDecl)):
-                    symbols.append(statement.name)
-
-                    # If the statement is a container's declaration, we should
-                    # enclose all remaining statements in a new block, so that
-                    # we can properly bind symbols that shadow a parent scope.
-                    if i < len(node.statements) - 1:
-                        processed = node.statements[:i]
-                        remaining = node.statements[i + 1:]
-                        new_statements = processed + [
-                            Block(statements = [self.visit(s) for s in remaining])
-                        ]
-
-                        new_node = node.copy()
-                        new_node.statements = new_statements
-                        new_node.__symbols = symbols
-                        return new_node
-
-                elif isinstance(statement, (FunctionDecl, StructDecl, EnumDecl)):
-                    result.append(statement.name)
-
-        new_node = node.copy()
-        new_node.symbols = symbols
-        return new_node
-
-
-    def visit_ModuleDecl(self, node):
-        symbols, new_node = self.search_for_symbols(node)
-
-
-
+        node.__info__['symbols'] = symbols
+        return node
 
 
 class ScopeBinder(Visitor):
 
     def __init__(self):
-        # We put None here to handle names that aren't defined within a scope.
-        self.scopes = [None]
+        # This list represent the scope stack we'll manipulate as we'll walk
+        # down the AST.
+
+        # Array[Scope]
+        self.scopes = [builtin_scope]
+
+        # This mapping will help us keep track of what the identifier being
+        # declared when visiting its declaration, which is necessary to
+        # properly map the scopes of declaration expressions that refer to the
+        # same name as the identifier under declaration, but from an enclosing
+        # scope.
+        # For example, consider the following snippet in which `x` declared
+        # within the function `f` should be a new variable, but inialized with
+        # the value of the constant `x` defined in the global scope:
+        # >>> cst x = 0
+        # >>> fun f() { mut x = x }
+
+        # (Scope) -> Set[String]
+        self.under_declaration = {}
+
+        # Some nodes (e.g. function declarations) implicitly declare some
+        # symbols in their associated block. As new scopes are created by
+        # `visit_Block`, the latter should have a way to store the implicit
+        # declarations before its statements are visited.
+
+        # Dictionary[Key: String, Value: Node]
+        self.implicit_declarations = {}
 
     @property
     def current_scope(self):
         return self.scopes[-1]
 
-    def visit_ModuleDecl(self, node):
-        # Push a new scope for the current module.
-        self.scopes.append(Scope(name=node.name, parent=self.scopes[-1]))
+    def visit_Block(self, node):
+        # Push a new scope on the stack before visitng the node's statements,
+        # pre-filled with the symbols declared within the current block.
+        self.current_scope.children.append(Scope(parent=self.scopes[-1]))
+        self.scopes.append(self.current_scope.children[-1])
+        for symbol in node.__info__['symbols']:
+            self.current_scope[symbol] = []
+
+        # Store the optional implicit declarations of the block.
+        for name, decl_node in self.implicit_declarations.items():
+            self.current_scope.add(name, decl_node)
+            decl_node.name.__info__['scope'] = self.current_scope
+
+        # Initialize the set that keeps track of what identifier is being
+        # declared when visiting its declaration.
+        self.under_declaration[self.current_scope] = set()
 
         for statement in node.statements:
             self.visit(statement)
@@ -122,45 +108,97 @@ class ScopeBinder(Visitor):
     def visit_ConstantDecl(self, node):
         # Make sure the container's identifier wasn't already declared within
         # the current scope.
-        if ((node.name.name in self.current_scope) and
-            (not isinstance(self.current_scope[node.name.name], ForwardIdentifier))):
+        if self.current_scope[node.name.name]:
             raise DuplicateDeclaration(node.name.name)
 
-        # Bind the scopes of the container's initializing expression (if any).
-        # Note that we do that first, so we don't improperly bind the
-        # container's identifier to the current scope.
+        # Bind the scopes of the container's type annotation and initializing
+        # expression (if any).
+        self.under_declaration[self.current_scope].add(node.name.name)
+
         if node.initial_value:
             self.visit(node.initial_value)
-
-        # Bind the scopes of the container's type annotation (if any).
         if node.type_annotation:
             self.visit(node.type_annotation)
 
-        # If the container's identifier was forward declared, we should bind
-        # its instance to the current node now. Otherwise, we should insert
-        # the node in the current scope.
-        if node.name.name in self.current_scope:
-            decl = self.current_scope[node.name.name]
-            decl.instance = node
-        else:
-            self.current_scope[node.name.name] = node
+        self.under_declaration[self.current_scope].remove(node.name.name)
 
-        # Finally, we associated the scope of the current node.
-        node.name.scope = self.current_scope
+        # Finally, insert the container's identifier in the current scope.
+        self.current_scope.add(node.name.name, node)
+        node.name.__info__['scope'] = self.current_scope
 
     def visit_VariableDecl(self, node):
         self.visit_ConstantDecl(node)
 
+    def visit_FunctionDecl(self, node):
+        # If the function's identifer was already declared within the current
+        # scope, make sure it is associated with a function declaration.
+        if self.current_scope[node.name.name]:
+            decls = self.current_scope[node.name.name]
+            if decls and (not isinstance(decls[0], FunctionDecl)):
+                raise DuplicateDeclaration(node.name.name)
+
+        # Insert the function's identifier in the current scope first, so that
+        # we can propertly refer to it in nested scopes.
+        self.current_scope.add(node.name.name, node)
+        node.name.__info__['scope'] = self.current_scope
+
+        # Define the parameters of the function as the implicit declarations
+        # of its block before visiting it.
+        self.implicit_declarations = {p.api_name.name: p for p in node.signature.parameters}
+        self.visit(node.body)
+
+    def visit_EnumDecl(self, node):
+        # Make sure the function's identifier wasn't already declared within
+        # the current scope.
+        if self.current_scope[node.name.name] is not None:
+            raise DuplicateDeclaration(node.name.name)
+
+        # Push a new scope on the stack before visitng the enum's body, pre-
+        # filled with the symbols it declares.
+        self.scopes.append(Scope(parent=self.scopes[-1]))
+        for symbol in node.__info__['symbols']:
+            self.current_scope[symbol] = []
+
+        # Initialize the set that keeps track of what identifier is being
+        # declared when visiting its declaration.
+        self.under_declaration[self.current_scope] = set()
+
+        for child_node in node.cases + node.methods:
+            self.visit(child_node)
+
+        self.scopes.pop()
+
+    def visit_StructDecl(self, node):
+        # Make sure the function's identifier wasn't already declared within
+        # the current scope.
+        if self.current_scope[node.name.name] is not None:
+            raise DuplicateDeclaration(node.name.name)
+
+        # Push a new scope on the stack before visitng the enum's body, pre-
+        # filled with the symbols it declares.
+        self.scopes.append(Scope(parent=self.scopes[-1]))
+        for symbol in node.__info__['symbols']:
+            self.current_scope[symbol] = []
+
+        # Initialize the set that keeps track of what identifier is being
+        # declared when visiting its declaration.
+        self.under_declaration[self.current_scope] = set()
+
+        for child_node in node.stored_properties + node.methods:
+            self.visit(child_node)
+
+        self.scopes.pop()
+
     def visit_Identifier(self, node):
-        # Check if the identifier was already defined in the visible scopes.
-        defining_scope = self.current_scope.defining_scope(node.name)
-        if defining_scope is not None:
+        # If we're currently visiting the declaration of the identifier, we
+        # should necessarily bind it to an enclosing scope.
+        if node.name in self.under_declaration[self.current_scope]:
+            if self.current_scope.parent is None:
+                raise UndefinedSymbol(node.name)
+            defining_scope = self.current_scope.parent.defining_scope(node.name)
+        else:
+            defining_scope = self.current_scope.defining_scope(node.name)
 
-
-        # Insert the identifier into the current scope if it wasn't already.
-        if node.name not in self.current_scope.members:
-            self.current_scope.members[node.name] = node
-        node.scope = self.current_scope
-
-    def visit_BinaryExpression(self, node):
-        pass
+        if defining_scope is None:
+            raise UndefinedSymbol(node.name)
+        node.__info__['scope'] = defining_scope

@@ -1,17 +1,9 @@
 from itertools import product
 
 from .ast import Visitor
+from .builtin import Type, builtin_scope
+from .errors import UndefinedSymbol, InferenceError
 from .parser import *
-
-
-class MissingTypeAnnotation(Exception):
-    pass
-
-class InferenceError(Exception):
-    pass
-
-class UndefinedSymbol(Exception):
-    pass
 
 
 class TypeVariable(object):
@@ -24,6 +16,12 @@ class TypeVariable(object):
 
         # The type with which the variable will be eventually instanciated.
         self.instance = None
+
+    def __str__(self):
+        if self.instance is None:
+            return '$%i' % self.id
+        else:
+            return str(self.instance)
 
 
 def infer_types(node):
@@ -39,16 +37,17 @@ class TypeDeducer(Visitor):
     def __init__(self):
         # (Scope, String) -> [Type]
         self.environment = {
-            None: {},
+            (builtin_scope, symbol): types
+            for symbol, types in builtin_scope.members.items()
         }
 
     def visit_ConstantDecl(self, node):
         inferred = analyse(node, self.environment)
-        self.environment[(node.name.scope, node.name.name)] = inferred
+        self.environment[(node.name.__info__['scope'], node.name.name)] = inferred
 
     def visit_VariableDecl(self, node):
         inferred = analyse(node, self.environment)
-        self.environment[(node.name.scope, node.name.name)] = inferred
+        self.environment[(node.name.__info__['scope'], node.name.name)] = inferred
 
     def visit_Assignment(self, node):
         analyse(node, self.environment)
@@ -60,7 +59,7 @@ def analyse(node, environment):
     # the environment.
     if isinstance(node, Identifier):
         try:
-            return environment[(node.scope, node.name)]
+            return environment[(node.__info__['scope'], node.name)]
         except KeyError:
             raise UndefinedSymbol(node.name)
 
@@ -93,7 +92,7 @@ def analyse(node, environment):
 
     # If the node is a literal, its type was already inferred by the parser.
     if isinstance(node, Literal):
-        return [node.type]
+        return [node.__info__['type']]
 
     # If the node is an assignment, we should infer and unify the type of both
     # sides' expressions.
@@ -103,7 +102,7 @@ def analyse(node, environment):
         return unify(target_types, value_types)
 
     if instance(node, BinaryExpression):
-        operator_signatures = environment[]
+        operator_signatures = environment
 
     assert False, "no type inference for node '%s'" % node.__class__.__name__
 
@@ -112,8 +111,7 @@ def unify(lhs, rhs):
     results = []
     for (t, u) in product(lhs, rhs):
         try:
-            unify_single(t, u)
-            results.append(t)
+            results.extend(unify_single(t, u))
         except InferenceError:
             pass
 
@@ -129,25 +127,36 @@ def unify_single(lhs, rhs):
     a = prune(lhs)
     b = prune(rhs)
 
-    # If the left operand if a type variable, then we instanciate it with the
+    # If the left operand is a type variable, then we instanciate it with the
     # right operand.
     if isinstance(a, TypeVariable):
         if a != b:
             # TODO Check for recursive unifications
             a.instance = b
+        return [a]
 
-    # If the right operand is a type variable (and the left one is not), we
-    # instanciate it with the left operand.
-    elif isinstance(b, TypeVariable):
-        unify(b, a)
+    if isinstance(b, TypeVariable):
+        return unify_single(b, a)
 
-    # If both left and right operands aren't type variables, we have to unify
-    # their specialization parameters (if any), and check if they match.
-    elif isinstance(a, TypeIdentifier) and isinstance(b, TypeIdentifier):
-        if (a.name.name != b.name.name) or (a.name.scope != b.name.scope):
-            raise InferenceError("type '%s' doesn't match type '%s'" % (a, b))
+    # If only one operand is a type identifier, then have to unify the type
+    # it refers to with the other operand. Note that since an identifier may
+    # refer to multiple types (because of overloading), we have to unify all
+    # possible referred types.
+    if isinstance(a, TypeIdentifier):
+        walked = a.name.__info__['scope'][a.name.name]
+        return unify(walked, [b])
 
-        # TODO unify abstract types and generic functions
+    if isinstance(b, TypeIdentifier):
+        return unify_single(b, a)
+
+    # If both operands are resolved types, then we simply have to make sure
+    # they are equivalent.
+    if isinstance(a, Type) and isinstance(b, Type):
+        if a != b:
+            raise InferenceError("types '%s' and '%s' doesn't match" % (a. b))
+        return [a]
+
+    # TODO unify abstract types and generic functions
 
     else:
         assert False, 'not unified'
