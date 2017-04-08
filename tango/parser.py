@@ -9,7 +9,7 @@ from .builtin import Nothing, Int, Double, String
 
 def tokenize(s):
     tokenizer = make_tokenizer([
-        ('comment',    (r'#.*',)),
+        ('comment',    (r'#.*\n',)),
         ('newline',    (r'[\r\n]+',)),
         ('space',      (r'[ \t\v]+',)),
         ('operator',   (r'(\->)|(not)|[=\+\-\*/:,&@<>{}\[\]\(\)]',)),
@@ -78,7 +78,7 @@ def make_specialization_parameter(args):
         type_annotation = args[1])
 
 specialization_parameter = (
-    identifier + op_('=') + type_signature
+    identifier + op_(':') + type_signature
     >> make_specialization_parameter)
 
 specialization_parameter_list = (

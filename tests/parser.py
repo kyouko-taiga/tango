@@ -25,7 +25,7 @@ class TestParser(unittest.TestCase):
     def test_specialization_parameter(self):
         parser = tango.specialization_parameter + skip(finished)
 
-        result = parser.parse(tango.tokenize('T = Int'))
+        result = parser.parse(tango.tokenize('T: Int'))
         self.assertIsInstance(result, ast.SpecializationParameter)
         self.assertEqual(result.name.name, 'T')
         self.assertEqual(result.type_annotation.name.name, 'Int')
@@ -38,13 +38,13 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.name.name, 'Int')
         self.assertFalse(result.specialization_parameters)
 
-        result = parser.parse(tango.tokenize('Array[T = Int]'))
+        result = parser.parse(tango.tokenize('Array[T: Int]'))
         self.assertIsInstance(result, ast.TypeIdentifier)
         self.assertEqual(result.name.name, 'Array')
         self.assertEqual(result.specialization_parameters[0].name.name, 'T')
         self.assertEqual(result.specialization_parameters[0].type_annotation.name.name, 'Int')
 
-        result = parser.parse(tango.tokenize('Dictionary[Key = Int, Value = String]'))
+        result = parser.parse(tango.tokenize('Dictionary[Key: Int, Value: String]'))
         self.assertIsInstance(result, ast.TypeIdentifier)
         self.assertEqual(result.name.name, 'Dictionary')
         self.assertEqual(result.specialization_parameters[0].name.name, 'Key')
