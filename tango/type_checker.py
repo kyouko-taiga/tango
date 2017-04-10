@@ -71,6 +71,13 @@ class Substitution(object):
         else:
             assert False, 'cannot unify %r and %r' % (a, b)
 
+    def reified(self):
+        result = Substitution()
+        for variable in self.storage:
+            walked = self[variable]
+            result[variable] = walked
+        return result
+
 
 class TypeVariable(object):
 
@@ -103,7 +110,7 @@ def infer_types(node):
     type_deducer.visit(node)
     type_deducer.visit(node)
 
-    return type_deducer.environment.storage
+    return type_deducer.environment.reified().storage
 
 
 class TypeSolver(Visitor):
