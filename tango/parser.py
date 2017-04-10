@@ -59,7 +59,7 @@ def make_statement_list(args):
     return flatten(args)
 
 statement_list = (
-    maybe(statement) + many(nl_ + statement)
+    maybe(statement) + many(nl_ + nl_opt + statement) + nl_opt
     >> make_statement_list)
 
 def make_block(statements):
@@ -320,20 +320,19 @@ def make_enum_decl(args):
         name = args[0],
         import_list = args[1],
         conformance_list = args[2],
-        cases = list(filter(lambda e: isinstance(e, EnumCaseDecl), args[3])),
-        methods = list(filter(lambda e: isinstance(e, FunctionDecl),args[3])))
+        body = Block(args[3]))
 
 enum_member = enum_case_decl | function_decl
 
-enum_body = (
-    maybe(enum_member) + many(nl_ + enum_member)
-    >> flatten)
+enum_member_list = (
+    maybe(enum_member) + many(nl_ + nl_opt + enum_member) + nl_opt
+    >> make_statement_list)
 
 enum_decl = (
     kw_('enum') + identifier +
     maybe(kw_('import') + type_import_list) +
     maybe(op_(':') + type_conformance_list) +
-    op_('{') + enum_body + nl_opt + op_('}')
+    op_('{') + enum_member_list + op_('}')
     >> make_enum_decl)
 
 def make_struct_decl(args):
@@ -341,21 +340,19 @@ def make_struct_decl(args):
         name = args[0],
         import_list = args[1],
         conformance_list = args[2],
-        stored_properties = list(filter(
-            lambda e: isinstance(e, VariableDecl) or isinstance(e, ConstantDecl), args[3])),
-        methods = list(filter(lambda e: isinstance(e, FunctionDecl), args[3])))
+        body = Block(args[3]))
 
 struct_member = variable_decl | constant_decl | function_decl
 
-struct_body = (
-    maybe(struct_member) + many(nl_ + struct_member)
-    >> flatten)
+struct_members = (
+    maybe(struct_member) + many(nl_ + nl_opt + struct_member) + nl_opt
+    >> make_statement_list)
 
 struct_decl = (
     kw_('struct') + identifier +
     maybe(kw_('import') + type_import_list) +
     maybe(op_(':') + type_conformance_list) +
-    op_('{') + struct_body + nl_opt + op_('}')
+    op_('{') + struct_members + op_('}')
     >> make_struct_decl)
 
 statement.define(
@@ -374,7 +371,7 @@ def make_module_decl(args):
         body = Block(statements = args))
 
 module_decl = (
-    nl_opt + statement_list + nl_opt
+    statement_list
     >> make_module_decl)
 
 parser = module_decl + skip(finished)

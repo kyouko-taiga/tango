@@ -30,24 +30,6 @@ class SymbolsExtractor(Transformer):
         node.__info__['symbols'] = symbols
         return node
 
-    def visit_EnumDecl(self, node):
-        symbols = set([c.name for c in node.cases])
-        for i, method in enumerate(node.methods):
-            node.methods[i] = self.visit(method)
-            symbols.add(method.name)
-
-        node.__info__['symbols'] = symbols
-        return node
-
-    def visit_StructDecl(self, node):
-        symbols = set([p.name for p in node.stored_properties])
-        for i, method in enumerate(node.methods):
-            node.methods[i] = self.visit(method)
-            symbols.add(method.name)
-
-        node.__info__['symbols'] = symbols
-        return node
-
 
 class ScopeBinder(Visitor):
 
@@ -90,15 +72,6 @@ class ScopeBinder(Visitor):
         self.under_declaration[self.current_scope] = set()
 
         self.visit(node.body)
-
-    def visit_Block(self, node):
-        # Initialize the set that keeps track of what identifier is being
-        # declared when visiting its declaration.
-        self.under_declaration[self.current_scope] = set()
-
-        for statement in node.statements:
-            self.visit(statement)
-
         self.scopes.pop()
 
     def visit_ConstantDecl(self, node):
@@ -176,6 +149,7 @@ class ScopeBinder(Visitor):
 
         # Finally, visit the function's body.
         self.visit(node.body)
+        self.scopes.pop()
 
     def visit_EnumDecl(self, node):
         # Make sure the function's identifier wasn't already declared within
@@ -183,24 +157,26 @@ class ScopeBinder(Visitor):
         if self.current_scope[node.name]:
             raise DuplicateDeclaration(node.name)
 
-        # Push a new scope on the stack before visitng the enum's body, pre-
+        # Insert the enum's name in the current scope, so that we can
+        # properly refer to it in nested scopes.
+        self.current_scope.add(node.name, node)
+        node.__info__['scope'] = self.current_scope
+
+        # Push a new scope on the stack before visiting the enum's body, pre-
         # filled with the symbols it declares.
-        self.scopes.append(Scope(parent=self.scopes[-1]))
-        for symbol in node.__info__['symbols']:
+        self.current_scope.children.append(Scope(parent=self.scopes[-1]))
+        self.scopes.append(self.current_scope.children[-1])
+        for symbol in node.body.__info__['symbols']:
             self.current_scope[symbol] = []
+        node.body.__info__['scope'] = self.current_scope
 
         # Initialize the set that keeps track of what identifier is being
         # declared when visiting its declaration.
         self.under_declaration[self.current_scope] = set()
 
-        for child_node in node.cases + node.methods:
-            self.visit(child_node)
-
+        # Finally, visit the enum's body.
+        self.visit(node.body)
         self.scopes.pop()
-
-        # Finally, insert the enum's name in the current scope.
-        self.current_scope.add(node.name, node)
-        node.__info__['scope'] = self.current_scope
 
     def visit_EnumCaseDecl(self, node):
         # Make sure the case's identifier wasn't already declared within the
@@ -217,29 +193,7 @@ class ScopeBinder(Visitor):
         node.__info__['scope'] = self.current_scope
 
     def visit_StructDecl(self, node):
-        # Make sure the function's identifier wasn't already declared within
-        # the current scope.
-        if self.current_scope[node.name]:
-            raise DuplicateDeclaration(node.name)
-
-        # Push a new scope on the stack before visitng the enum's body, pre-
-        # filled with the symbols it declares.
-        self.scopes.append(Scope(parent=self.scopes[-1]))
-        for symbol in node.__info__['symbols']:
-            self.current_scope[symbol] = []
-
-        # Initialize the set that keeps track of what identifier is being
-        # declared when visiting its declaration.
-        self.under_declaration[self.current_scope] = set()
-
-        for child_node in node.stored_properties + node.methods:
-            self.visit(child_node)
-
-        self.scopes.pop()
-
-        # Finally, insert the struct's name in the current scope.
-        self.current_scope.add(node.name, node)
-        node.__info__['scope'] = self.current_scope
+        self.visit_EnumDecl(node)
 
     def visit_Identifier(self, node):
         # If we're currently visiting the declaration of the identifier, we

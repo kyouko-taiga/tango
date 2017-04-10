@@ -290,36 +290,29 @@ class EnumCaseDecl(Node):
 class EnumDecl(Node):
 
     def __init__(
-            self, name, cases=None, methods=None,
-            import_list=None, conformance_list=None):
+            self, name, body, import_list=None, conformance_list=None):
 
         super().__init__()
         self.name = name
-        self.cases = cases or []
-        self.methods = methods or []
+        self.body = body
         self.import_list = import_list or []
         self.conformance_list = conformance_list or []
 
     def __str__(self):
-        cases = ''.join('\t%s\n' % case for case in self.cases)
-        return 'enum %s {\n%s}' % (self.name, cases)
+        return 'enum %s %s' % (self.name, self.body)
 
 
 class StructDecl(Node):
 
-    def __init__(
-            self, name, stored_properties=None, methods=None,
-            import_list=None, conformance_list=None):
-
+    def __init__(self, name, body, import_list=None, conformance_list=None):
         super().__init__()
         self.name = name
-        self.stored_properties = stored_properties or []
-        self.methods = methods or []
+        self.body = body
         self.import_list = import_list or []
         self.conformance_list = conformance_list or []
 
     def __str__(self):
-        pass
+        return 'struct %s %s' % (self.name, self.body)
 
 
 class ModuleDecl(Node):

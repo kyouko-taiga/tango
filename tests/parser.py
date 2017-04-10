@@ -307,8 +307,7 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.name, 'E')
         self.assertFalse(result.import_list)
         self.assertFalse(result.conformance_list)
-        self.assertFalse(result.cases)
-        self.assertFalse(result.methods)
+        self.assertFalse(result.body.statements)
 
         result = parser.parse(tango.tokenize('enum E import F, G {}'))
         self.assertEqual(result.import_list[0].name, 'F')
@@ -324,17 +323,17 @@ class TestParser(unittest.TestCase):
                 case b(x: Int)
             }'''))
         self.assertIsInstance(result, ast.EnumDecl)
-        self.assertEqual(result.cases[0].name, 'a')
-        self.assertEqual(result.cases[1].name, 'b')
-        self.assertEqual(result.cases[1].parameters[0].name, 'x')
-        self.assertEqual(result.cases[1].parameters[0].type_annotation.name, 'Int')
+        self.assertEqual(result.body.statements[0].name, 'a')
+        self.assertEqual(result.body.statements[1].name, 'b')
+        self.assertEqual(result.body.statements[1].parameters[0].name, 'x')
+        self.assertEqual(result.body.statements[1].parameters[0].type_annotation.name, 'Int')
 
         result = parser.parse(tango.tokenize(
             '''enum E {
                 fun f(cst self: Self) {}
             }'''))
         self.assertIsInstance(result, ast.EnumDecl)
-        self.assertIsInstance(result.methods[0], ast.FunctionDecl)
+        self.assertIsInstance(result.body.statements[0], ast.FunctionDecl)
 
     def test_struct_decl(self):
         parser = tango.struct_decl + skip(finished)
@@ -344,8 +343,7 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.name, 'S')
         self.assertFalse(result.import_list)
         self.assertFalse(result.conformance_list)
-        self.assertFalse(result.stored_properties)
-        self.assertFalse(result.methods)
+        self.assertFalse(result.body.statements)
 
         result = parser.parse(tango.tokenize('struct S import T {}'))
         self.assertEqual(result.import_list[0].name, 'T')
@@ -359,15 +357,15 @@ class TestParser(unittest.TestCase):
                 mut x: Int
             }'''))
         self.assertIsInstance(result, ast.StructDecl)
-        self.assertEqual(result.stored_properties[0].name, 'x')
-        self.assertEqual(result.stored_properties[0].type_annotation.name, 'Int')
+        self.assertEqual(result.body.statements[0].name, 'x')
+        self.assertEqual(result.body.statements[0].type_annotation.name, 'Int')
 
         result = parser.parse(tango.tokenize(
             '''struct S {
                 fun f(cst self: Self) {}
             }'''))
         self.assertIsInstance(result, ast.StructDecl)
-        self.assertIsInstance(result.methods[0], ast.FunctionDecl)
+        self.assertIsInstance(result.body.statements[0], ast.FunctionDecl)
 
 
 if __name__ == '__main__':
