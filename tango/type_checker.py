@@ -216,11 +216,19 @@ class TypeSolver(Visitor):
         function_name = TypeVariable(node)
         walked = self.environment[function_name]
         if isinstance(walked, TypeVariable):
-            self.environment[walked] = TypeUnion((function_type,))
+            overload_set = TypeUnion((function_type,))
+            self.environment[walked] = overload_set
         elif isinstance(walked, TypeUnion) and isinstance(walked.first(), FunctionType):
-            walked.add(function_type)
+            overload_set = walked
+            overload_set.add(function_type)
         else:
             raise InferenceError("cannot overload '%s' with '%s'" % (walked, function_type))
+
+        # If the function name is also associated with function types in the
+        # enclosing scopes, we should add the latter as overloads.
+        for overload in find_overload_decls(node.name, node.__info__['scope']):
+            self.visit(overload)
+            overload_set.add(self.environment[TypeVariable(overload)])
 
         # Finally, we should continue the type inference in the function body.
         self.visit(node.body)
@@ -267,7 +275,7 @@ def analyse(node, environment):
         # type of a function call before its signature has been inferred, we
         # should handle cases where `callee_signatures` is still a variable.
         if isinstance(callee_signatures, TypeVariable):
-            assert False, 'TODO'
+            return TypeVariable()
 
         if not isinstance(callee_signatures, TypeUnion):
             assert False, 'expected TypeUnion of FunctionType'
@@ -326,9 +334,15 @@ def analyse(node, environment):
         # variadics parameters, we might have to check multiple configurations
         # of argument groups.
 
-
     assert False, "no type inference for node '%s'" % node.__class__.__name__
 
+
+def find_overload_decls(name, scope):
+    if scope.parent and (name in scope.parent):
+        if any(not isinstance(decl, FunctionDecl) for decl in scope.parent[name]):
+            return []
+        return scope.parent[name] + find_overload_decls(name, scope.parent.parent)
+    return []
 
 def matches(t, u):
     if isinstance(t, TypeVariable):

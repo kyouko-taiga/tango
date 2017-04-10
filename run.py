@@ -53,6 +53,6 @@ if __name__ == '__main__':
             if scope.id == 0:
                 continue
             print(scope.uri + '.' + name + ':', inferred_type)
-        else:
-            print(symbol, inferred_type)
+        # else:
+        #     print(symbol, inferred_type)
         # print('%s.%s: %s' % (scope.uri, name, ', '.join(map(str, inferred_type))))
