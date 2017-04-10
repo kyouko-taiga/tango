@@ -55,7 +55,7 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('cst x: Int'))
         self.assertIsInstance(result, ast.FunctionParameter)
-        self.assertEqual(result.api_name, 'x')
+        self.assertEqual(result.label, 'x')
         self.assertEqual(result.name, 'x')
         self.assertFalse(result.attributes)
         self.assertEqual(result.type_annotation.name, 'Int')
@@ -65,14 +65,14 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('cst a x: Int'))
         self.assertIsInstance(result, ast.FunctionParameter)
-        self.assertEqual(result.api_name, 'a')
+        self.assertEqual(result.label, 'a')
         self.assertEqual(result.name, 'x')
         self.assertFalse(result.attributes)
         self.assertEqual(result.type_annotation.name, 'Int')
 
         result = parser.parse(tango.tokenize('cst a x: @attr1 @attr2 Int'))
         self.assertIsInstance(result, ast.FunctionParameter)
-        self.assertEqual(result.api_name, 'a')
+        self.assertEqual(result.label, 'a')
         self.assertEqual(result.name, 'x')
         self.assertEqual(result.attributes[0], 'attr1')
         self.assertEqual(result.attributes[1], 'attr2')
@@ -107,7 +107,7 @@ class TestParser(unittest.TestCase):
         result = parser.parse(tango.tokenize('(cst a x: Int) -> Int'))
         self.assertIsInstance(result, ast.FunctionSignature)
         self.assertEqual(result.parameters[0].name, 'x')
-        self.assertEqual(result.parameters[0].api_name, 'a')
+        self.assertEqual(result.parameters[0].label, 'a')
         self.assertEqual(result.return_type.name, 'Int')
 
     def test_variable_identifier(self):
@@ -163,8 +163,8 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('x = 0'))
         self.assertIsInstance(result, ast.Assignment)
-        self.assertEqual(result.target.name, 'x')
-        self.assertEqual(result.value.value, '0')
+        self.assertEqual(result.lvalue.name, 'x')
+        self.assertEqual(result.rvalue.value, '0')
 
     def test_return_statement(self):
         parser = tango.return_statement + skip(finished)

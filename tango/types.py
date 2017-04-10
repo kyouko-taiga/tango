@@ -4,6 +4,25 @@ class BaseType(object):
         return self is other
 
 
+class TypeUnion(BaseType):
+
+    def __init__(self, types):
+        self.types = [t for t in types]
+
+    def add(self, t):
+        if t not in self.types:
+            self.types.append(t)
+
+    def first(self):
+        return self.types[0]
+
+    def __iter__(self):
+        return iter(self.types)
+
+    def __str__(self):
+        return '[' + ' | '.join(map(str, self.types)) + ']'
+
+
 class NominalType(BaseType):
 
     def __init__(self, name):
@@ -14,16 +33,18 @@ class NominalType(BaseType):
 
 
 class StructuralType(BaseType):
-
     pass
 
 
 class FunctionType(StructuralType):
 
-    def __init__(self, generic_parameters=None, domain=None, codomain=None):
+    def __init__(
+            self, generic_parameters=None, domain=None, codomain=None, labels=None):
+
         self.generic_parameters = generic_parameters or []
         self.domain = domain or []
         self.codomain = codomain or Nothing
+        self.labels = labels or []
 
     def __str__(self):
         if self.generic_parameters:
@@ -32,4 +53,6 @@ class FunctionType(StructuralType):
             generic_parameters = ''
 
         return '%s(%s) -> %s' % (
-            generic_parameters, ', '.join(map(str, self.domain)), self.codomain)
+            generic_parameters,
+            ', '.join('%s: %s' % (self.labels[i] or '_', p) for i, p in enumerate(self.domain)),
+            self.codomain)

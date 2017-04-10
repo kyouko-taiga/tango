@@ -1,227 +1,290 @@
 from itertools import product
 
-from .ast import Visitor
+from .ast import *
 from .builtin import builtin_scope
 from .errors import UndefinedSymbol, InferenceError
-from .parser import *
-from .types import BaseType, FunctionType
+from .types import BaseType, FunctionType, TypeUnion
+
+
+class Substitution(object):
+
+    def __init__(self, storage=None):
+        self.storage = storage or {}
+
+    def __getitem__(self, t):
+        if not isinstance(t, TypeVariable):
+            return t
+        if t in self.storage:
+            return self[self.storage[t]]
+        return t
+
+    def __setitem__(self, variable, value):
+        self.storage[variable] = value
+
+    def unify(self, t, u):
+        a = self[t]
+        b = self[u]
+
+        if isinstance(a, TypeVariable):
+            self.storage[a] = b
+        if isinstance(b, TypeVariable):
+            self.storage[b] = a
+
+        if isinstance(a, BaseType) and isinstance(b, BaseType):
+            if a != b:
+                raise InferenceError("type '%s' does not match '%s'" % (a, b))
+
+        # TODO unify abstract types and generic functions
+        # TODO (?) check for types mutability
 
 
 class TypeVariable(object):
 
     next_id = 0
 
-    def __init__(self):
-        self.id = TypeVariable.next_id
-        TypeVariable.next_id += 1
+    def __init__(self, id=None):
+        if id is None:
+            self.id = TypeVariable.next_id
+            TypeVariable.next_id += 1
+        elif isinstance(id, Node):
+            self.id = (id.__info__['scope'], id.name)
+        else:
+            self.id = id
 
-        # The type with which the variable will be eventually instanciated.
-        self.instance = None
+    def __hash__(self):
+        return hash(self.id)
+
+    def __eq__(self, other):
+        return self.id == other.id
 
     def __str__(self):
-        if self.instance is None:
-            return '$%i' % self.id
-        else:
-            return str(self.instance)
+        return '$%i' % hash(self)
 
 
 def infer_types(node):
     # We first visit all nodes to infer the type of the expressions.
-    type_deducer = TypeDeducer()
+    type_deducer = TypeSolver()
     type_deducer.visit(node)
 
-    return type_deducer.environment
+    return type_deducer.environment.storage
 
 
-class TypeDeducer(Visitor):
+class TypeSolver(Visitor):
 
     def __init__(self):
-        # (Scope, String) -> [Type]
-        self.environment = {
-            (builtin_scope, symbol): types
-            for symbol, types in builtin_scope.members.items()
-        }
+        self.environment = Substitution({
+            TypeVariable(id=(builtin_scope, symbol)): type
+            for symbol, type in builtin_scope.members.items()
+        })
+
+    def eval_type_signature(self, signature):
+        if isinstance(signature, BaseType):
+            return signature
+
+        if isinstance(signature, TypeIdentifier):
+            try:
+                return self.environment[TypeVariable(signature)]
+                # TODO Handle generic parameters
+            except KeyError:
+                raise UndefinedSymbol(signature.name)
+
+        assert False, 'refine_type_signature(%s)' % signature.__class__.__name__
+
+    def visit_Block(self, node):
+        # We introduce a new type variable for each symbol declared within the
+        # current block before visiting its statements, so we can handle cases
+        # where a variable refers a type that has yet to be defined.
+        scope = node.__info__['scope']
+        for symbol in node.__info__['symbols']:
+            self.environment[TypeVariable((scope, symbol))] = TypeVariable()
+
+        for statement in node.statements:
+            self.visit(statement)
 
     def visit_ConstantDecl(self, node):
-        inferred = analyse(node, self.environment)
-        self.environment[(node.__info__['scope'], node.name)] = inferred
-
-    def visit_VariableDecl(self, node):
-        inferred = analyse(node, self.environment)
-        self.environment[(node.__info__['scope'], node.name)] = inferred
-
-    def visit_FunctionDecl(self, node):
-        # We first need to infer the types of the function parameters.
-        parameter_types = []
-        for parameter in node.signature.parameters:
-            inferred = analyse(parameter, self.environment)
-            self.environment[(parameter.__info__['scope'], parameter.name)] = inferred
-            parameter_types.append(inferred)
-
-        # Once we've inferred the types of the function signature, we can
-        # create a type for the function itself.
-        return_types = [analyse(node.signature.return_type, self.environment)]
-        function_types = []
-        for types in product(*(parameter_types + return_types)):
-            function_types.append(FunctionType(
-                domain = types[0:-1],
-                codomain = types[-1]))
-            # TODO Handle generic parameters
-
-        key = (node.__info__['scope'], node.name)
-        if not key in self.environment:
-            self.environment[key] = []
-        self.environment[key].extend(function_types)
-
-        # Finally, we should continue the type inference in the function body.
-        self.visit(node.body)
-
-    def visit_Assignment(self, node):
-        analyse(node, self.environment)
-
-
-def analyse(node, environment):
-    # If the node is a literal, its type was already inferred by the parser.
-    if isinstance(node, Literal):
-        return [node.__info__['type']]
-
-    # If the node is an identifier, we should simply try to get its type from
-    # the environment.
-    if isinstance(node, Identifier):
-        try:
-            return environment[(node.__info__['scope'], node.name)]
-        except KeyError:
-            raise UndefinedSymbol(node.name)
-
-    # If the node is a type identifier, we should try to get the type it
-    # refers to from the its associated scope.
-    if isinstance(node, TypeIdentifier):
-        try:
-            return environment[(node.__info__['scope'], node.name)]
-            # TODO Handle generic parameters
-        except KeyError:
-            raise UndefinedSymbol(node.name)
-
-    # If the node is a container declaration, we either can infer its type
-    # from the definition (and the environment), or we introduce a new type
-    # variable.
-    if isinstance(node, (ConstantDecl, VariableDecl)):
         # If there isn't neither a type annotation, nor an initializing value,
-        # we have no choice but to introduce a new type variable.
+        # we can't infer any type information.
         if not (node.type_annotation or node.initial_value):
-            return [TypeVariable()]
+            return node
+
+        inferred = None
 
         # If there's an initializing value, we have to infer its type first.
         if node.initial_value:
-            initial_value_types = analyse(node.initial_value, environment)
+            initial_value_type = analyse(node.initial_value, self.environment)
 
             # If there's a type annotation as well, we should unify the type
             # it denotes with the one that was inferred from the initializing
             # value. This will not only check that the types match, but will
             # also try to infer specialization arguments of abstract types.
             if node.type_annotation:
-                return unify([node.type_annotation], initial_value_types)
+                type_annotation = self.eval_type_signature(node.type_annotation)
+                self.environment.unify(type_annotation, initial_value_type)
 
-            return initial_value_types
+            inferred = initial_value_type
 
-        # If there isn't an initializing value, we should simply return the
-        # type annotation.
-        return analyse(node.type_annotation, environment)
-
-    # Function parameters can be seen as a container declaration within the
-    # function's scope. As such, if the node is a function parameter, we can
-    # use a similar strategy as for the the case of container declarations.
-    if isinstance(node, FunctionParameter):
-        # If there's a default value, we have to infer its type first, and
-        # unify it with the parameter's type annotation.
-        if node.default_value:
-            default_value_types = analyse(node.default_value, environment)
-            return unify([node.type_annotation], default_value_types)
-
-        # If there isn't any default value, we should simply return the type
+        # If there isn't an initializing value, we should simply use the type
         # annotation.
-        return [node.type_annotation]
+        else:
+            inferred = self.eval_type_signature(node.type_annotation)
 
-    # If the node is an assignment, we should infer and unify the type of both
-    # sides' expressions.
-    if isinstance(node, Assignment):
-        target_types = analyse(node.target, environment)
-        value_types = analyse(node.value, environment)
-        return unify(target_types, value_types)
+        self.environment.unify(TypeVariable(node), inferred)
+        return node
+
+    def visit_VariableDecl(self, node):
+        return self.visit_ConstantDecl(node)
+
+    def visit_FunctionDecl(self, node):
+        # The return type is simply a type signature we've to evaluate.
+        return_type = self.eval_type_signature(node.signature.return_type)
+
+        # Function parameters can be seen as a container declaration within the
+        # function's scope. As such, if we can use a similar strategy as the
+        # one we use for the the case of container declarations.
+        parameter_types = []
+        for parameter in node.signature.parameters:
+            # Unlike container declarations, type parameters always have a
+            # type annotation.
+            type_annotation = self.eval_type_signature(parameter.type_annotation)
+
+            # If the parameter also have a default value, we should unify it
+            # with the type we've evaluated from the annotation.
+            if parameter.default_value:
+                default_value_type = analyse(parameter.default_value, self.environment)
+                self.environment.unify(type_annotation, default_value_type)
+
+            self.environment.unify(TypeVariable(parameter), type_annotation)
+            parameter_types.append(type_annotation)
+
+        # Once we've inferred the types of the function signature, we can
+        # create a type for the function itself.
+        function_type = FunctionType(
+            domain = parameter_types,
+            codomain = return_type,
+            labels = [parameter.label for parameter in node.signature.parameters])
+
+        # As functions may be overloaded, we can't unify the function type
+        # we've just created with the function's name directly. Instead, we
+        # should create a TypeUnion to potentially include the signature of
+        # the function's overloads as we find them.
+        function_name = TypeVariable(node)
+        walked = self.environment[function_name]
+        if isinstance(walked, TypeVariable):
+            self.environment[walked] = TypeUnion((function_type,))
+        elif isinstance(walked, TypeUnion) and isinstance(walked.first(), FunctionType):
+            walked.add(function_type)
+        else:
+            raise InferenceError("cannot overload '%s' with '%s'" % (walked, function_type))
+
+        # Finally, we should continue the type inference in the function body.
+        self.visit(node.body)
+
+    def visit_Assignment(self, node):
+        # First, we infer and unify the types of the lvalue and rvalue.
+        lvalue_type = analyse(node.lvalue, self.environment)
+        rvalue_type = analyse(node.rvalue, self.environment)
+        self.environment.unify(lvalue_type, rvalue_type)
+
+        # If the lvalue is an identifer, we unify its type with that of the
+        # rvalue in our environment.
+        if isinstance(node.lvalue, Identifier):
+            self.environment.unify(TypeVariable(node.lvalue), rvalue_type)
+            return node
+
+        # Note that for now, only identifiers are valid lvalues.
+        assert False, '%s is not a valid lvalue' % node.target.__class__.__name__
+
+
+def analyse(node, environment):
+    # If the node is a literal, its type was already inferred by the parser.
+    if isinstance(node, Literal):
+        return node.__info__['type']
+
+    # If the node is an identifier, we should simply try to get its type from
+    # the environment.
+    if isinstance(node, Identifier):
+        try:
+            return environment[TypeVariable(node)]
+        except KeyError:
+            raise UndefinedSymbol(node.name)
 
     if isinstance(node, BinaryExpression):
         operator_signatures = environment
 
+    if isinstance(node, Call):
+        # First, we have to get the available signatures of for the callee.
+        callee_signatures = analyse(node.callee, environment)
+
+        # As functions may be overloaded, we group their different signatures
+        # in a TypeUnion. As a result, we expect `callee_signatures` to be
+        # iterable. But since it might be possible that we try to infer the
+        # type of a function call before its signature has been inferred, we
+        # should handle cases where `callee_signatures` is still a variable.
+        if isinstance(callee_signatures, TypeVariable):
+            assert False, 'TODO'
+
+        if not isinstance(callee_signatures, TypeUnion):
+            assert False, 'expected TypeUnion of FunctionType'
+        if not isinstance(callee_signatures.first(), FunctionType):
+            raise InferenceError("'%s' is not a function type" % callee_signatures.first())
+
+        # Then, we have to infer the type of each argument.
+        argument_types = []
+        for argument in node.arguments:
+            argument_types.append(analyse(argument.value, environment))
+
+        # Then, we have to find which signatures agree with the types we've
+        # inferred for the function arguments.
+        candidates = []
+        for signature in callee_signatures:
+            # Check the number of parameters.
+            if len(signature.domain) != len(node.arguments):
+                continue
+
+            # Check the labels of parameters.
+            valid = True
+            for expected_label, argument in zip(signature.labels, node.arguments):
+                if (expected_label == '_') and (argument.name is not None):
+                    valid = False
+                    break
+                elif expected_label != argument.name:
+                    valid = False
+                    break
+            if not valid:
+                continue
+
+            # Check the types of the parameters.
+            for expected_type, argument_type in zip(signature.domain, argument_types):
+                if not matches(expected_type, argument_type):
+                    valid = False
+                    break
+            if not valid:
+                continue
+
+            candidates.append(signature)
+
+        # TODO Handle multiple candidates
+        return candidates[0].codomain
+
+        # TODO Handle variadic arguments
+        # A possible approach would be to transform the Call nodes of the AST
+        # whenever we visit a variadic parameter, so that we regroup the
+        # arguments that can be considered part of the variadic argument.
+        # Depending on the definitive syntax and restrictions we'll adopt for
+        # variadics parameters, we might have to check multiple configurations
+        # of argument groups.
+
+
     assert False, "no type inference for node '%s'" % node.__class__.__name__
 
 
-def unify(lhs, rhs):
-    results = []
-    for (t, u) in product(lhs, rhs):
-        try:
-            results.extend(unify_single(t, u))
-        except InferenceError:
-            pass
-
-    if not results:
-        raise InferenceError(
-            'no match found for [%s] x [%s]' %
-            (', '.join(map(str, lhs)), ', '.join(map(str, rhs))))
-
-    return results
-
-
-def unify_single(lhs, rhs):
-    a = prune(lhs)
-    b = prune(rhs)
-
-    # If the left operand is a type variable, then we instanciate it with the
-    # right operand.
-    if isinstance(a, TypeVariable):
-        if a != b:
-            # TODO Check for recursive unifications
-            a.instance = b
-        return [a]
-
-    if isinstance(b, TypeVariable):
-        return unify_single(b, a)
-
-    # If only one operand is a type identifier, then have to unify the type
-    # it refers to with the other operand. Note that since an identifier may
-    # refer to multiple types (because of overloading), we have to unify all
-    # possible referred types.
-    if isinstance(a, TypeIdentifier):
-        walked = a.__info__['scope'][a.name]
-        return unify(walked, [b])
-
-    if isinstance(b, TypeIdentifier):
-        return unify_single(b, a)
-
-    # If both operands are resolved types, then we simply have to make sure
-    # they are equivalent.
-    if isinstance(a, BaseType) and isinstance(b, BaseType):
-        if a != b:
-            raise InferenceError("types '%s' and '%s' doesn't match" % (a, b))
-        return [a]
-
-    # TODO unify abstract types and generic functions
-    # TODO (?) check for types mutability
-
-    else:
-        assert False, 'not unified'
-
-
-def prune(type_object):
-    """
-    Returns the actual instance of `type_object`.
-
-    If the given `type_object` is a type variable, this function will walk the
-    `TypeVariable.instance` property until it finds a type instance (or None).
-    As a side effect, it will also cut unecessary indirections.
-    """
-    if isinstance(type_object, TypeVariable):
-        if type_object.instance is not None:
-            type_object.instance = prune(type_object.instance)
-            return type_object
-
-    return type_object
+def matches(t, u):
+    if isinstance(t, TypeVariable):
+        return True
+    if isinstance(u, TypeVariable):
+        return True
+    if isinstance(t, TypeUnion):
+        return any(matches(tt, u) for tt in t)
+    if isinstance(u, TypeUnion):
+        return matches(u, t)
+    return t == u

@@ -91,6 +91,7 @@ class ScopeBinder(Visitor):
         self.scopes.append(self.current_scope.children[-1])
         for symbol in node.__info__['symbols']:
             self.current_scope[symbol] = []
+        node.__info__['scope'] = self.current_scope
 
         # Store the optional implicit declarations of the block.
         for name, decl_node in self.implicit_declarations.items():
@@ -188,7 +189,7 @@ class ScopeBinder(Visitor):
         node.__info__['scope'] = self.current_scope
 
     def visit_EnumCaseDecl(self, node):
-        # Make sure the case's identifier wasn't already decalred within the
+        # Make sure the case's identifier wasn't already declared within the
         # current scope.
         if self.current_scope[node.name]:
             raise DuplicateDeclaration(node.name)

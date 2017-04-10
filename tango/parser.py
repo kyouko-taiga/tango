@@ -33,7 +33,7 @@ kw     = lambda value: a(Token('identifier', value))
 op_    = lambda value: skip(a(Token('operator', value)))
 kw_    = lambda value: skip(a(Token('identifier', value)))
 nl_    = skip(some(lambda token: token.type == 'newline'))
-nl_opt = skip(maybe(some(lambda token: token.type == 'newline')))
+nl_opt = skip(many(some(lambda token: token.type == 'newline')))
 
 type_signature = forward_decl()
 expression     = forward_decl()
@@ -96,9 +96,14 @@ def make_function_parameter(args):
     if args[0].value == 'mut':
         attributes.append('mutable')
 
+    name = args[2] or args[1]
+    if name == '_':
+        raise SyntaxError("'_' is not a valid parameter name")
+    label = args[1] if (args[1] != '_') else None
+
     return FunctionParameter(
-        name = args[2] or args[1],
-        api_name = args[1],
+        name = name,
+        label = label,
         attributes = attributes,
         type_annotation = args[4],
         default_value = args[5])
@@ -183,24 +188,6 @@ mul_expr = citizen + many(mul_op + citizen) >> make_binary_expression
 add_expr = mul_expr + many(add_op + mul_expr) >> make_binary_expression
 bin_expr = add_expr
 
-expression.define(bin_expr)
-
-def make_assignment(args):
-    return Assignment(
-        target = args[0],
-        value = args[1])
-
-assignment = (
-    expression + op_('=') + expression
-    >> make_assignment)
-
-def make_return_statement(args):
-    return Return(value = args)
-
-return_statement = (
-    kw_('return') + expression
-    >> make_return_statement)
-
 def make_call_positional_argument(args):
     return CallArgument(
         attributes = args[0],
@@ -230,8 +217,28 @@ def make_call(args):
     return Call(callee = args[0], arguments = args[1])
 
 call_statement = (
-    expression + op_('(') + maybe(call_argument_list) + op_(')')
+    variable_identifier + op_('(') + maybe(call_argument_list) + op_(')')
     >> make_call)
+
+expression.define(call_statement | bin_expr | pfx_expr)
+
+def make_assignment(args):
+    return Assignment(
+        lvalue = args[0],
+        rvalue = args[1])
+
+lvalue = variable_identifier
+
+assignment = (
+    lvalue + op_('=') + expression
+    >> make_assignment)
+
+def make_return_statement(args):
+    return Return(value = args)
+
+return_statement = (
+    kw_('return') + expression
+    >> make_return_statement)
 
 def make_constant_decl(args):
     return ConstantDecl(
@@ -367,7 +374,7 @@ def make_module_decl(args):
         body = Block(statements = args))
 
 module_decl = (
-    statement_list + nl_opt
+    nl_opt + statement_list + nl_opt
     >> make_module_decl)
 
 parser = module_decl + skip(finished)

@@ -80,10 +80,11 @@ class TypeIdentifier(Node):
 class FunctionParameter(Node):
 
     def __init__(
-        self, name, api_name, type_annotation, attributes, default_value=None):
+            self, name, label, type_annotation, attributes, default_value=None):
+
         super().__init__()
         self.name = name
-        self.api_name = api_name
+        self.label = label
         self.type_annotation = type_annotation
         self.attributes = attributes
         self.default_value = default_value
@@ -101,9 +102,10 @@ class FunctionParameter(Node):
         else:
             attributes = ''
 
-        if self.name != self.api_name:
+        if self.name != self.label:
+            label = self.label or '_'
             return '%s %s %s: %s%s' % (
-                mutability_modifier, self.api_name, self.name, attributes, self.type_annotation)
+                mutability_modifier, label, self.name, attributes, self.type_annotation)
         return '%s %s: %s%s' % (mutability_modifier, self.name, attributes, self.type_annotation)
 
 
@@ -153,13 +155,13 @@ class BinaryExpression(Node):
 
 class Assignment(Node):
 
-    def __init__(self, target, value):
+    def __init__(self, lvalue, rvalue):
         super().__init__()
-        self.target = target
-        self.value = value
+        self.lvalue = lvalue
+        self.rvalue = rvalue
 
     def __str__(self):
-        return '%s = %s' % (self.target, self.value)
+        return '%s = %s' % (self.lvalue, self.rvalue)
 
 
 class Return(Node):

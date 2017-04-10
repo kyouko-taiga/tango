@@ -1,2 +1,12 @@
-cst x: Int = 0
-mut y = x + 19
+# fun f(cst _ x: Int, cst _ y: Int) -> Int {}
+# fun f(cst _ x: String, cst _ y: String) -> String {}
+# f(0, 1)
+
+mut x = 0
+mut y
+
+fun f(cst a: Int, cst x: Int) -> Int {}
+fun f(cst a: String, cst x: String) -> String {}
+fun f() {}
+
+y = f(a: 0, x: x)

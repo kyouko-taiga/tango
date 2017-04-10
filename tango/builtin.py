@@ -64,9 +64,9 @@ class Scope(object):
 
 builtin_scope = Scope()
 builtin_scope.members = {
-    'Nothing' : (Nothing,),
-    'Anything': (Anything,),
-    'Int'     : (Int,),
-    'Double'  : (Double,),
-    'String'  : (String,),
+    'Nothing' : Nothing,
+    'Anything': Anything,
+    'Int'     : Int,
+    'Double'  : Double,
+    'String'  : String,
 }
