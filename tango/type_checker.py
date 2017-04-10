@@ -144,8 +144,7 @@ class GenericType(BaseType):
         return ((type(self) == type(other))
                 and (self.name == other.name)
                 and (self.specialization == other.specialization)
-                or  (self.specialization == other)
-                or  (self.specialization is None))
+                or  (self.specialization == other))
 
     def __str__(self):
         if self.specialization:
@@ -376,8 +375,19 @@ def analyse(node, environment):
                 continue
 
             # Check the types of the parameters.
+            generic_specializations = {}
             for expected_type, argument_type in zip(signature.domain, argument_types):
-                if not matches(expected_type, argument_type):
+                # If the expected type is a generic, make sure it's either
+                # still unspecialized, or its specialization matches the
+                # inferred argument type.
+                if isinstance(expected_type, GenericType):
+                    specialization = generic_specializations.get(expected_type.name)
+                    if (specialization is not None) and not matches(specialization, argument_type):
+                        valid = False
+                        break
+                    generic_specializations[expected_type.name] = argument_type
+
+                elif not matches(expected_type, argument_type):
                     valid = False
                     break
             if not valid:
@@ -422,12 +432,13 @@ def find_overload_decls(name, scope):
 def instantiate(generic_signature, specialized_argument_types):
     old_generics = generic_signature.generic_parameters
     new_generics = [g.copy() for g in old_generics]
+    generic_names = [g.name for g in old_generics]
 
     parameter_types = []
     for original, replacement in zip(generic_signature.domain, specialized_argument_types):
         if isinstance(original, GenericType):
-            new_generic = new_generics[old_generics.index(original)]
-            assert new_generic == replacement
+            new_generic = new_generics[generic_names.index(original.name)]
+            assert new_generic.specialization in (None, replacement)
             new_generic.specialization = replacement
             parameter_types.append(new_generic)
         else:
