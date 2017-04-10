@@ -13,6 +13,9 @@ class TypeUnion(BaseType):
         if t not in self.types:
             self.types.append(t)
 
+    def replace_content(self, types):
+        self.types[:] = [t for t in types]
+
     def first(self):
         return self.types[0]
 
@@ -45,6 +48,20 @@ class FunctionType(StructuralType):
         self.domain = domain or []
         self.codomain = codomain or Nothing
         self.labels = labels or []
+
+    def __eq__(self, other):
+        # FIXME
+        if self.generic_parameters != other.generic_parameters:
+            return False
+        if len(self.domain) != len(other.domain):
+            return False
+        if any(t != u for t, u in zip(self.domain, other.domain)):
+            return False
+        if self.codomain != other.codomain:
+            return False
+        if any(l != m for l, m in zip(self.labels, other.labels)):
+            return False
+        return True
 
     def __str__(self):
         if self.generic_parameters:

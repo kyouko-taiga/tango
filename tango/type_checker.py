@@ -21,21 +21,55 @@ class Substitution(object):
     def __setitem__(self, variable, value):
         self.storage[variable] = value
 
+    def __contains__(self, variable):
+        return variable in self.storage
+
     def unify(self, t, u):
         a = self[t]
         b = self[u]
 
         if isinstance(a, TypeVariable):
             self.storage[a] = b
-        if isinstance(b, TypeVariable):
+        elif isinstance(b, TypeVariable):
             self.storage[b] = a
 
-        if isinstance(a, BaseType) and isinstance(b, BaseType):
+        elif isinstance(a, TypeUnion) and isinstance(b, TypeUnion):
+            results = []
+            for ita, itb in product(a, b):
+                if matches(ita, itb):
+                    self.unify(ita, itb)
+                    results.append(ita)
+
+            if not results:
+                raise InferenceError("no types in '%s' matches a type in '%s'" % (a, b))
+            a.replace_content(results)
+            b.replace_content(results)
+
+        elif isinstance(a, TypeUnion) and isinstance(b, BaseType):
+            for it in a:
+                if matches(it, b):
+                    self.unify(it, b)
+                    a.replace_content((it,))
+                    break
+            else:
+                raise InferenceError("no type in '%s' matches '%s'" % (a, b))
+
+            # TODO When we'll implement abstract types and/or protocols, we
+            # might have to to unify multiple result instead of simply the
+            # first type that matches in the union.
+
+        elif isinstance(b, TypeUnion) and isinstance(a, BaseType):
+            self.unify(b, a)
+
+        elif isinstance(a, BaseType) and isinstance(b, BaseType):
             if a != b:
                 raise InferenceError("type '%s' does not match '%s'" % (a, b))
 
         # TODO unify abstract types and generic functions
         # TODO (?) check for types mutability
+
+        else:
+            assert False, 'cannot unify %r and %r' % (a, b)
 
 
 class TypeVariable(object):
@@ -64,6 +98,9 @@ class TypeVariable(object):
 def infer_types(node):
     # We first visit all nodes to infer the type of the expressions.
     type_deducer = TypeSolver()
+
+    # FIXME We should compute a fixed point here.
+    type_deducer.visit(node)
     type_deducer.visit(node)
 
     return type_deducer.environment.storage
@@ -96,7 +133,9 @@ class TypeSolver(Visitor):
         # where a variable refers a type that has yet to be defined.
         scope = node.__info__['scope']
         for symbol in node.__info__['symbols']:
-            self.environment[TypeVariable((scope, symbol))] = TypeVariable()
+            var = TypeVariable((scope, symbol))
+            if var not in self.environment:
+                self.environment[var] = TypeVariable()
 
         for statement in node.statements:
             self.visit(statement)
@@ -264,7 +303,13 @@ def analyse(node, environment):
             candidates.append(signature)
 
         # TODO Handle multiple candidates
-        return candidates[0].codomain
+        if len(candidates) == 0:
+            raise InferenceError(
+                "function call do not match any candidate for types '%s'" % callee_signatures)
+        elif len(candidates) == 1:
+            return candidates[0].codomain
+        else:
+            return TypeUnion(candidate.codomain for candidate in candidates)
 
         # TODO Handle variadic arguments
         # A possible approach would be to transform the Call nodes of the AST
@@ -284,7 +329,7 @@ def matches(t, u):
     if isinstance(u, TypeVariable):
         return True
     if isinstance(t, TypeUnion):
-        return any(matches(tt, u) for tt in t)
+        return any(matches(it, u) for it in t)
     if isinstance(u, TypeUnion):
         return matches(u, t)
     return t == u

@@ -2,11 +2,13 @@
 # fun f(cst _ x: String, cst _ y: String) -> String {}
 # f(0, 1)
 
-mut x = 0
-mut y
+fun f() -> Int {}
+fun f() -> String {}
 
-fun f(cst a: Int, cst x: Int) -> Int {}
-fun f(cst a: String, cst x: String) -> String {}
-fun f() {}
+cst x = f()
 
-y = f(a: 0, x: x)
+fun g(cst _ x: Int) -> Int {}
+fun g(cst _ x: String) -> String {}
+
+cst y = g(x)
+cst z: Int = y
