@@ -274,7 +274,7 @@ def make_function_decl(args):
         body = args[4])
 
 generic_parameters = (
-    type_identifier + many(op_(',') + type_identifier) >> flatten)
+    identifier + many(op_(',') + identifier) >> flatten)
 
 function_decl = (
     kw_('fun') + (identifier | operator_identifier) +

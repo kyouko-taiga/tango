@@ -1,9 +1,21 @@
 from itertools import product
+from warnings import warn
 
 from .ast import *
 from .builtin import builtin_scope
 from .errors import UndefinedSymbol, InferenceError
 from .types import BaseType, FunctionType, TypeUnion
+
+
+def infer_types(node):
+    # We first visit all nodes to infer the type of the expressions.
+    type_deducer = TypeSolver()
+
+    # FIXME We should compute a fixed point here.
+    type_deducer.visit(node)
+    type_deducer.visit(node)
+
+    return type_deducer.environment.reified().storage
 
 
 class Substitution(object):
@@ -28,7 +40,10 @@ class Substitution(object):
         a = self[t]
         b = self[u]
 
-        if isinstance(a, TypeVariable):
+        if a == b:
+            pass
+
+        elif isinstance(a, TypeVariable):
             self.storage[a] = b
         elif isinstance(b, TypeVariable):
             self.storage[b] = a
@@ -78,6 +93,16 @@ class Substitution(object):
             result[variable] = walked
         return result
 
+    def print_debug(self):
+        for (symbol, inferred_type) in self.storage.items():
+            if isinstance(symbol.id, tuple):
+                scope, name = symbol.id
+                if scope.id == 0:
+                    continue
+                print('%s\t(%s)\t:%s' % (symbol, scope.uri + '.' + name, inferred_type))
+            else:
+                print(symbol, inferred_type)
+
 
 class TypeVariable(object):
 
@@ -96,21 +121,36 @@ class TypeVariable(object):
         return hash(self.id)
 
     def __eq__(self, other):
-        return self.id == other.id
+        return (type(self) == type(other)) and (self.id == other.id)
 
     def __str__(self):
         return '$%i' % hash(self)
 
 
-def infer_types(node):
-    # We first visit all nodes to infer the type of the expressions.
-    type_deducer = TypeSolver()
+class GenericType(BaseType):
 
-    # FIXME We should compute a fixed point here.
-    type_deducer.visit(node)
-    type_deducer.visit(node)
+    def __init__(self, name, specialization=None):
+        self.name = name
+        self.specialization = specialization
 
-    return type_deducer.environment.reified().storage
+    @property
+    def is_specialized(self):
+        return self.specialization is not None
+
+    def copy(self):
+        return GenericType(name=self.name, specialization=self.specialization)
+
+    def __eq__(self, other):
+        return ((type(self) == type(other))
+                and (self.name == other.name)
+                and (self.specialization == other.specialization)
+                or  (self.specialization == other)
+                or  (self.specialization is None))
+
+    def __str__(self):
+        if self.specialization:
+            return str(self.specialization)
+        return '(unspecialized %s)' % self.name
 
 
 class TypeSolver(Visitor):
@@ -128,9 +168,10 @@ class TypeSolver(Visitor):
         if isinstance(signature, TypeIdentifier):
             try:
                 return self.environment[TypeVariable(signature)]
-                # TODO Handle generic parameters
             except KeyError:
                 raise UndefinedSymbol(signature.name)
+
+            # TODO Handle abstract types
 
         assert False, 'refine_type_signature(%s)' % signature.__class__.__name__
 
@@ -181,6 +222,17 @@ class TypeSolver(Visitor):
         return self.visit_ConstantDecl(node)
 
     def visit_FunctionDecl(self, node):
+        # First, we need to create unspecialized generic types for each of the
+        # function's generic parameters (if any).
+        generic_types = []
+        for symbol in node.generic_parameters:
+            var = TypeVariable((node.body.__info__['scope'], symbol))
+            if var not in self.environment:
+                generic_types.append(GenericType(symbol))
+                self.environment[var] = generic_types[-1]
+            else:
+                generic_types.append(self.environment[var])
+
         # The return type is simply a type signature we've to evaluate.
         return_type = self.eval_type_signature(node.signature.return_type)
 
@@ -207,7 +259,8 @@ class TypeSolver(Visitor):
         function_type = FunctionType(
             domain = parameter_types,
             codomain = return_type,
-            labels = [parameter.label for parameter in node.signature.parameters])
+            labels = [parameter.label for parameter in node.signature.parameters],
+            generic_parameters = generic_types)
 
         # As functions may be overloaded, we can't unify the function type
         # we've just created with the function's name directly. Instead, we
@@ -227,8 +280,23 @@ class TypeSolver(Visitor):
         # If the function name is also associated with function types in the
         # enclosing scopes, we should add the latter as overloads.
         for overload in find_overload_decls(node.name, node.__info__['scope']):
-            self.visit(overload)
-            overload_set.add(self.environment[TypeVariable(overload)])
+            # Make sure the current node isn't child of the given overload to
+            # avoid infinite recursions. Note that this implicitly disallows
+            # functions of a given scope to be overloaded by the function that
+            # defines them.
+            if not overload.is_ancestor_of(node):
+                self.visit(overload)
+                overload_set.add(self.environment[TypeVariable(overload)])
+            else:
+                warn(
+                    "'%(function_name)s' in scope '%(outer_scope)s' will be ignored "
+                    "from the overloads of '%(function_name)s' in scope '%(inner_scope)s' "
+                    "because its name is shadowed in scope '%(inner_scope)s'." % {
+                        'function_name': node.name,
+                        'outer_scope': overload.__info__['scope'].uri,
+                        'inner_scope': node.__info__['scope'].uri,
+                    },
+                    category = FutureWarning)
 
         # Finally, we should continue the type inference in the function body.
         self.visit(node.body)
@@ -317,14 +385,20 @@ def analyse(node, environment):
 
             candidates.append(signature)
 
-        # TODO Handle multiple candidates
         if len(candidates) == 0:
             raise InferenceError(
                 "function call do not match any candidate for types '%s'" % callee_signatures)
-        elif len(candidates) == 1:
-            return candidates[0].codomain
+
+        # Generate the possible function types to be associated with the node.
+        candidates = [instantiate(sig, argument_types) for sig in candidates]
+
+        if len(candidates) == 1:
+            result = candidates[0]
         else:
-            return TypeUnion(candidate.codomain for candidate in candidates)
+            result = TypeUnion(candidate.codomain for candidate in candidates)
+
+        node.__info__['type'] = result
+        return result.codomain
 
         # TODO Handle variadic arguments
         # A possible approach would be to transform the Call nodes of the AST
@@ -343,6 +417,35 @@ def find_overload_decls(name, scope):
             return []
         return scope.parent[name] + find_overload_decls(name, scope.parent.parent)
     return []
+
+
+def instantiate(generic_signature, specialized_argument_types):
+    old_generics = generic_signature.generic_parameters
+    new_generics = [g.copy() for g in old_generics]
+
+    parameter_types = []
+    for original, replacement in zip(generic_signature.domain, specialized_argument_types):
+        if isinstance(original, GenericType):
+            new_generic = new_generics[old_generics.index(original)]
+            assert new_generic == replacement
+            new_generic.specialization = replacement
+            parameter_types.append(new_generic)
+        else:
+            parameter_types.append(replacement)
+
+    if isinstance(generic_signature.codomain, GenericType):
+        return_type = new_generics[old_generics.index(generic_signature.codomain)]
+    else:
+        return_type = generic_signature.return_type
+
+    return FunctionType(
+        domain = parameter_types,
+        codomain = return_type,
+        labels = generic_signature.labels,
+        generic_parameters = new_generics)
+
+    # TODO Handle abstract types
+
 
 def matches(t, u):
     if isinstance(t, TypeVariable):

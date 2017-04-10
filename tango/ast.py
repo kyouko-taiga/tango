@@ -3,6 +3,18 @@ class Node(object):
     def __init__(self):
         self.__info__ = {}
 
+    def is_ancestor_of(self, other):
+        if self is other:
+            return True
+        for value in self.__dict__.values():
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, Node) and item.is_ancestor_of(other):
+                        return True
+            elif isinstance(value, Node) and value.is_ancestor_of(other):
+                    return True
+        return False
+
     def to_dict(self):
         data = {}
         for attr, value in self.__dict__.items():

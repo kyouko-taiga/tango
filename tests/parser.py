@@ -241,7 +241,7 @@ class TestParser(unittest.TestCase):
         result = parser.parse(tango.tokenize('fun f<T>(cst x: T) {}'))
         self.assertIsInstance(result, ast.FunctionDecl)
         self.assertEqual(result.name, 'f')
-        self.assertEqual(result.generic_parameters[0].name, 'T')
+        self.assertEqual(result.generic_parameters[0], 'T')
         self.assertEqual(result.signature.parameters[0].name, 'x')
         self.assertEqual(result.signature.return_type.name, 'Nothing')
 
