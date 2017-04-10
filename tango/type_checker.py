@@ -4,7 +4,7 @@ from warnings import warn
 from .ast import *
 from .builtin import builtin_scope
 from .errors import UndefinedSymbol, InferenceError
-from .types import BaseType, FunctionType, TypeUnion
+from .types import BaseType, FunctionType, StructType, TypeUnion
 
 
 def infer_types(node):
@@ -76,12 +76,18 @@ class Substitution(object):
         elif isinstance(b, TypeUnion) and isinstance(a, BaseType):
             self.unify(b, a)
 
+        elif isinstance(a, StructType) and isinstance(b, StructType):
+            if (a.name != b.name) or (a.members.keys() ^ b.members.keys()):
+                raise InferenceError("type '%s' does not match '%s'" % (a, b))
+            for it in a.members:
+                self.unify(a.members[it], b.members[it])
+
         elif isinstance(a, BaseType) and isinstance(b, BaseType):
             if a != b:
                 raise InferenceError("type '%s' does not match '%s'" % (a, b))
 
         # TODO unify abstract types and generic functions
-        # TODO (?) check for types mutability
+        # TODO take conformance into account
 
         else:
             assert False, 'cannot unify %r and %r' % (a, b)
@@ -179,11 +185,23 @@ class TypeSolver(Visitor):
             for symbol, type in builtin_scope.members.items()
         })
 
+        # Methods, properties and enum cases may use `Self` as a placeholder
+        # to denote the "final" type they're defined in. This stack will serve
+        # us to keep track of the actual type `Self` represents, depending on
+        # the context we'll be evaluation typing informations.
+        self.current_self_type = []
+
     def eval_type_signature(self, signature):
         if isinstance(signature, BaseType):
             return signature
 
         if isinstance(signature, TypeIdentifier):
+            if signature.name == 'Self':
+                try:
+                    return self.current_self_type[-1]
+                except IndexError:
+                    raise InferenceError("invalid use of 'Self' outside of a type declaration")
+
             try:
                 return self.environment[TypeVariable(signature)]
             except KeyError:
@@ -318,6 +336,26 @@ class TypeSolver(Visitor):
 
         # Finally, we should continue the type inference in the function body.
         self.visit(node.body)
+
+    def visit_StructDecl(self, node):
+        # The body of a struct can be visited as a normal satement block, as
+        # long as we push a variable on the `current_self_type` stack before,
+        # to properly type references to `Self`.
+        struct_name = TypeVariable(node)
+        self.current_self_type.append(struct_name)
+        self.visit(node.body)
+        self.current_self_type.pop()
+
+        # Once we've inferred the type of all its members, we can create the
+        # type for the struct itself.
+        member_scope = node.body.__info__['scope']
+        struct_type = StructType(
+            name = node.name,
+            members = {
+                name: self.environment[TypeVariable((member_scope, name))]
+                for name in node.body.__info__['symbols']
+            })
+        self.environment.unify(struct_name, struct_type)
 
     def visit_Assignment(self, node):
         # First, we infer and unify the types of the lvalue and rvalue.
@@ -486,4 +524,9 @@ def matches(t, u):
         return any(matches(it, u) for it in t)
     if isinstance(u, TypeUnion):
         return matches(u, t)
+    if isinstance(t, StructType) and isinstance(u, StructType):
+        return ((t.name == u.name)
+                and not (t.members.keys() ^ u.members.keys())
+                and all(matches(t.members[it], u.members[it]) for it in t))
+
     return t == u
