@@ -72,32 +72,26 @@ class ScopeBinder(Visitor):
         # (Scope) -> Set[String]
         self.under_declaration = {}
 
-        # Some nodes (e.g. function declarations) implicitly declare some
-        # symbols in their associated block. As new scopes are created by
-        # `visit_Block`, the latter should have a way to store the implicit
-        # declarations before its statements are visited.
-
-        # Dictionary[Key: String, Value: Node]
-        self.implicit_declarations = {}
-
     @property
     def current_scope(self):
         return self.scopes[-1]
 
-    def visit_Block(self, node):
-        # Push a new scope on the stack before visitng the node's statements,
-        # pre-filled with the symbols declared within the current block.
+    def visit_ModuleDecl(self, node):
+        # Push a new scope on the stack before visiting the node's block, pre-
+        # filled with the symbols declared within the latter.
         self.current_scope.children.append(Scope(parent=self.scopes[-1]))
         self.scopes.append(self.current_scope.children[-1])
-        for symbol in node.__info__['symbols']:
+        for symbol in node.body.__info__['symbols']:
             self.current_scope[symbol] = []
-        node.__info__['scope'] = self.current_scope
+        node.body.__info__['scope'] = self.current_scope
 
-        # Store the optional implicit declarations of the block.
-        for name, decl_node in self.implicit_declarations.items():
-            self.current_scope.add(name, decl_node)
-            decl_node.__info__['scope'] = self.current_scope
+        # Initialize the set that keeps track of what identifier is being
+        # declared when visiting its declaration.
+        self.under_declaration[self.current_scope] = set()
 
+        self.visit(node.body)
+
+    def visit_Block(self, node):
         # Initialize the set that keeps track of what identifier is being
         # declared when visiting its declaration.
         self.under_declaration[self.current_scope] = set()
@@ -145,6 +139,21 @@ class ScopeBinder(Visitor):
         self.current_scope.add(node.name, node)
         node.__info__['scope'] = self.current_scope
 
+        # Push a new scope on the stack before visiting the function's
+        # declaration, pre-filled with the symbols declared within the
+        # function's body, as well as its generic parameters.
+        self.current_scope.children.append(Scope(parent=self.scopes[-1]))
+        self.scopes.append(self.current_scope.children[-1])
+        for symbol in node.body.__info__['symbols']:
+            self.current_scope[symbol] = []
+        for symbol in node.generic_parameters:
+            self.current_scope[symbol] = []
+        node.body.__info__['scope'] = self.current_scope
+
+        # Initialize the set that keeps track of what identifier is being
+        # declared when visiting its declaration.
+        self.under_declaration[self.current_scope] = set()
+
         # Visit the default values of the function's parameters (if any). Note
         # that we allow such default values to refer to the function itself,
         # so as to match the behaviour of container declarations.
@@ -158,9 +167,14 @@ class ScopeBinder(Visitor):
         if not isinstance(node.signature.return_type, BaseType):
             self.visit(node.signature.return_type)
 
-        # Define the parameters of the function as the implicit declarations
-        # of its block before visiting it.
-        self.implicit_declarations = {p.name: p for p in node.signature.parameters}
+        # Add the parameter names to the function's scope. Note that we do
+        # *after* we've visited the default values, and the return type, so
+        # as to avoid binding any of them to the parameter names.
+        for parameter in node.signature.parameters:
+            self.current_scope.add(parameter.name, parameter)
+            parameter.__info__['scope'] = self.current_scope
+
+        # Finally, visit the function's body.
         self.visit(node.body)
 
     def visit_EnumDecl(self, node):
