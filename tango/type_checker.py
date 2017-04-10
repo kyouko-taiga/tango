@@ -86,10 +86,29 @@ class Substitution(object):
         else:
             assert False, 'cannot unify %r and %r' % (a, b)
 
+    def deepwalk(self, t):
+        if isinstance(t, TypeUnion):
+            return TypeUnion(self.deepwalk(it) for it in t)
+
+        if isinstance(t, FunctionType):
+            return FunctionType(
+                domain = [self.deepwalk(p) for p in t.domain],
+                codomain = self.deepwalk(t.codomain),
+                labels = t.labels,
+                generic_parameters = [self.deepwalk(g) for g in t.generic_parameters])
+
+        if not isinstance(t, TypeVariable):
+            return t
+
+        if t in self.storage:
+            return self.deepwalk(self.storage[t])
+
+        return t
+
     def reified(self):
         result = Substitution()
         for variable in self.storage:
-            walked = self[variable]
+            walked = self.deepwalk(variable)
             result[variable] = walked
         return result
 

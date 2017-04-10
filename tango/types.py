@@ -7,14 +7,22 @@ class BaseType(object):
 class TypeUnion(BaseType):
 
     def __init__(self, types):
-        self.types = [t for t in types]
+        self.types = []
+
+        # We can't use a set to store the types of the union, as not all types
+        # are hashable yet. There isn't a total order relationship on them
+        # neither, so our only option is a O(n^2) algorithm.
+        for t in types:
+            self.add(t)
 
     def add(self, t):
         if t not in self.types:
             self.types.append(t)
 
     def replace_content(self, types):
-        self.types[:] = [t for t in types]
+        self.types[:] = []
+        for t in types:
+            self.add(t)
 
     def first(self):
         return self.types[0]
