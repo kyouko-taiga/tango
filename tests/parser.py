@@ -127,10 +127,10 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('a.b.c'))
         self.assertIsInstance(result, ast.Select)
-        self.assertEqual(result.owner.name, 'a')
-        self.assertIsInstance(result.member, ast.Select)
-        self.assertEqual(result.member.owner.name, 'b')
-        self.assertEqual(result.member.member.name, 'c')
+        self.assertIsInstance(result.owner, ast.Select)
+        self.assertEqual(result.owner.owner.name, 'a')
+        self.assertEqual(result.owner.member.name, 'b')
+        self.assertEqual(result.member.name, 'c')
 
         result = parser.parse(tango.tokenize('Int.+'))
         self.assertIsInstance(result, ast.Select)

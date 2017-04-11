@@ -158,8 +158,8 @@ variable_identifier = (
 def make_select_expression(args):
     if args[1]:
         return Select(
-            owner = args[0],
-            member = make_select_expression((args[1][0], args[1][1:])))
+            owner = make_select_expression((args[0], args[1][:-1])),
+            member = args[1][-1])
     return args[0]
 
 select_expression = (
