@@ -118,6 +118,25 @@ class TestParser(unittest.TestCase):
             self.assertIsInstance(result, ast.Identifier)
             self.assertEqual(result.name, s)
 
+    def test_select_expression(self):
+        parser = tango.select_expression + skip(finished)
+
+        result = parser.parse(tango.tokenize('a'))
+        self.assertIsInstance(result, ast.Identifier)
+        self.assertEqual(result.name, 'a')
+
+        result = parser.parse(tango.tokenize('a.b.c'))
+        self.assertIsInstance(result, ast.Select)
+        self.assertEqual(result.owner.name, 'a')
+        self.assertIsInstance(result.member, ast.Select)
+        self.assertEqual(result.member.owner.name, 'b')
+        self.assertEqual(result.member.member.name, 'c')
+
+        result = parser.parse(tango.tokenize('Int.+'))
+        self.assertIsInstance(result, ast.Select)
+        self.assertEqual(result.owner.name, 'Int')
+        self.assertEqual(result.member.name, '+')
+
     def test_prefixed_expression(self):
         parser = tango.pfx_expr + skip(finished)
 

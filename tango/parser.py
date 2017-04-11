@@ -12,7 +12,7 @@ def tokenize(s):
         ('comment',    (r'#.*\n',)),
         ('newline',    (r'[\r\n]+',)),
         ('space',      (r'[ \t\v]+',)),
-        ('operator',   (r'(\->)|(not)|[=\+\-\*/:,&@<>{}\[\]\(\)]',)),
+        ('operator',   (r'(\->)|(not)|[=\+\-\*/\.:,&@<>{}\[\]\(\)]',)),
         ('identifier', (r'[^\W\d][\w]*',)),
         ('number',     (r'[-+]?(0|([1-9][0-9]*))(\.[0-9]+)?([Ee][+-]?[0-9]+)?',)),
         ('string',     (r'\'[^\']*\'',)),
@@ -155,7 +155,18 @@ variable_identifier = (
     (identifier | operator_identifier)
     >> make_variable_identifier)
 
-citizen = constant | variable_identifier
+def make_select_expression(args):
+    if args[1]:
+        return Select(
+            owner = args[0],
+            member = make_select_expression((args[1][0], args[1][1:])))
+    return args[0]
+
+select_expression = (
+    variable_identifier + many(op_('.') + variable_identifier)
+    >> make_select_expression)
+
+citizen = constant | select_expression
 
 def make_prefixed_expression(args):
     return PrefixedExpression(

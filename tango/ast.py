@@ -142,6 +142,17 @@ class Literal(Node):
         return str(self.value)
 
 
+class Select(Node):
+
+    def __init__(self, owner, member):
+        super().__init__()
+        self.owner = owner
+        self.member = member
+
+    def __str__(self):
+        return '%s.%s' % (self.owner, self.member)
+
+
 class PrefixedExpression(Node):
 
     def __init__(self, operator, operand):
