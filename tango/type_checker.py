@@ -409,12 +409,41 @@ def analyse(node, environment):
         except KeyError:
             raise UndefinedSymbol(node.name)
 
+    if isinstance(node, Select):
+        # First, have to get the type the owning expression.
+        owner_types = analyse(node.owner, environment)
+
+        # If the result we got walks to a type variable, we have no choice but
+        # to return another type variable.
+        if isinstance(environment[owner_types], TypeVariable):
+            return TypeVariable()
+
+        # If the result we got is an actual type (or union of), we should look
+        # for a member with the requested name in its definition.
+        if not isinstance(owner_types, TypeUnion):
+            owner_types = (owner_types,)
+
+        candidates = []
+        for owner_type in owner_types:
+            walked = environment[owner_type]
+            if isinstance(walked, TypeVariable):
+                candidates.append(TypeVariable())
+            elif isinstance(walked, BaseType) and (node.member.name in walked.members):
+                candidates.append(walked.members[node.member.name])
+
+        if len(candidates) == 0:
+            raise InferenceError(
+                "no candidates in %s has a member '%s'" % (owner_types, node.member.name))
+        if len(candidates) == 1:
+            return candidates[0]
+        return TypeUnion(candidates)
+
     if isinstance(node, BinaryExpression):
         operator_signatures = environment
 
     if isinstance(node, Call):
         # First, we have to get the available signatures of for the callee.
-        callee_signatures = analyse(node.callee, environment)
+        callee_signatures = environment[analyse(node.callee, environment)]
 
         # As functions may be overloaded, we group their different signatures
         # in a TypeUnion. As a result, we expect `callee_signatures` to be

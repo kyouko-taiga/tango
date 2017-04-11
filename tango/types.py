@@ -1,5 +1,8 @@
 class BaseType(object):
 
+    def __init__(self):
+        self.members = {}
+
     def __eq__(self, other):
         return self is other
 

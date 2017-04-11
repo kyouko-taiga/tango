@@ -211,3 +211,12 @@ class ScopeBinder(Visitor):
 
     def visit_TypeIdentifier(self, node):
         self.visit_Identifier(node)
+
+    def visit_Select(self, node):
+        # Bind the scopes of the symbols in the owning expression.
+        self.visit(node.owner)
+
+        # Unfortunately, we can't bind the symbols of a select expression yet,
+        # as we need the type of the owner's expression to identifier where to
+        # look for the member. As a result, we leave that work to the type
+        # solver and simply stop the visit here.
