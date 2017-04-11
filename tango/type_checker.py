@@ -208,21 +208,44 @@ class TypeSolver(Visitor):
         if isinstance(signature, BaseType):
             return signature
 
+        # If the signature is an AST node, maybe we already parsed it.
+        if isinstance(signature, Node) and ('type' in signature.__info__):
+            return signature.__info__['type']
+
+        # If the signature is a type identifier, we should get it from the
+        # store of nominal types.
         if isinstance(signature, TypeIdentifier):
             if signature.name == 'Self':
                 try:
-                    return self.current_self_type[-1]
+                    result = self.current_self_type[-1]
                 except IndexError:
                     raise InferenceError("invalid use of 'Self' outside of a type declaration")
+            else:
+                try:
+                    result = self.nominal_types[(signature.__info__['scope'], signature.name)]
+                except KeyError:
+                    raise UndefinedSymbol(signature.name)
 
-            try:
-                return self.nominal_types[(signature.__info__['scope'], signature.name)]
-            except KeyError:
-                raise UndefinedSymbol(signature.name)
+            signature.__info__['type'] = result
+            return result
 
             # TODO Handle abstract types
 
-        assert False, 'refine_type_signature(%s)' % signature.__class__.__name__
+        # If the signature is a type function, we should build a FunctionType.
+        if isinstance(signature, FunctionSignature):
+            parameter_types = [
+                self.eval_type_signature(p.type_annotation)
+                for p in signature.parameters
+            ]
+            return_type = self.eval_type_signature(signature.return_type)
+
+            function_type = FunctionType(
+                domain = parameter_types,
+                codomain = return_type,
+                labels = [p.label for p in signature.parameters])
+
+            signature.__info__['type'] = function_type
+            return function_type
 
     def visit_Block(self, node):
         # We introduce a new type variable for each symbol declared within the
