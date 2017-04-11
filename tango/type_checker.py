@@ -18,6 +18,54 @@ def infer_types(node):
     return type_deducer.environment.reified().storage
 
 
+class TypeVariable(object):
+
+    next_id = 0
+
+    def __init__(self, id=None):
+        if id is None:
+            self.id = TypeVariable.next_id
+            TypeVariable.next_id += 1
+        elif isinstance(id, Node):
+            self.id = (id.__info__['scope'], id.name)
+        else:
+            self.id = id
+
+    def __hash__(self):
+        return hash(self.id)
+
+    def __eq__(self, other):
+        return (type(self) == type(other)) and (self.id == other.id)
+
+    def __str__(self):
+        return '$%i' % hash(self)
+
+
+class GenericType(BaseType):
+
+    def __init__(self, name, specialization=None):
+        self.name = name
+        self.specialization = specialization
+
+    @property
+    def is_specialized(self):
+        return self.specialization is not None
+
+    def copy(self):
+        return GenericType(name=self.name, specialization=self.specialization)
+
+    def __eq__(self, other):
+        return ((type(self) == type(other))
+                and (self.name == other.name)
+                and (self.specialization == other.specialization)
+                or  (self.specialization == other))
+
+    def __str__(self):
+        if self.specialization:
+            return str(self.specialization)
+        return '(unspecialized %s)' % self.name
+
+
 class Substitution(object):
 
     def __init__(self, storage=None):
@@ -133,54 +181,6 @@ class Substitution(object):
                     str(symbol),
                     '-',
                     hex(id(inferred_type)) + ' ' + str(inferred_type)))
-
-
-class TypeVariable(object):
-
-    next_id = 0
-
-    def __init__(self, id=None):
-        if id is None:
-            self.id = TypeVariable.next_id
-            TypeVariable.next_id += 1
-        elif isinstance(id, Node):
-            self.id = (id.__info__['scope'], id.name)
-        else:
-            self.id = id
-
-    def __hash__(self):
-        return hash(self.id)
-
-    def __eq__(self, other):
-        return (type(self) == type(other)) and (self.id == other.id)
-
-    def __str__(self):
-        return '$%i' % hash(self)
-
-
-class GenericType(BaseType):
-
-    def __init__(self, name, specialization=None):
-        self.name = name
-        self.specialization = specialization
-
-    @property
-    def is_specialized(self):
-        return self.specialization is not None
-
-    def copy(self):
-        return GenericType(name=self.name, specialization=self.specialization)
-
-    def __eq__(self, other):
-        return ((type(self) == type(other))
-                and (self.name == other.name)
-                and (self.specialization == other.specialization)
-                or  (self.specialization == other))
-
-    def __str__(self):
-        if self.specialization:
-            return str(self.specialization)
-        return '(unspecialized %s)' % self.name
 
 
 class TypeSolver(Visitor):
