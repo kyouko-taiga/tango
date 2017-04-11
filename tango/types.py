@@ -1,3 +1,6 @@
+from collections import OrderedDict
+
+
 class BaseType(object):
 
     def __init__(self):
@@ -9,14 +12,15 @@ class BaseType(object):
 
 class TypeUnion(BaseType):
 
-    def __init__(self, types):
+    def __init__(self, types=None):
         self.types = []
 
         # We can't use a set to store the types of the union, as not all types
         # are hashable yet. There isn't a total order relationship on them
         # neither, so our only option is a O(n^2) algorithm.
-        for t in types:
-            self.add(t)
+        if types is not None:
+            for t in types:
+                self.add(t)
 
     def add(self, t):
         if t not in self.types:
@@ -33,6 +37,9 @@ class TypeUnion(BaseType):
     def __iter__(self):
         return iter(self.types)
 
+    def __len__(self):
+        return len(self.types)
+
     def __str__(self):
         return '[' + ' | '.join(map(str, self.types)) + ']'
 
@@ -44,6 +51,10 @@ class NominalType(BaseType):
 
     def __str__(self):
         return str(self.name)
+
+
+class GenericType(NominalType):
+    pass
 
 
 class StructType(NominalType):
@@ -67,13 +78,15 @@ class FunctionType(StructuralType):
     def __init__(
             self, generic_parameters=None, domain=None, codomain=None, labels=None):
 
-        self.generic_parameters = generic_parameters or []
+        self.generic_parameters = OrderedDict(generic_parameters or [])
         self.domain = domain or []
         self.codomain = codomain or Nothing
         self.labels = labels or []
 
+    def specialized_parameter(self, generic_name):
+        return self.generic_parameters.get(generic_name, self.generic_parameters[generic_name])
+
     def __eq__(self, other):
-        # FIXME
         if self.generic_parameters != other.generic_parameters:
             return False
         if len(self.domain) != len(other.domain):
