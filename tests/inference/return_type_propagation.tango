@@ -1,0 +1,15 @@
+fun f() -> Int {}
+fun f() -> String {}
+
+cst x = f()
+
+fun g(cst _ arg: Int) -> Int {}
+fun g(cst _ arg: String) -> String {}
+
+cst y = g(x)
+
+fun h(cst _ arg: Int) -> Int {}
+
+# In either cases, the declaration of z should force x and y to be typed Int.
+# cst z: Int = y
+cst z = h(y)
