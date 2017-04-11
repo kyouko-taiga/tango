@@ -279,11 +279,10 @@ class TypeSolver(Visitor):
         # If that's the first time we visit the declaration, we should create
         # a new type for the function.
         else:
+            # First, we have to create unspecialized generic types for each of
+            # the function's generic parameters (if any), to populate the
+            # nominal types store.
             member_scope = node.body.__info__['scope']
-
-            # First, we to create unspecialized generic types for each of the
-            # function's generic parameters (if any), to populate the nominal
-            # types store.
             generic_types = []
             for symbol in node.generic_parameters:
                 generic_type = GenericType(symbol)
@@ -344,16 +343,8 @@ class TypeSolver(Visitor):
             if not overload.is_ancestor_of(node):
                 self.visit(overload)
                 overload_set.add(self.environment[TypeVariable(overload)])
-            else:
-                warn(
-                    "'%(function_name)s' in scope '%(outer_scope)s' will be ignored "
-                    "from the overloads of '%(function_name)s' in scope '%(inner_scope)s' "
-                    "because its name is shadowed in scope '%(inner_scope)s'." % {
-                        'function_name': node.name,
-                        'outer_scope': overload.__info__['scope'].uri,
-                        'inner_scope': node.__info__['scope'].uri,
-                    },
-                    category = FutureWarning)
+            elif 'type' in overload.__info__:
+                overload_set.add(overload.__info__['type'])
 
         # Finally, we should continue the type inference in the function body.
         self.visit(node.body)
