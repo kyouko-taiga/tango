@@ -1,6 +1,7 @@
 from .types import NominalType
 
 
+Type     = NominalType('Type')
 Nothing  = NominalType('Nothing')
 Anything = NominalType('Anything')
 Self     = NominalType('Self')
@@ -65,6 +66,7 @@ class Scope(object):
 
 builtin_scope = Scope()
 builtin_scope.members = {
+    'Type'    : Type,
     'Nothing' : Nothing,
     'Anything': Anything,
     'Self'    : Self,

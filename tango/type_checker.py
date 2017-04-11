@@ -2,7 +2,7 @@ from itertools import product
 from warnings import warn
 
 from .ast import *
-from .builtin import builtin_scope
+from .builtin import Type, builtin_scope
 from .errors import UndefinedSymbol, InferenceError
 from .types import BaseType, FunctionType, StructType, TypeUnion
 
@@ -124,9 +124,15 @@ class Substitution(object):
                 scope, name = symbol.id
                 if scope.id == 0:
                     continue
-                print('%s\t(%s)\t:%s' % (symbol, scope.uri + '.' + name, inferred_type))
+                print('{:25}{:15}{:}'.format(
+                    str(symbol),
+                    scope.uri + '.' + name,
+                    hex(id(inferred_type)) + ' ' + str(inferred_type)))
             else:
-                print(symbol, inferred_type)
+                print('{:25}{:15}{:}'.format(
+                    str(symbol),
+                    '-',
+                    hex(id(inferred_type)) + ' ' + str(inferred_type)))
 
 
 class TypeVariable(object):
@@ -180,10 +186,17 @@ class GenericType(BaseType):
 class TypeSolver(Visitor):
 
     def __init__(self):
+        # A simple substitution map: (TypeVariable) -> Type.
         self.environment = Substitution({
-            TypeVariable(id=(builtin_scope, symbol)): type
-            for symbol, type in builtin_scope.members.items()
+            TypeVariable(id=(builtin_scope, symbol)): Type
+            for symbol, obj in builtin_scope.members.items() if isinstance(obj, BaseType)
         })
+
+        # The store of nominal types: (Scope, String) -> Type.
+        self.nominal_types = {
+            (builtin_scope, symbol): obj
+            for symbol, obj in builtin_scope.members.items() if isinstance(obj, BaseType)
+        }
 
         # Methods, properties and enum cases may use `Self` as a placeholder
         # to denote the "final" type they're defined in. This stack will serve
@@ -203,7 +216,7 @@ class TypeSolver(Visitor):
                     raise InferenceError("invalid use of 'Self' outside of a type declaration")
 
             try:
-                return self.environment[TypeVariable(signature)]
+                return self.nominal_types[(signature.__info__['scope'], signature.name)]
             except KeyError:
                 raise UndefinedSymbol(signature.name)
 
@@ -258,50 +271,58 @@ class TypeSolver(Visitor):
         return self.visit_ConstantDecl(node)
 
     def visit_FunctionDecl(self, node):
-        # First, we need to create unspecialized generic types for each of the
-        # function's generic parameters (if any).
-        generic_types = []
-        for symbol in node.generic_parameters:
-            var = TypeVariable((node.body.__info__['scope'], symbol))
-            if var not in self.environment:
-                generic_types.append(GenericType(symbol))
-                self.environment[var] = generic_types[-1]
-            else:
-                generic_types.append(self.environment[var])
+        # If we've already built the type of the declaration, we shouldn't
+        # recreate a type object.
+        if 'type' in node.__info__:
+            function_type = node.__info__['type']
 
-        # The return type is simply a type signature we've to evaluate.
-        return_type = self.eval_type_signature(node.signature.return_type)
+        # If that's the first time we visit the declaration, we should create
+        # a new type for the function.
+        else:
+            member_scope = node.body.__info__['scope']
 
-        # Function parameters can be seen as a container declaration within the
-        # function's scope. As such, if we can use a similar strategy as the
-        # one we use for the the case of container declarations.
-        parameter_types = []
-        for parameter in node.signature.parameters:
+            # First, we to create unspecialized generic types for each of the
+            # function's generic parameters (if any), to populate the nominal
+            # types store.
+            generic_types = []
+            for symbol in node.generic_parameters:
+                generic_type = GenericType(symbol)
+                self.nominal_types[(member_scope, symbol)] = generic_type
+                generic_types.append(generic_type)
+
             # Unlike container declarations, type parameters always have a
-            # type annotation.
-            type_annotation = self.eval_type_signature(parameter.type_annotation)
+            # type annotation, so we can type them directly.
+            parameter_types = []
+            for parameter in node.signature.parameters:
+                type_annotation = self.eval_type_signature(parameter.type_annotation)
+                self.environment.unify(TypeVariable(parameter), type_annotation)
+                parameter_types.append(type_annotation)
 
-            # If the parameter also have a default value, we should unify it
-            # with the type we've evaluated from the annotation.
+            # The return type is simply a type signature we've to evaluate.
+            return_type = self.eval_type_signature(node.signature.return_type)
+
+            # Once we've computed the function signature, we can create a type
+            # for the function itself.
+            function_type = FunctionType(
+                domain = parameter_types,
+                codomain = return_type,
+                labels = [parameter.label for parameter in node.signature.parameters],
+                generic_parameters = generic_types)
+
+        # Function parameters may be associated with a default value. In those
+        # instances, we should infer the type of the initializing expression
+        # and unify it with that of the parameter's annotation.
+        for parameter, type_annotation in zip(node.signature.parameters, function_type.domain):
             if parameter.default_value:
                 default_value_type = analyse(parameter.default_value, self.environment)
                 self.environment.unify(type_annotation, default_value_type)
 
-            self.environment.unify(TypeVariable(parameter), type_annotation)
-            parameter_types.append(type_annotation)
-
-        # Once we've inferred the types of the function signature, we can
-        # create a type for the function itself.
-        function_type = FunctionType(
-            domain = parameter_types,
-            codomain = return_type,
-            labels = [parameter.label for parameter in node.signature.parameters],
-            generic_parameters = generic_types)
+        node.__info__['type'] = function_type
 
         # As functions may be overloaded, we can't unify the function type
-        # we've just created with the function's name directly. Instead, we
-        # should create a TypeUnion to potentially include the signature of
-        # the function's overloads as we find them.
+        # we've created with the function's name directly. Instead, we should
+        # put it in a TypeUnion to potentially include the signature of the
+        # function's overloads, as we find them.
         function_name = TypeVariable(node)
         walked = self.environment[function_name]
         if isinstance(walked, TypeVariable):
@@ -338,24 +359,35 @@ class TypeSolver(Visitor):
         self.visit(node.body)
 
     def visit_StructDecl(self, node):
+        # If we've already built the type of the declaration, we shouldn't
+        # recreate a type object.
+        if 'type' in node.__info__:
+            struct_type = node.__info__['type']
+
+        # If that's the first time we visit the declaration, we should create
+        # a new type for the struct, using type variables for each of the
+        # symbols it defines, and keep it in the nominal types store.
+        else:
+            member_scope = node.body.__info__['scope']
+            struct_type = StructType(
+                name = node.name,
+                members = {
+                    name: self.environment[TypeVariable((member_scope, name))]
+                    for name in node.body.__info__['symbols']
+                })
+            self.nominal_types[(node.__info__['scope'], node.name)] = struct_type
+
+            # The struct type itself should be typed with `Type`.
+            self.environment.unify(TypeVariable(node), Type)
+
         # The body of a struct can be visited as a normal satement block, as
         # long as we push a variable on the `current_self_type` stack before,
         # to properly type references to `Self`.
-        struct_name = TypeVariable(node)
-        self.current_self_type.append(struct_name)
+        self.current_self_type.append(struct_type)
         self.visit(node.body)
         self.current_self_type.pop()
 
-        # Once we've inferred the type of all its members, we can create the
-        # type for the struct itself.
-        member_scope = node.body.__info__['scope']
-        struct_type = StructType(
-            name = node.name,
-            members = {
-                name: self.environment[TypeVariable((member_scope, name))]
-                for name in node.body.__info__['symbols']
-            })
-        self.environment.unify(struct_name, struct_type)
+        node.__info__['type'] = struct_type
 
     def visit_Assignment(self, node):
         # First, we infer and unify the types of the lvalue and rvalue.
@@ -459,13 +491,18 @@ def analyse(node, environment):
         # Generate the possible function types to be associated with the node.
         candidates = [instantiate(sig, argument_types) for sig in candidates]
 
+        # Unify the argument types with that of the selected candidates, to
+        # propagate the constraints we identified.
+        for i, argument_type in enumerate(argument_types):
+            environment.unify(argument_type, TypeUnion(c.domain[i] for c in candidates))
+
         if len(candidates) == 1:
-            result = candidates[0]
+            result = candidates[0].codomain
         else:
             result = TypeUnion(candidate.codomain for candidate in candidates)
 
         node.__info__['type'] = result
-        return result.codomain
+        return result
 
         # TODO Handle variadic arguments
         # A possible approach would be to transform the Call nodes of the AST
@@ -504,7 +541,7 @@ def instantiate(generic_signature, specialized_argument_types):
     if isinstance(generic_signature.codomain, GenericType):
         return_type = new_generics[old_generics.index(generic_signature.codomain)]
     else:
-        return_type = generic_signature.return_type
+        return_type = generic_signature.codomain
 
     return FunctionType(
         domain = parameter_types,
