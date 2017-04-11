@@ -13,6 +13,7 @@ class BaseType(object):
 class TypeUnion(BaseType):
 
     def __init__(self, types=None):
+        super().__init__()
         self.types = []
 
         # We can't use a set to store the types of the union, as not all types
@@ -47,6 +48,7 @@ class TypeUnion(BaseType):
 class NominalType(BaseType):
 
     def __init__(self, name):
+        super().__init__()
         self.name = name
 
     def __str__(self):
@@ -78,6 +80,8 @@ class FunctionType(StructuralType):
     def __init__(
             self, generic_parameters=None, domain=None, codomain=None, labels=None):
 
+        super().__init__()
+
         self.generic_parameters = OrderedDict(generic_parameters or [])
         self.domain = domain or []
         self.codomain = codomain or Nothing
@@ -87,17 +91,12 @@ class FunctionType(StructuralType):
         return self.generic_parameters.get(generic_name, self.generic_parameters[generic_name])
 
     def __eq__(self, other):
-        if self.generic_parameters != other.generic_parameters:
-            return False
-        if len(self.domain) != len(other.domain):
-            return False
-        if any(t != u for t, u in zip(self.domain, other.domain)):
-            return False
-        if self.codomain != other.codomain:
-            return False
-        if any(l != m for l, m in zip(self.labels, other.labels)):
-            return False
-        return True
+        return (type(self) == type(other)
+                and (self.generic_parameters == other.generic_parameters)
+                and (len(self.domain) == len(other.domain))
+                and all(t == u for t, u in zip(self.domain, other.domain))
+                and (self.codomain == other.codomain)
+                and all(l == m for l, m in zip(self.labels, other.labels)))
 
     def __str__(self):
         if self.generic_parameters:

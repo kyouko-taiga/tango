@@ -398,7 +398,7 @@ def analyse(node, environment):
         # If the result we got is an actual type (or union of), we should look
         # for a member with the requested name in its definition.
         if not isinstance(owner_types, TypeUnion):
-            owner_types = (owner_types,)
+            owner_types = TypeUnion((owner_types,))
 
         candidates = []
         for owner_type in owner_types:
@@ -495,18 +495,19 @@ def analyse(node, environment):
 
         # Unify the argument types with that of the selected candidates, to
         # propagate the constraints we identified.
-        for i, argument_type in enumerate(argument_types):
-            for candidate in candidates:
-                # If the candidate argument type is generic, we should try to
-                # find its replacement in the candidate's specialization.
-                if isinstance(candidate.domain[i], GenericType):
-                    environment.unify(
-                        argument_type,
-                        candidate.specialized_parameter(candidate.domain[i].name))
-
-                # Otherwise we simply use the type of the candidate argument.
-                else:
-                    environment.unify(argument_type, candidate.domain[i])
+        # for i, argument_type in enumerate(argument_types):
+        #     for candidate in candidates:
+        #         print(argument_type, candidate.domain[i])
+        #         # If the candidate argument type is generic, we should try to
+        #         # find its replacement in the candidate's specialization.
+        #         if isinstance(candidate.domain[i], GenericType):
+        #             environment.unify(
+        #                 argument_type,
+        #                 candidate.specialized_parameter(candidate.domain[i].name))
+        #
+        #         # Otherwise we simply use the type of the candidate argument.
+        #         else:
+        #             environment.unify(argument_type, candidate.domain[i])
 
         result = TypeUnion()
         for candidate in candidates:
@@ -542,6 +543,11 @@ def find_overload_decls(name, scope):
 
 
 def specialize(signature, specialized_argument_types):
+    # If the signature doesn't have any generic parameters, there's nothing to
+    # specialize and we can return it as is.
+    if not signature.generic_parameters:
+        return signature
+
     generics = signature.generic_parameters
     specializations = {}
 

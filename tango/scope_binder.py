@@ -5,9 +5,16 @@ from .parser import *
 from .types import BaseType
 
 
-def bind_scopes(node):
-    binder = ScopeBinder()
-    binder.visit(node)
+def bind_scopes(ast):
+    # Extract the symbols declared in each scopes.
+    symbols_extractor = SymbolsExtractor()
+    result = symbols_extractor.visit(ast)
+
+    # Bind all identifiers to their respective scope.
+    scope_binder = ScopeBinder()
+    scope_binder.visit(result)
+
+    return result
 
 
 class SymbolsExtractor(Transformer):

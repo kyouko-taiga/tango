@@ -1,7 +1,7 @@
 import sys
 
 from tango.parser import parse
-from tango.scope_binder import bind_scopes, SymbolsExtractor, ScopeBinder
+from tango.scope_binder import SymbolsExtractor, ScopeBinder
 from tango.type_checker import infer_types
 
 from tango.ast import Node
