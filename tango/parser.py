@@ -92,27 +92,20 @@ type_identifier = (
     >> make_type_identifier)
 
 def make_function_parameter(args):
-    attributes = args[3] or []
+    attributes = args[2] or []
     if args[0].value == 'mut':
         attributes.append('mutable')
 
-    name = args[2] or args[1]
-    if name == '_':
-        raise SyntaxError("'_' is not a valid parameter name")
-    label = args[1] if (args[1] != '_') else None
-
     return FunctionParameter(
-        name = name,
-        label = label,
+        name = args[1],
+        label = args[1],
         attributes = attributes,
-        type_annotation = args[4],
-        default_value = args[5])
+        type_annotation = args[3])
 
 function_parameter = (
     (kw('cst') | kw('mut')) +
-    identifier + maybe(identifier) + op_(':') +
-    many(op_('@') + identifier) + type_signature +
-    maybe(op_('=') + expression)
+    identifier + op_(':') +
+    many(op_('@') + identifier) + type_signature
     >> make_function_parameter)
 
 function_parameter_list = (
@@ -277,6 +270,34 @@ variable_decl = (
     maybe(op_('=') + expression)
     >> make_variable_decl)
 
+def make_function_decl_parameter(args):
+    attributes = args[3] or []
+    if args[0].value == 'mut':
+        attributes.append('mutable')
+
+    name = args[2] or args[1]
+    if name == '_':
+        raise SyntaxError("'_' is not a valid parameter name")
+    label = args[1] if (args[1] != '_') else None
+
+    return FunctionParameter(
+        name = name,
+        label = label,
+        attributes = attributes,
+        type_annotation = args[4],
+        default_value = args[5])
+
+function_decl_parameter = (
+    (kw('cst') | kw('mut')) +
+    identifier + maybe(identifier) + op_(':') +
+    many(op_('@') + identifier) + type_signature +
+    maybe(op_('=') + expression)
+    >> make_function_decl_parameter)
+
+function_decl_parameter_list = (
+    function_decl_parameter + many(op_(',') + function_decl_parameter)
+    >> flatten)
+
 def make_function_decl(args):
     return FunctionDecl(
         name = args[0],
@@ -292,7 +313,7 @@ generic_parameters = (
 function_decl = (
     kw_('fun') + (identifier | operator_identifier) +
     maybe(op_('<') + generic_parameters + op_('>')) +
-    op_('(') + maybe(function_parameter_list) + op_(')') +
+    op_('(') + maybe(function_decl_parameter_list) + op_(')') +
     maybe(op_('->') + type_signature) +
     block
     >> make_function_decl)
