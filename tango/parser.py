@@ -227,11 +227,13 @@ call_argument_list = (
 def make_call(args):
     return Call(callee = args[0], arguments = args[1])
 
-call_statement = (
-    variable_identifier + op_('(') + maybe(call_argument_list) + op_(')')
+function_identifier = select_expression | variable_identifier
+
+call_expression = (
+    function_identifier + op_('(') + maybe(call_argument_list) + op_(')')
     >> make_call)
 
-expression.define(call_statement | bin_expr | pfx_expr)
+expression.define(call_expression | bin_expr | pfx_expr)
 
 def make_assignment(args):
     return Assignment(
@@ -374,7 +376,7 @@ statement.define(
     struct_decl |
     assignment |
     return_statement |
-    call_statement)
+    call_expression)
 
 def make_module_decl(args):
     return ModuleDecl(

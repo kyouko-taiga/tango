@@ -217,8 +217,8 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.attributes[0], 'attr1')
         self.assertEqual(result.attributes[1], 'attr2')
 
-    def test_call_statement(self):
-        parser = tango.call_statement + skip(finished)
+    def test_call_expression(self):
+        parser = tango.call_expression + skip(finished)
 
         result = parser.parse(tango.tokenize('f()'))
         self.assertIsInstance(result, ast.Call)
