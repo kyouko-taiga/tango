@@ -1,7 +1,8 @@
 from .ast import Transformer, Visitor
-from .builtin import Scope, builtin_scope
+from .builtin import builtin_scope
 from .errors import DuplicateDeclaration, UndefinedSymbol
 from .parser import *
+from .scope import Scope
 from .types import BaseType
 
 

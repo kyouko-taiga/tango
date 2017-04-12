@@ -5,7 +5,7 @@ from tango.scope_binder import SymbolsExtractor, ScopeBinder
 from tango.type_checker import infer_types
 
 from tango.ast import Node
-from tango.builtin import Scope
+from tango.scope import Scope
 from tango.types import BaseType
 from json import dumps, JSONEncoder
 
