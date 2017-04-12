@@ -118,7 +118,11 @@ class Substitution(object):
 
     def deepwalk(self, t):
         if isinstance(t, TypeUnion):
-            return TypeUnion(self.deepwalk(it) for it in t)
+            result = TypeUnion(self.deepwalk(it) for it in t)
+            # Avoid creating singletons when there's only one candidate.
+            if len(result) == 1:
+                return result.first()
+            return result
 
         if isinstance(t, FunctionType):
             return FunctionType(
@@ -493,21 +497,29 @@ def analyse(node, environment):
         # types we inferred.
         candidates = [specialize(sig, argument_types) for sig in candidates]
 
+        # FIXME Specialization seems to unproperly force the choice of
+        # candidate argument types.
+
         # Unify the argument types with that of the selected candidates, to
         # propagate the constraints we identified.
-        # for i, argument_type in enumerate(argument_types):
-        #     for candidate in candidates:
-        #         print(argument_type, candidate.domain[i])
-        #         # If the candidate argument type is generic, we should try to
-        #         # find its replacement in the candidate's specialization.
-        #         if isinstance(candidate.domain[i], GenericType):
-        #             environment.unify(
-        #                 argument_type,
-        #                 candidate.specialized_parameter(candidate.domain[i].name))
-        #
-        #         # Otherwise we simply use the type of the candidate argument.
-        #         else:
-        #             environment.unify(argument_type, candidate.domain[i])
+        for i, argument_type in enumerate(argument_types):
+            candidate_argument_types = TypeUnion()
+            for candidate in candidates:
+                # If the candidate argument type is generic, we should try to
+                # find its replacement in the candidate's specialization.
+                # Otherwise we simply use the type of the candidate argument.
+                if isinstance(candidate.domain[i], GenericType):
+                    candidate_argument_types.add(
+                        candidate.specialized_parameter(candidate.domain[i].name))
+                else:
+                    candidate_argument_types.add(candidate.domain[i])
+
+            # We have to make a copy of the type union we created here to
+            # avoid introducing circular substitutions in the environment.
+            # This could happen if `candidate_argument_types` references
+            # `argument_type`.
+            candidate_argument_types = candidate_argument_types.copy()
+            environment.unify(candidate_argument_types, argument_type)
 
         result = TypeUnion()
         for candidate in candidates:

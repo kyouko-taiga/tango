@@ -32,6 +32,9 @@ class TypeUnion(BaseType):
         for t in types:
             self.add(t)
 
+    def copy(self):
+        return TypeUnion(t.copy() if isinstance(t, TypeUnion) else t for t in self.types)
+
     def first(self):
         return self.types[0]
 
