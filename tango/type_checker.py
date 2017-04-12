@@ -468,59 +468,68 @@ def analyse(node, environment):
             if not valid:
                 continue
 
-            # Check the types of the parameters.
-            generic_specializations = {}
-            for expected_type, argument_type in zip(signature.domain, argument_types):
-                # If the expected type is a generic, make sure it's either
-                # still unspecialized, or its specialization matches the
-                # inferred argument type.
-                if isinstance(expected_type, GenericType):
-                    specialization = generic_specializations.get(expected_type.name)
-                    if (specialization is not None) and not matches(specialization, argument_type):
-                        valid = False
-                        break
-                    generic_specializations[expected_type.name] = argument_type
+            # NOTE Using profiling, we might determine that it could s be more
+            # efficient to already eliminate candidates whose domain/codomain
+            # doesn't match the argument and return types of our node here,
+            # before they are specialized.
 
-                elif not matches(expected_type, argument_type):
+            candidates.append(signature)
+
+        # Specialize the generic arguments of the candidates with the argument
+        # types we inferred.
+        specialized_candidates = (specialize(c, argument_types) for c in candidates)
+        candidates = (c for specialized in specialized_candidates for c in specialized)
+
+        # Check the specialized candidate to filter out those whose signature
+        # doesn't agree with the node's arguments or return type.
+        selected_candidates = []
+        for signature in candidates:
+            for expected_type, proposed_type in zip(signature.domain, argument_types):
+                if isinstance(expected_type, GenericType):
+                    expected_type = signature.specialized_parameter(expected_type.name)
+                if not matches(expected_type, proposed_type):
                     valid = False
                     break
             if not valid:
                 continue
 
-            candidates.append(signature)
+            if 'type' in node.__info__:
+                expected_type = signature.codomain
+                proposed_type = node.__info__['type']
+                if isinstance(expected_type, GenericType):
+                    expected_type = signature.specialized_parameter(expected_type.name)
+                if not matches(expected_type, proposed_type):
+                    continue
 
-        if len(candidates) == 0:
+            selected_candidates.append(signature)
+
+        if len(selected_candidates) == 0:
             raise InferenceError(
                 "function call do not match any candidate for types '%s'" % callee_signatures)
 
-        # Specialize the generic arguments of the candidates with the argument
-        # types we inferred.
-        specialized_candidates = (specialize(c, argument_types) for c in candidates)
-        candidates = [c for specialized in specialized_candidates for c in specialized]
-
-        # Unify the argument types with that of the selected candidates, to
-        # propagate the constraints we identified.
+        # Unify the argument types of the node with the domain of the selected
+        # candidates, to propagate type constraints.
         for i, argument_type in enumerate(argument_types):
-            candidate_argument_types = TypeUnion()
-            for candidate in candidates:
+            candidate_domains = TypeUnion()
+            for candidate in selected_candidates:
                 # If the candidate argument type is generic, we should try to
                 # find its replacement in the candidate's specialization.
                 # Otherwise we simply use the type of the candidate argument.
                 if isinstance(candidate.domain[i], GenericType):
-                    candidate_argument_types.add(
+                    candidate_domains.add(
                         candidate.specialized_parameter(candidate.domain[i].name))
                 else:
-                    candidate_argument_types.add(candidate.domain[i])
+                    candidate_domains.add(candidate.domain[i])
 
             # We have to make a copy of the type union we created here to
             # avoid introducing circular substitutions in the environment.
-            # This could happen if `candidate_argument_types` references
+            # This could happen if `cnadidate_domains` references
             # `argument_type` somewhere in the hierarchy.
-            candidate_argument_types = candidate_argument_types.copy()
-            environment.unify(candidate_argument_types, argument_type)
+            candidate_domains = candidate_domains.copy()
+            environment.unify(candidate_domains, argument_type)
 
         result = TypeUnion()
-        for candidate in candidates:
+        for candidate in selected_candidates:
             codomain = candidate.codomain
             if isinstance(codomain, GenericType):
                 codomain = candidate.specialized_parameter(codomain.name)
