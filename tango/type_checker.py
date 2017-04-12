@@ -8,15 +8,41 @@ from .errors import UndefinedSymbol, InferenceError
 from .types import BaseType, FunctionType, GenericType, StructType, TypeUnion
 
 
-def infer_types(node):
-    # We first visit all nodes to infer the type of the expressions.
-    type_deducer = TypeSolver()
+def infer_types(node, max_iter=100):
+    type_solver = TypeSolver()
+    type_solver.visit(node)
+    types_finder = TypesFinder(type_solver.environment)
+    types_finder.visit(node)
 
-    # FIXME We should compute a fixed point here.
-    type_deducer.visit(node)
-    type_deducer.visit(node)
+    i = 0
+    while True:
+        type_solver.visit(node)
+        previous = types_finder.types
+        types_finder.types = {}
+        types_finder.visit(node)
+        if types_finder.types == previous:
+            break
 
-    return type_deducer.environment.reified().storage
+        i += 1
+        if i > max_iter:
+            raise InferenceError('could not reach a fixed point after %s iterations' % max_iter)
+
+    return type_solver.environment.reified().storage
+
+
+class TypesFinder(Visitor):
+
+    def __init__(self, environment):
+        self.types = {}
+        self.environment = environment
+
+    def visit(self, node):
+        if 'type' in node.__info__:
+            # NOTE If we give the type solver the ability to transform the
+            # AST, we might have to find another way to "hash" the nodes.
+            self.types[id(node)] = self.environment.deepwalk(node.__info__['type'])
+
+        self.generic_visit(node)
 
 
 class TypeVariable(object):

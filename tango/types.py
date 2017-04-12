@@ -44,6 +44,11 @@ class TypeUnion(BaseType):
     def __len__(self):
         return len(self.types)
 
+    def __eq__(self, other):
+        return (type(self) == type(other)
+                and (len(self.types) == len(other.types))
+                and all(t in other.types for t in self.types))
+
     def __str__(self):
         return '[' + ' | '.join(map(str, self.types)) + ']'
 
