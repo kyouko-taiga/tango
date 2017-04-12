@@ -213,6 +213,22 @@ class TypeSolver(Visitor):
         # the context we'll be evaluation typing informations.
         self.current_self_type = []
 
+    def type_or_container_type(self, identifier):
+        # If a nominal type in the identifer's scope is named after the
+        # identifier, we treat the identifier as a type name.
+        if identifier.name == 'Self':
+            try:
+                return self.current_self_type[-1]
+            except IndexError:
+                raise InferenceError("invalid use of 'Self' outside of a type declaration")
+
+        key = (identifier.__info__['scope'], identifier.name)
+        if key in self.nominal_types:
+            return self.nominal_types[key]
+
+        # Otherwise, we treat the identifier as a usual container's name.
+        return self.environment[TypeVariable(identifier)]
+
     def eval_type_signature(self, signature):
         if isinstance(signature, BaseType):
             return signature
@@ -277,7 +293,7 @@ class TypeSolver(Visitor):
 
         # If there's an initializing value, we have to infer its type first.
         if node.initial_value:
-            initial_value_type = analyse(node.initial_value, self.environment)
+            initial_value_type = self.analyse(node.initial_value)
 
             # If there's a type annotation as well, we should unify the type
             # it denotes with the one that was inferred from the initializing
@@ -328,7 +344,7 @@ class TypeSolver(Visitor):
             # those instances, we should infer the type of the initializing
             # expression and unify it with that of the parameter's annotation.
             if parameter.default_value:
-                default_value_type = analyse(parameter.default_value, self.environment)
+                default_value_type = self.analyse(parameter.default_value)
                 self.environment.unify(type_annotation, default_value_type)
 
         # The return type is simply a type signature we've to evaluate.
@@ -389,8 +405,8 @@ class TypeSolver(Visitor):
 
     def visit_Assignment(self, node):
         # First, we infer and unify the types of the lvalue and rvalue.
-        lvalue_type = analyse(node.lvalue, self.environment)
-        rvalue_type = analyse(node.rvalue, self.environment)
+        lvalue_type = self.analyse(node.lvalue)
+        rvalue_type = self.analyse(node.rvalue)
         self.environment.unify(lvalue_type, rvalue_type)
 
         # If the lvalue is an identifer, we unify its name with the type of
@@ -402,181 +418,189 @@ class TypeSolver(Visitor):
         # Note that for now, only identifiers are valid lvalues.
         assert False, '%s is not a valid lvalue' % node.target.__class__.__name__
 
-def analyse(node, environment):
-    # If the node is a literal, its type was already inferred by the parser.
-    if isinstance(node, Literal):
-        return node.__info__['type']
-
-    # If the node is an identifier, we should simply try to get its type from
-    # the environment.
-    if isinstance(node, Identifier):
-        try:
-            node.__info__['type'] = environment[TypeVariable(node)]
+    def analyse(self, node):
+        # If the node is a literal, its type should already have been inferred
+        # by the parser.
+        if isinstance(node, Literal):
             return node.__info__['type']
-        except KeyError:
-            raise UndefinedSymbol(node.name)
 
-    if isinstance(node, Select):
-        # First, have to get the type the owning expression.
-        owner_types = analyse(node.owner, environment)
+        # If the node is an identifier, we should simply try to get its type
+        # from the environment.
+        if isinstance(node, Identifier):
+            try:
+                node.__info__['type'] = self.environment[TypeVariable(node)]
+                return node.__info__['type']
+            except KeyError:
+                raise UndefinedSymbol(node.name)
 
-        # If the result we got is a type variable, we have no choice but to
-        # return another type variable.
-        if isinstance(owner_types, TypeVariable):
-            return TypeVariable()
+        if isinstance(node, Select):
+            # If the owner is an identifier, we might have to treat it as a
+            # type name rather than a container's name.
+            if isinstance(node.owner, Identifier):
+                owner_types = self.type_or_container_type(node.owner)
 
-        # If the result we got is an actual type (or union of), we should look
-        # for a member with the requested name in its definition.
-        if not isinstance(owner_types, TypeUnion):
-            owner_types = TypeUnion((owner_types,))
+            # If it's any other kind of expression, we have to infer its type.
+            else:
+                owner_types = self.analyse(node.owner)
 
-        candidates = []
-        for owner_type in owner_types:
-            if isinstance(owner_type, TypeVariable):
-                candidates.append(TypeVariable())
-            elif isinstance(owner_type, BaseType) and (node.member.name in owner_type.members):
-                candidates.append(owner_type.members[node.member.name])
+            # If the result we got is a type variable, we have no choice but
+            # to return another type variable.
+            if isinstance(owner_types, TypeVariable):
+                return TypeVariable()
 
-        if len(candidates) == 0:
-            raise InferenceError(
-                "no candidates in %s has a member '%s'" % (owner_types, node.member.name))
+            # If the result we got is an actual type (or union of), we should
+            # look for a member with the requested name in its definition.
+            if not isinstance(owner_types, TypeUnion):
+                owner_types = (owner_types,)
 
-        if len(candidates) == 1:
-            result = environment[candidates[0]]
-        else:
-            result = TypeUnion(environment[candidate.codomain] for candidate in candidates)
+            candidates = []
+            for owner_type in owner_types:
+                if isinstance(owner_type, TypeVariable):
+                    candidates.append(TypeVariable())
+                elif isinstance(owner_type, BaseType) and (node.member.name in owner_type.members):
+                    candidates.append(owner_type.members[node.member.name])
 
-        node.__info__['type'] = result
-        return result
+            if len(candidates) == 0:
+                raise InferenceError(
+                    "no candidates in %s has a member '%s'" % (owner_types, node.member.name))
 
-    if isinstance(node, BinaryExpression):
-        operator_signatures = environment
+            if len(candidates) == 1:
+                result = self.environment[candidates[0]]
+            else:
+                result = TypeUnion(self.environment[candidate.codomain] for candidate in candidates)
 
-    if isinstance(node, Call):
-        # First, we have to get the available signatures of for the callee.
-        callee_signatures = analyse(node.callee, environment)
+            node.__info__['type'] = result
+            return result
 
-        # As functions may be overloaded, we group their different signatures
-        # in a TypeUnion. As a result, we expect `callee_signatures` to be
-        # iterable. But since it might be possible that we try to infer the
-        # type of a function call before its signature has been inferred, we
-        # should handle cases where `callee_signatures` is still a variable.
-        if isinstance(callee_signatures, TypeVariable):
-            return TypeVariable()
+        if isinstance(node, BinaryExpression):
+            operator_signatures = self.environment
 
-        if not isinstance(callee_signatures, TypeUnion):
-            assert False, 'expected TypeUnion of FunctionType'
-        if not isinstance(callee_signatures.first(), FunctionType):
-            raise InferenceError("'%s' is not a function type" % callee_signatures.first())
+        if isinstance(node, Call):
+            # First, we have to get the available signatures for the callee.
+            callee_signatures = self.analyse(node.callee)
 
-        # Then, we have to infer the type of each argument.
-        argument_types = []
-        for argument in node.arguments:
-            argument_types.append(analyse(argument.value, environment))
+            # Since it might be possible that we try to infer the type of a
+            # function call before its signature has been inferred, we should
+            # handle cases where `callee_signatures` is still a variable.
+            if isinstance(callee_signatures, TypeVariable):
+                return TypeVariable()
 
-        # Then, we have to find which signatures agree with the types we've
-        # inferred for the function arguments.
-        candidates = []
-        for signature in callee_signatures:
-            # Check the number of parameters.
-            if len(signature.domain) != len(node.arguments):
-                continue
+            # Since functions may be overloaded, we group their different
+            # signatures in a TypeUnion. As a result, we can expect
+            # `callee_signatures` to be iterable.
+            assert isinstance(callee_signatures, TypeUnion), 'expected TypeUnion of FunctionType'
+            if not isinstance(callee_signatures.first(), FunctionType):
+                raise InferenceError("'%s' is not a function type" % callee_signatures.first())
 
-            # Check the labels of parameters.
-            valid = True
-            for expected_label, argument in zip(signature.labels, node.arguments):
-                if (expected_label == '_') and (argument.name is not None):
-                    valid = False
-                    break
-                elif expected_label != argument.name:
-                    valid = False
-                    break
-            if not valid:
-                continue
+            # Then, we have to infer the type of each argument.
+            argument_types = []
+            for argument in node.arguments:
+                argument_types.append(self.analyse(argument.value))
 
-            # NOTE Using profiling, we might determine that it could s be more
-            # efficient to already eliminate candidates whose domain/codomain
-            # doesn't match the argument and return types of our node here,
-            # before they are specialized.
-
-            candidates.append(signature)
-
-        # Specialize the generic arguments of the candidates with the argument
-        # types we inferred.
-        specialized_candidates = (specialize(c, argument_types) for c in candidates)
-        candidates = (c for specialized in specialized_candidates for c in specialized)
-
-        # Check the specialized candidate to filter out those whose signature
-        # doesn't agree with the node's arguments or return type.
-        selected_candidates = []
-        for signature in candidates:
-            for expected_type, proposed_type in zip(signature.domain, argument_types):
-                if isinstance(expected_type, GenericType):
-                    expected_type = signature.specialized_parameter(expected_type.name)
-                if not matches(expected_type, proposed_type):
-                    valid = False
-                    break
-            if not valid:
-                continue
-
-            if 'type' in node.__info__:
-                expected_type = signature.codomain
-                proposed_type = node.__info__['type']
-                if isinstance(expected_type, GenericType):
-                    expected_type = signature.specialized_parameter(expected_type.name)
-                if not matches(expected_type, proposed_type):
+            # Then, we have to find which signatures agree with the types
+            # we've inferred for the function arguments.
+            candidates = []
+            for signature in callee_signatures:
+                # Check the number of parameters.
+                if len(signature.domain) != len(node.arguments):
                     continue
 
-            selected_candidates.append(signature)
+                # Check the labels of parameters.
+                valid = True
+                for expected_label, argument in zip(signature.labels, node.arguments):
+                    if (expected_label == '_') and (argument.name is not None):
+                        valid = False
+                        break
+                    elif expected_label != argument.name:
+                        valid = False
+                        break
+                if not valid:
+                    continue
 
-        if len(selected_candidates) == 0:
-            raise InferenceError(
-                "function call do not match any candidate for types '%s'" % callee_signatures)
+                # NOTE Using profiling, we might determine that it could s be
+                # more efficient to already eliminate candidates whose domain
+                # or codomain doesn't match the argument and return types of
+                # our node here, before they are specialized.
 
-        # Unify the argument types of the node with the domain of the selected
-        # candidates, to propagate type constraints.
-        for i, argument_type in enumerate(argument_types):
-            candidate_domains = TypeUnion()
+                candidates.append(signature)
+
+            # Specialize the generic arguments of the candidates with the
+            # argument types we inferred.
+            specialized_candidates = (specialize(c, argument_types) for c in candidates)
+            candidates = (c for specialized in specialized_candidates for c in specialized)
+
+            # Check the specialized candidate to filter out those whose
+            # signature doesn't match the node's arguments or return type.
+            selected_candidates = []
+            for signature in candidates:
+                for expected_type, proposed_type in zip(signature.domain, argument_types):
+                    if isinstance(expected_type, GenericType):
+                        expected_type = signature.specialized_parameter(expected_type.name)
+                    if not matches(expected_type, proposed_type):
+                        valid = False
+                        break
+                if not valid:
+                    continue
+
+                if 'type' in node.__info__:
+                    expected_type = signature.codomain
+                    proposed_type = node.__info__['type']
+                    if isinstance(expected_type, GenericType):
+                        expected_type = signature.specialized_parameter(expected_type.name)
+                    if not matches(expected_type, proposed_type):
+                        continue
+
+                selected_candidates.append(signature)
+
+            if len(selected_candidates) == 0:
+                raise InferenceError(
+                    "function call do not match any candidate for types '%s'" % callee_signatures)
+
+            # Unify the argument types of the node with the domain of the
+            # selected candidates, to propagate type constraints.
+            for i, argument_type in enumerate(argument_types):
+                candidate_domains = TypeUnion()
+                for candidate in selected_candidates:
+                    # If the candidate argument type is generic, we should try
+                    # to find its replacement in the candidate's
+                    # specialization. Otherwise we simply use the type of the
+                    # candidate argument.
+                    if isinstance(candidate.domain[i], GenericType):
+                        candidate_domains.add(
+                            candidate.specialized_parameter(candidate.domain[i].name))
+                    else:
+                        candidate_domains.add(candidate.domain[i])
+
+                # We have to make a copy of the type union we created here to
+                # avoid introducing circular substitutions in the environment.
+                # This could happen if `cnadidate_domains` references
+                # `argument_type` somewhere in the hierarchy.
+                candidate_domains = candidate_domains.copy()
+                self.environment.unify(candidate_domains, argument_type)
+
+            result = TypeUnion()
             for candidate in selected_candidates:
-                # If the candidate argument type is generic, we should try to
-                # find its replacement in the candidate's specialization.
-                # Otherwise we simply use the type of the candidate argument.
-                if isinstance(candidate.domain[i], GenericType):
-                    candidate_domains.add(
-                        candidate.specialized_parameter(candidate.domain[i].name))
-                else:
-                    candidate_domains.add(candidate.domain[i])
+                codomain = candidate.codomain
+                if isinstance(codomain, GenericType):
+                    codomain = candidate.specialized_parameter(codomain.name)
+                result.add(self.environment[codomain])
 
-            # We have to make a copy of the type union we created here to
-            # avoid introducing circular substitutions in the environment.
-            # This could happen if `cnadidate_domains` references
-            # `argument_type` somewhere in the hierarchy.
-            candidate_domains = candidate_domains.copy()
-            environment.unify(candidate_domains, argument_type)
+            # Avoid creating singletons when there's only one candidate.
+            if len(result) == 1:
+                result = result.first()
 
-        result = TypeUnion()
-        for candidate in selected_candidates:
-            codomain = candidate.codomain
-            if isinstance(codomain, GenericType):
-                codomain = candidate.specialized_parameter(codomain.name)
-            result.add(environment[codomain])
+            node.__info__['type'] = result
+            return result
 
-        # Avoid creating singletons when there's only one candidate.
-        if len(result) == 1:
-            result = result.first()
+            # TODO Handle variadic arguments
+            # A possible approach would be to transform the Call nodes of the
+            # AST whenever we visit a variadic parameter, so that we regroup
+            # the arguments that can be considered part of the variadic
+            # argument. Depending on the definitive syntax and restrictions
+            # we'll adopt for variadics parameters, we might have to check
+            # multiple configurations of argument groups.
 
-        node.__info__['type'] = result
-        return result
-
-        # TODO Handle variadic arguments
-        # A possible approach would be to transform the Call nodes of the AST
-        # whenever we visit a variadic parameter, so that we regroup the
-        # arguments that can be considered part of the variadic argument.
-        # Depending on the definitive syntax and restrictions we'll adopt for
-        # variadics parameters, we might have to check multiple configurations
-        # of argument groups.
-
-    assert False, "no type inference for node '%s'" % node.__class__.__name__
+        assert False, "no type inference for node '%s'" % node.__class__.__name__
 
 
 def find_overload_decls(name, scope):
@@ -635,6 +659,6 @@ def matches(t, u):
     if isinstance(t, StructType) and isinstance(u, StructType):
         return ((t.name == u.name)
                 and not (t.members.keys() ^ u.members.keys())
-                and all(matches(t.members[it], u.members[it]) for it in t))
+                and all(matches(t.members[it], u.members[it]) for it in t.members))
 
     return t == u
