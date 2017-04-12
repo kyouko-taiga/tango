@@ -194,6 +194,13 @@ class Substitution(object):
 
 class TypeSolver(Visitor):
 
+    class TypeNode(Node):
+        # A dummy AST node whose sole purpose is to specify type information for
+        # some internally created nodes.
+
+        def __init__(self, type):
+            self.type = type
+
     def __init__(self):
         # A simple substitution map: (TypeVariable) -> Type.
         self.environment = Substitution({
@@ -419,6 +426,11 @@ class TypeSolver(Visitor):
         assert False, '%s is not a valid lvalue' % node.target.__class__.__name__
 
     def analyse(self, node):
+        # If the node is a dummy TypeNode, we should simply return the types
+        # it represents.
+        if isinstance(node, TypeSolver.TypeNode):
+            return node.type
+
         # If the node is a literal, its type should already have been inferred
         # by the parser.
         if isinstance(node, Literal):
@@ -472,8 +484,47 @@ class TypeSolver(Visitor):
             node.__info__['type'] = result
             return result
 
+        if isinstance(node, PrefixedExpression):
+            # First, we have to infer the type of the operand.
+            operand_type = self.analyse(node.operand)
+
+            # Then, we can get the available signatures for the operator.
+            candidates = find_operator_candidates(operand_type, node.operator)
+            if len(candidates) == 0:
+                raise InferenceError(
+                    "no candidates in %s has a member '%s'" % (candidates, node.operator))
+
+            # Once we've got those operator signatures, we should create a
+            # temporary Call node to fallback on the usual analysis of
+            # function call return types.
+            call_node = Call(
+                callee = TypeSolver.TypeNode(TypeUnion(candidates)),
+                arguments = [CallArgument(node.operand)])
+            result = self.analyse(call_node)
+
+            node.__info__['type'] = result
+            return result
+
         if isinstance(node, BinaryExpression):
-            operator_signatures = self.environment
+            # First, we have to infer the type of the left operand.
+            left_type = self.analyse(node.left)
+
+            # Then, we can get the available signatures for the operator.
+            candidates = find_operator_candidates(left_type, node.operator)
+            if len(candidates) == 0:
+                raise InferenceError(
+                    "no candidates in %s has a member '%s'" % (candidates, node.operator))
+
+            # Once we've got those operator signatures, we should create a
+            # temporary Call node to fallback on the usual analysis of
+            # function call return types.
+            call_node = Call(
+                callee = TypeSolver.TypeNode(TypeUnion(candidates)),
+                arguments = [CallArgument(node.left), CallArgument(node.right)])
+            result = self.analyse(call_node)
+
+            node.__info__['type'] = result
+            return result
 
         if isinstance(node, Call):
             # First, we have to get the available signatures for the callee.
@@ -488,7 +539,9 @@ class TypeSolver(Visitor):
             # Since functions may be overloaded, we group their different
             # signatures in a TypeUnion. As a result, we can expect
             # `callee_signatures` to be iterable.
-            assert isinstance(callee_signatures, TypeUnion), 'expected TypeUnion of FunctionType'
+            if not isinstance(callee_signatures, TypeUnion):
+                callee_signatures = TypeUnion((callee_signatures,))
+
             if not isinstance(callee_signatures.first(), FunctionType):
                 raise InferenceError("'%s' is not a function type" % callee_signatures.first())
 
@@ -601,6 +654,31 @@ class TypeSolver(Visitor):
             # multiple configurations of argument groups.
 
         assert False, "no type inference for node '%s'" % node.__class__.__name__
+
+
+def find_operator_candidates(operand_type, operator):
+    # If the operand's type is a variable, we have no choice but to return
+    # another type variable.
+    if isinstance(operand_type, TypeVariable):
+        return TypeVariable()
+
+    # Otherwise, we can simply search its members to find signature candidates
+    # for the given operator.
+    if not isinstance(operand_type, TypeUnion):
+        operand_type = (operand_type,)
+
+    candidates = []
+    for expr_type in operand_type:
+        if isinstance(expr_type, TypeVariable):
+            candidates.append(TypeVariable())
+        elif isinstance(expr_type, BaseType) and (operator in expr_type.members):
+            candidate = expr_type.members[operator]
+            if isinstance(candidate, TypeUnion):
+                candidates.extend(candidate)
+            else:
+                candidates.append(candidate)
+
+    return candidates
 
 
 def find_overload_decls(name, scope):
