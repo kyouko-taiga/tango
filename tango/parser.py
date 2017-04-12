@@ -12,7 +12,7 @@ def tokenize(s):
         ('comment',    (r'#.*\n',)),
         ('newline',    (r'[\r\n]+',)),
         ('space',      (r'[ \t\v]+',)),
-        ('operator',   (r'(\->)|(not)|[=\+\-\*/\.:,&@<>{}\[\]\(\)]',)),
+        ('operator',   (r'(\->)|(not)|[=\+\-\*\/%\.:,&@<>{}\[\]\(\)]',)),
         ('identifier', (r'[^\W\d][\w]*',)),
         ('number',     (r'[-+]?(0|([1-9][0-9]*))(\.[0-9]+)?([Ee][+-]?[0-9]+)?',)),
         ('string',     (r'\'[^\']*\'',)),
@@ -48,7 +48,7 @@ identifier = (
 
 pfx_op = op('not') >> make_identifier
 
-mul_op = (op('*') | op('/')) >> make_identifier
+mul_op = (op('*') | op('/') | op('%')) >> make_identifier
 add_op = (op('+') | op('-')) >> make_identifier
 
 operator_identifier = pfx_op | mul_op | add_op
