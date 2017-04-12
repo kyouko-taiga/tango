@@ -3,8 +3,8 @@ from collections import OrderedDict
 
 class BaseType(object):
 
-    def __init__(self):
-        self.members = {}
+    def __init__(self, members=None):
+        self.members = members or {}
 
     def __eq__(self, other):
         return self is other
@@ -55,8 +55,8 @@ class TypeUnion(BaseType):
 
 class NominalType(BaseType):
 
-    def __init__(self, name):
-        super().__init__()
+    def __init__(self, name, members=None):
+        super().__init__(members)
         self.name = name
 
     def __str__(self):
@@ -70,8 +70,7 @@ class GenericType(NominalType):
 class StructType(NominalType):
 
     def __init__(self, name, members=None):
-        super().__init__(name)
-        self.members = members or {}
+        super().__init__(name, members)
 
     def __eq__(self, other):
         return (type(self) == type(other)
@@ -93,7 +92,7 @@ class FunctionType(StructuralType):
         self.generic_parameters = OrderedDict(generic_parameters or [])
         self.domain = domain or []
         self.codomain = codomain or Nothing
-        self.labels = labels or []
+        self.labels = labels or [None for _ in self.domain]
 
     def specialized_parameter(self, generic_name):
         return self.generic_parameters.get(generic_name, self.generic_parameters[generic_name])
