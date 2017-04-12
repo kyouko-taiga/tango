@@ -495,10 +495,8 @@ def analyse(node, environment):
 
         # Specialize the generic arguments of the candidates with the argument
         # types we inferred.
-        candidates = [specialize(sig, argument_types) for sig in candidates]
-
-        # FIXME Specialization seems to unproperly force the choice of
-        # candidate argument types.
+        specialized_candidates = (specialize(c, argument_types) for c in candidates)
+        candidates = [c for specialized in specialized_candidates for c in specialized]
 
         # Unify the argument types with that of the selected candidates, to
         # propagate the constraints we identified.
@@ -517,7 +515,7 @@ def analyse(node, environment):
             # We have to make a copy of the type union we created here to
             # avoid introducing circular substitutions in the environment.
             # This could happen if `candidate_argument_types` references
-            # `argument_type`.
+            # `argument_type` somewhere in the hierarchy.
             candidate_argument_types = candidate_argument_types.copy()
             environment.unify(candidate_argument_types, argument_type)
 
@@ -555,29 +553,37 @@ def find_overload_decls(name, scope):
 
 
 def specialize(signature, specialized_argument_types):
-    # If the signature doesn't have any generic parameters, there's nothing to
-    # specialize and we can return it as is.
+    # There's noting to do if the signature doesn't have generic parameters.
     if not signature.generic_parameters:
-        return signature
+        yield signature
+        return
 
     generics = signature.generic_parameters
-    specializations = {}
 
-    # Specialize the generic types used in the function parameters with
-    # given argument specializations.
-    for original, replacement in zip(signature.domain, specialized_argument_types):
-        if isinstance(original, GenericType):
-            assert specializations.get(original.name) in (None, replacement)
-            specializations[original.name] = replacement
+    # Create the set of all possible combination of arguments, that is the
+    # cartesian product `a0 x a1 x ... an`, considering all `ai` that aren't
+    # type unions to be singleton of themselves.
+    choices = [ai if isinstance(ai, TypeUnion) else (ai,) for ai in specialized_argument_types]
+    argument_types_combinations = product(*choices)
 
-    return FunctionType(
-        domain = signature.domain,
-        codomain = signature.codomain,
-        labels = signature.labels,
-        generic_parameters = OrderedDict([
-            (name, specializations.get(name, generic))
-            for name, generic in signature.generic_parameters.items()
-        ]))
+    # Specialize the generic types used in the function parameters for each
+    # possible combination of arguments.
+    specialized_signatures = []
+    for combination in argument_types_combinations:
+        specializations = {}
+        for original, replacement in zip(signature.domain, combination):
+            if isinstance(original, GenericType):
+                assert specializations.get(original.name) in (None, replacement)
+                specializations[original.name] = replacement
+
+        yield FunctionType(
+            domain             = signature.domain,
+            codomain           = signature.codomain,
+            labels             = signature.labels,
+            generic_parameters = OrderedDict([
+                (name, specializations.get(name, generic))
+                for name, generic in signature.generic_parameters.items()
+            ]))
 
     # TODO Handle abstract types
 

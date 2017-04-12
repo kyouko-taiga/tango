@@ -103,11 +103,18 @@ class FunctionType(StructuralType):
 
     def __str__(self):
         if self.generic_parameters:
-            generic_parameters = '<%s> ' % ', '.join(map(str, self.generic_parameters))
+            prefix = '<%s> ' % ', '.join(map(str, self.generic_parameters.values()))
         else:
-            generic_parameters = ''
+            prefix = ''
+
+        domain = (
+            t if not isinstance(t, GenericType) else self.specialized_parameter(t.name)
+            for t in self.domain)
+        codomain = (
+            self.codomain if not isinstance(self.codomain, GenericType)
+            else self.specialized_parameter(self.codomain.name))
 
         return '%s(%s) -> %s' % (
-            generic_parameters,
-            ', '.join('%s: %s' % (self.labels[i] or '_', p) for i, p in enumerate(self.domain)),
-            self.codomain)
+            prefix,
+            ', '.join('%s: %s' % (self.labels[i] or '_', t) for i, t in enumerate(domain)),
+            codomain)
