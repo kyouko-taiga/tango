@@ -35,9 +35,10 @@ kw_    = lambda value: skip(a(Token('identifier', value)))
 nl_    = skip(some(lambda token: token.type == 'newline'))
 nl_opt = skip(many(some(lambda token: token.type == 'newline')))
 
-type_signature = forward_decl()
-expression     = forward_decl()
-statement      = forward_decl()
+type_signature  = forward_decl()
+expression      = forward_decl()
+call_expression = forward_decl()
+statement       = forward_decl()
 
 def make_identifier(token):
     return token.value
@@ -46,7 +47,7 @@ identifier = (
     some(lambda token: token.type == 'identifier')
     >> make_identifier)
 
-pfx_op = op('not') >> make_identifier
+pfx_op = (op('+') | op('-') | op('not')) >> make_identifier
 
 mul_op = (op('*') | op('/') | op('%')) >> make_identifier
 add_op = (op('+') | op('-')) >> make_identifier
@@ -159,15 +160,19 @@ select_expression = (
     variable_identifier + many(op_('.') + variable_identifier)
     >> make_select_expression)
 
-citizen = constant | select_expression
-
 def make_prefixed_expression(args):
-    return PrefixedExpression(
-        operator = args[0],
-        operand = args[1])
+    if args[0]:
+        return PrefixedExpression(
+            operator = args[0],
+            operand = args[1])
+    return args[1]
+
+primary = identifier | constant | op_('(') + expression + op_(')')
+
+sfx_expr = call_expression | select_expression | primary
 
 pfx_expr = (
-    pfx_op + expression
+    maybe(pfx_op) + sfx_expr
     >> make_prefixed_expression)
 
 def make_binary_expression(args):
@@ -188,9 +193,12 @@ def make_binary_expression(args):
     # simply return the operand "as is".
     return args[0]
 
-mul_expr = citizen + many(mul_op + citizen) >> make_binary_expression
+operand  = pfx_expr | (op_('(') + expression + op_(')'))
+mul_expr = operand + many(mul_op + operand) >> make_binary_expression
 add_expr = mul_expr + many(add_op + mul_expr) >> make_binary_expression
 bin_expr = add_expr
+
+expression.define(bin_expr)
 
 def make_call_positional_argument(args):
     return CallArgument(
@@ -222,11 +230,9 @@ def make_call(args):
 
 function_identifier = select_expression | variable_identifier
 
-call_expression = (
+call_expression.define(
     function_identifier + op_('(') + maybe(call_argument_list) + op_(')')
     >> make_call)
-
-expression.define(call_expression | bin_expr | pfx_expr)
 
 def make_assignment(args):
     return Assignment(

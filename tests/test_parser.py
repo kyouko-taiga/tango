@@ -150,6 +150,43 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.right.left.value, '1')
         self.assertEqual(result.right.right.value, '2')
 
+        result = parser.parse(tango.tokenize('(0 + 1) * 2'))
+        self.assertEqual(result.operator, '*')
+        self.assertEqual(result.left.operator, '+')
+        self.assertEqual(result.left.left.value, '0')
+        self.assertEqual(result.left.right.value, '1')
+        self.assertEqual(result.right.value, '2')
+
+    def test_expression(self):
+        parser = tango.expression + skip(finished)
+
+        result = parser.parse(tango.tokenize('x'))
+        self.assertIsInstance(result, ast.Identifier)
+
+        result = parser.parse(tango.tokenize('0'))
+        self.assertIsInstance(result, ast.Literal)
+
+        result = parser.parse(tango.tokenize('(((0)))'))
+        self.assertIsInstance(result, ast.Literal)
+
+        result = parser.parse(tango.tokenize('f()'))
+        self.assertIsInstance(result, ast.Call)
+
+        result = parser.parse(tango.tokenize('a.b.c'))
+        self.assertIsInstance(result, ast.Select)
+
+        result = parser.parse(tango.tokenize('+0'))
+        self.assertIsInstance(result, ast.PrefixedExpression)
+
+        result = parser.parse(tango.tokenize('0 + 0'))
+        self.assertIsInstance(result, ast.BinaryExpression)
+
+        result = parser.parse(tango.tokenize('Int.+(0 - -9)'))
+        self.assertIsInstance(result, ast.Call)
+        self.assertIsInstance(result.callee, ast.Select)
+        self.assertIsInstance(result.arguments[0].value, ast.BinaryExpression)
+        self.assertIsInstance(result.arguments[0].value.right, ast.PrefixedExpression)
+
     def test_assignment(self):
         parser = tango.assignment + skip(finished)
 
