@@ -201,96 +201,31 @@ class TypeSolver(Visitor):
         def __init__(self, type):
             self.type = type
 
+    class TypeTag(BaseType):
+        # Types themselves should be typed with `Type`. But there're many
+        # instances where we need the type name to refer to the type's itself
+        # and not that of the first-class type value (e.g. `Int.+`). Whether
+        # the type name should be interpreted as a first-class value or a
+        # reference to its own type depends on where the name is used. As a
+        # result, it is simpler to store a `TypeTag` object in our
+        # environment, so that we can choose what type we want depending on
+        # the context.
+
+        def __init__(self, instance_type):
+            self.instance_type = instance_type
+
     def __init__(self):
         # A simple substitution map: (TypeVariable) -> Type.
         self.environment = Substitution({
-            TypeVariable(id=(builtin_scope, symbol)): Type
+            TypeVariable(id=(builtin_scope, symbol)): TypeSolver.TypeTag(obj)
             for symbol, obj in builtin_scope.members.items() if isinstance(obj, BaseType)
         })
-
-        # The store of nominal types: (Scope, String) -> Type.
-        self.nominal_types = {
-            (builtin_scope, symbol): obj
-            for symbol, obj in builtin_scope.members.items() if isinstance(obj, BaseType)
-        }
 
         # Methods, properties and enum cases may use `Self` as a placeholder
         # to denote the "final" type they're defined in. This stack will serve
         # us to keep track of the actual type `Self` represents, depending on
         # the context we'll be evaluation typing informations.
         self.current_self_type = []
-
-    def type_or_container_type(self, identifier):
-        # If a nominal type in the identifer's scope is named after the
-        # identifier, we treat the identifier as a type name.
-        if identifier.name == 'Self':
-            try:
-                return self.current_self_type[-1]
-            except IndexError:
-                raise InferenceError("invalid use of 'Self' outside of a type declaration")
-
-        key = (identifier.__info__['scope'], identifier.name)
-        if key in self.nominal_types:
-            return self.nominal_types[key]
-
-        # Otherwise, we treat the identifier as a usual container's name.
-        return self.environment[TypeVariable(identifier)]
-
-    def eval_type_signature(self, signature):
-        if isinstance(signature, BaseType):
-            return signature
-
-        # If the signature is an AST node, maybe we already parsed it.
-        if isinstance(signature, Node) and ('type' in signature.__info__):
-            return signature.__info__['type']
-
-        # If the signature is a type identifier, we should get it from the
-        # store of nominal types.
-        if isinstance(signature, TypeIdentifier):
-            if signature.name == 'Self':
-                try:
-                    result = self.current_self_type[-1]
-                except IndexError:
-                    raise InferenceError("invalid use of 'Self' outside of a type declaration")
-            else:
-                try:
-                    result = self.nominal_types[(signature.__info__['scope'], signature.name)]
-
-                # If the desired name isn't in the nominal type store, it may
-                # be because we haven't visited its declaration yet. It that
-                # case, we need to introduce a new type variable.
-                except KeyError:
-                    result = TypeVariable()
-                    self.nominal_types[(signature.__info__['scope'], signature.name)] = result
-
-            signature.__info__['type'] = result
-            return result
-
-            # TODO Handle abstract types
-
-        # If the signature is a type function, we should build a FunctionType.
-        if isinstance(signature, FunctionSignature):
-            parameter_types = [
-                self.eval_type_signature(p.type_annotation)
-                for p in signature.parameters
-            ]
-            return_type = self.eval_type_signature(signature.return_type)
-
-            function_type = FunctionType(
-                domain = parameter_types,
-                codomain = return_type,
-                labels = [p.label for p in signature.parameters])
-
-            signature.__info__['type'] = function_type
-            return function_type
-
-        if isinstance(signature, Select):
-            # If scope binding was able to identify the scope of the member,
-            # we can treat it as any other kind of identifier.
-            if 'scope' in signature.member.__info__:
-                return self.eval_type_signature(signature.member)
-
-        assert False, "cannot evaluate type signature '%s'" % signature
 
     def visit_Block(self, node):
         # We introduce a new type variable for each symbol declared within the
@@ -314,13 +249,17 @@ class TypeSolver(Visitor):
         # If there's an initializing value, we have to infer its type first.
         if node.initial_value:
             initial_value_type = self.analyse(node.initial_value)
+            if isinstance(initial_value_type, TypeSolver.TypeTag):
+                initial_value_type = Type
 
             # If there's a type annotation as well, we should unify the type
             # it denotes with the one that was inferred from the initializing
             # value. This will not only check that the types match, but will
             # also try to infer specialization arguments of abstract types.
             if node.type_annotation:
-                type_annotation = self.eval_type_signature(node.type_annotation)
+                type_annotation = self.analyse(node.type_annotation)
+                if isinstance(type_annotation, TypeSolver.TypeTag):
+                    type_annotation = type_annotation.instance_type
                 self.environment.unify(type_annotation, initial_value_type)
 
             inferred = initial_value_type
@@ -328,7 +267,9 @@ class TypeSolver(Visitor):
         # If there isn't an initializing value, we should simply use the type
         # annotation.
         else:
-            inferred = self.eval_type_signature(node.type_annotation)
+            inferred = self.analyse(node.type_annotation)
+            if isinstance(inferred, TypeSolver.TypeTag):
+                inferred = inferred.instance_type
 
         # Finally, we should unify the inferred type with the type variable
         # corresponding to the symbol under declaration.
@@ -340,19 +281,24 @@ class TypeSolver(Visitor):
     def visit_FunctionDecl(self, node):
         # First, we should create (unless we already did) a generic type for
         # each of the function's generic parameters (if any), to populate the
-        # nominal types store.
+        # environment.
         member_scope = node.body.__info__['scope']
         generic_parameters = OrderedDict()
         for symbol in node.generic_parameters:
-            if (member_scope, symbol) not in self.nominal_types:
-                self.nominal_types[(member_scope, symbol)] = GenericType(symbol)
-            generic_parameters[symbol] = self.nominal_types[(member_scope, symbol)]
+            var = TypeVariable(id=(member_scope, symbol))
+            if var not in self.environment:
+                self.environment.unify(var, GenericType(symbol))
+                generic_parameters[symbol] = var
+            else:
+                generic_parameters[symbol] = self.environment[var]
 
         # Unlike container declarations, function parameters always have a
         # type annotation, so we can type them directly.
         parameter_types = []
         for parameter in node.signature.parameters:
-            type_annotation = self.eval_type_signature(parameter.type_annotation)
+            type_annotation = self.analyse(parameter.type_annotation)
+            if isinstance(type_annotation, TypeSolver.TypeTag):
+                type_annotation = type_annotation.instance_type
             parameter_types.append(type_annotation)
 
             # We should unify the type we read from the annotations with the
@@ -365,10 +311,14 @@ class TypeSolver(Visitor):
             # expression and unify it with that of the parameter's annotation.
             if parameter.default_value:
                 default_value_type = self.analyse(parameter.default_value)
+                if isinstance(default_value_type, TypeSolver.TypeTag):
+                    default_value_type = Type
                 self.environment.unify(type_annotation, default_value_type)
 
         # The return type is simply a type signature we've to evaluate.
-        return_type = self.eval_type_signature(node.signature.return_type)
+        return_type = self.analyse(node.signature.return_type)
+        if isinstance(return_type, TypeSolver.TypeTag):
+            return_type = return_type.instance_type
 
         # Once we've computed the function signature, we can create a type
         # for the function itself.
@@ -411,23 +361,14 @@ class TypeSolver(Visitor):
                 for name in node.body.__info__['symbols']
             })
 
-        # If the node was in already in the nominal types store (as a result
-        # of trying to access it before visiting this declaration), we should
-        # unify the stored value with the type we just created. Otherwise we
-        # should simply add it to the store.
-        key = (node.__info__['scope'], node.name)
-        if key in self.nominal_types:
-            self.environment.unify(self.nominal_types[key], struct_type)
-        else:
-            self.nominal_types[key] = struct_type
-
-        # The struct type itself should be typed with `Type`.
-        self.environment.unify(TypeVariable(node), Type)
+        # Then we can unify the struct's name with a type tag.
+        type_tag = TypeSolver.TypeTag(struct_type)
+        self.environment.unify(TypeVariable(node), type_tag)
 
         # The body of a struct can be visited as a normal satement block, as
         # long as we push a variable on the `current_self_type` stack before,
-        # to properly type references to `Self`.
-        self.current_self_type.append(struct_type)
+        # to properly catch references to `Self`.
+        self.current_self_type.append(type_tag)
         self.visit(node.body)
         self.current_self_type.pop()
 
@@ -435,6 +376,8 @@ class TypeSolver(Visitor):
         # First, we infer and unify the types of the lvalue and rvalue.
         lvalue_type = self.analyse(node.lvalue)
         rvalue_type = self.analyse(node.rvalue)
+        if isinstance(rvalue_type, TypeSolver.TypeTag):
+            rvalue_type = Type
         self.environment.unify(lvalue_type, rvalue_type)
 
         # If the lvalue is an identifer, we unify its name with the type of
@@ -447,6 +390,9 @@ class TypeSolver(Visitor):
         assert False, '%s is not a valid lvalue' % node.target.__class__.__name__
 
     def analyse(self, node):
+        if isinstance(node, BaseType):
+            return node
+
         # If the node is a dummy TypeNode, we should simply return the types
         # it represents.
         if isinstance(node, TypeSolver.TypeNode):
@@ -459,22 +405,28 @@ class TypeSolver(Visitor):
 
         # If the node is an identifier, we should simply try to get its type
         # from the environment.
-        if isinstance(node, Identifier):
-            try:
-                node.__info__['type'] = self.environment[TypeVariable(node)]
-                return node.__info__['type']
-            except KeyError:
-                raise UndefinedSymbol(node.name)
+        if isinstance(node, (Identifier, TypeIdentifier)):
+            # If the identifier's name is the special `Self` keyword, we
+            # should the tag of the type under declaration.
+            if node.name == 'Self':
+                try:
+                    result = self.current_self_type[-1]
+                except IndexError:
+                    raise InferenceError("invalid use of 'Self' outside of a type declaration")
+            else:
+                try:
+                    result = self.environment[TypeVariable(node)]
+                except KeyError:
+                    raise UndefinedSymbol(node.name)
+
+            node.__info__['type'] = result
+            return result
 
         if isinstance(node, Select):
-            # If the owner is an identifier, we might have to treat it as a
-            # type name rather than a container's name.
-            if isinstance(node.owner, Identifier):
-                owner_types = self.type_or_container_type(node.owner)
-
-            # If it's any other kind of expression, we have to infer its type.
-            else:
-                owner_types = self.analyse(node.owner)
+            # First, we need to infer the type of the owner.
+            owner_types = self.analyse(node.owner)
+            if isinstance(owner_types, TypeSolver.TypeTag):
+                owner_types = owner_types.instance_type
 
             # If the result we got is a type variable, we have no choice but
             # to return another type variable.
@@ -482,7 +434,8 @@ class TypeSolver(Visitor):
                 return TypeVariable()
 
             # If the result we got is an actual type (or union of), we should
-            # look for a member with the requested name in its definition.
+            # look for a member with the requested name in its (or their)
+            # definition(s).
             if not isinstance(owner_types, TypeUnion):
                 owner_types = (owner_types,)
 
@@ -505,15 +458,38 @@ class TypeSolver(Visitor):
             node.__info__['type'] = result
             return result
 
+        # If the node is a function signature, we should build a FunctionType.
+        if isinstance(node, FunctionSignature):
+            domain = []
+            for parameter in node.parameters:
+                type_annotation = self.analyse(parameter.type_annotation)
+                if isinstance(type_annotation, TypeSolver.TypeTag):
+                    type_annotation = type_annotation.instance_type
+                domain.append(type_annotation)
+
+            codomain = self.analyse(node.return_type)
+            if isinstance(codomain, TypeSolver.TypeTag):
+                codomain = codomain.instance_type
+
+            function_type = FunctionType(
+                domain   = domain,
+                codomain = codomain,
+                labels   = [p.label for p in node.parameters])
+
+            node.__info__['type'] = function_type
+            return function_type
+
         if isinstance(node, PrefixedExpression):
             # First, we have to infer the type of the operand.
             operand_type = self.analyse(node.operand)
+            if isinstance(operand_type, TypeSolver.TypeTag):
+                operand_type = Type
 
             # Then, we can get the available signatures for the operator.
             candidates = find_operator_candidates(operand_type, node.operator)
             if len(candidates) == 0:
                 raise InferenceError(
-                    "no candidates in %s has a member '%s'" % (candidates, node.operator))
+                    "%s has a no member '%s'" % (operand_type, node.operator))
 
             # Once we've got those operator signatures, we should create a
             # temporary Call node to fallback on the usual analysis of
@@ -529,12 +505,14 @@ class TypeSolver(Visitor):
         if isinstance(node, BinaryExpression):
             # First, we have to infer the type of the left operand.
             left_type = self.analyse(node.left)
+            if isinstance(left_type, TypeSolver.TypeTag):
+                left_type = Type
 
             # Then, we can get the available signatures for the operator.
             candidates = find_operator_candidates(left_type, node.operator)
             if len(candidates) == 0:
                 raise InferenceError(
-                    "no candidates in %s has a member '%s'" % (candidates, node.operator))
+                    "%s has a no member '%s'" % (left_type, node.operator))
 
             # Once we've got those operator signatures, we should create a
             # temporary Call node to fallback on the usual analysis of
@@ -550,6 +528,8 @@ class TypeSolver(Visitor):
         if isinstance(node, Call):
             # First, we have to get the available signatures for the callee.
             callee_signatures = self.analyse(node.callee)
+            if isinstance(callee_signatures, TypeSolver.TypeTag):
+                callee_signatures = callee_signatures.instance_type
 
             # Since it might be possible that we try to infer the type of a
             # function call before its signature has been inferred, we should
@@ -569,7 +549,10 @@ class TypeSolver(Visitor):
             # Then, we have to infer the type of each argument.
             argument_types = []
             for argument in node.arguments:
-                argument_types.append(self.analyse(argument.value))
+                argument_type = self.analyse(argument.value)
+                if isinstance(argument_type, TypeSolver.TypeTag):
+                    argument_type = Type
+                argument_types.append(argument_type)
 
             # Then, we have to find which signatures agree with the types
             # we've inferred for the function arguments.
@@ -601,12 +584,13 @@ class TypeSolver(Visitor):
             # Specialize the generic arguments of the candidates with the
             # argument types we inferred.
             specialized_candidates = (specialize(c, argument_types) for c in candidates)
-            candidates = (c for specialized in specialized_candidates for c in specialized)
+            candidates = list(c for specialized in specialized_candidates for c in specialized)
 
             # Check the specialized candidate to filter out those whose
             # signature doesn't match the node's arguments or return type.
             selected_candidates = []
             for signature in candidates:
+                valid = True
                 for expected_type, proposed_type in zip(signature.domain, argument_types):
                     if isinstance(expected_type, GenericType):
                         expected_type = signature.specialized_parameter(expected_type.name)
