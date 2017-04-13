@@ -59,6 +59,11 @@ class NominalType(BaseType):
         super().__init__(members)
         self.name = name
 
+    def __eq__(self, other):
+        return (type(self) == type(other)
+                and (self.name == other.name)
+                and (self.members == other.members))
+
     def __str__(self):
         return str(self.name)
 
@@ -68,14 +73,7 @@ class GenericType(NominalType):
 
 
 class StructType(NominalType):
-
-    def __init__(self, name, members=None):
-        super().__init__(name, members)
-
-    def __eq__(self, other):
-        return (type(self) == type(other)
-                and (self.name == other.name)
-                and (self.members == other.members))
+    pass
 
 
 class StructuralType(BaseType):

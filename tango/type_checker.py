@@ -68,6 +68,25 @@ class TypeVariable(object):
         return '$%i' % hash(self)
 
 
+class TypeTag(BaseType):
+    # Types themselves should be typed with `Type`. But there're many
+    # instances where we need the type name to refer to the type's itself and
+    # not that of the first-class type value (e.g. `Int.+`). Whether the type
+    # name should be interpreted as a first-class value or a reference to its
+    # own type depends on where the name is used. As a result, it is simpler
+    # to store a `TypeTag` object in the solver's environment, so that we can
+    # choose what type we want depending on the context.
+
+    def __init__(self, instance_type):
+        self.instance_type = instance_type
+
+    def __eq__(self, other):
+        return (type(self) == type(other)) and (self.instance_type == other.instance_type)
+
+    def __str__(self):
+        return 'TypeTag<%s>' % self.instance_type
+
+
 class Substitution(object):
 
     def __init__(self, storage=None):
@@ -132,6 +151,9 @@ class Substitution(object):
             for it in a.members:
                 self.unify(a.members[it], b.members[it])
 
+        elif isinstance(a, TypeTag) and isinstance(b, TypeTag):
+            self.unify(a.instance_type, b.instance_type)
+
         elif isinstance(a, BaseType) and isinstance(b, BaseType):
             if a != b:
                 raise InferenceError("type '%s' does not match '%s'" % (a, b))
@@ -152,9 +174,9 @@ class Substitution(object):
 
         if isinstance(t, FunctionType):
             return FunctionType(
-                domain = [self.deepwalk(p) for p in t.domain],
-                codomain = self.deepwalk(t.codomain),
-                labels = t.labels,
+                domain             = [self.deepwalk(p) for p in t.domain],
+                codomain           = self.deepwalk(t.codomain),
+                labels             = t.labels,
                 generic_parameters = [
                     (name, self.deepwalk(value))
                     for name, value in t.generic_parameters.items()
@@ -201,23 +223,10 @@ class TypeSolver(Visitor):
         def __init__(self, type):
             self.type = type
 
-    class TypeTag(BaseType):
-        # Types themselves should be typed with `Type`. But there're many
-        # instances where we need the type name to refer to the type's itself
-        # and not that of the first-class type value (e.g. `Int.+`). Whether
-        # the type name should be interpreted as a first-class value or a
-        # reference to its own type depends on where the name is used. As a
-        # result, it is simpler to store a `TypeTag` object in our
-        # environment, so that we can choose what type we want depending on
-        # the context.
-
-        def __init__(self, instance_type):
-            self.instance_type = instance_type
-
     def __init__(self):
         # A simple substitution map: (TypeVariable) -> Type.
         self.environment = Substitution({
-            TypeVariable(id=(builtin_scope, symbol)): TypeSolver.TypeTag(obj)
+            TypeVariable(id=(builtin_scope, symbol)): TypeTag(obj)
             for symbol, obj in builtin_scope.members.items() if isinstance(obj, BaseType)
         })
 
@@ -249,7 +258,7 @@ class TypeSolver(Visitor):
         # If there's an initializing value, we have to infer its type first.
         if node.initial_value:
             initial_value_type = self.analyse(node.initial_value)
-            if isinstance(initial_value_type, TypeSolver.TypeTag):
+            if isinstance(initial_value_type, TypeTag):
                 initial_value_type = Type
 
             # If there's a type annotation as well, we should unify the type
@@ -258,7 +267,7 @@ class TypeSolver(Visitor):
             # also try to infer specialization arguments of abstract types.
             if node.type_annotation:
                 type_annotation = self.analyse(node.type_annotation)
-                if isinstance(type_annotation, TypeSolver.TypeTag):
+                if isinstance(type_annotation, TypeTag):
                     type_annotation = type_annotation.instance_type
                 self.environment.unify(type_annotation, initial_value_type)
 
@@ -268,7 +277,7 @@ class TypeSolver(Visitor):
         # annotation.
         else:
             inferred = self.analyse(node.type_annotation)
-            if isinstance(inferred, TypeSolver.TypeTag):
+            if isinstance(inferred, TypeTag):
                 inferred = inferred.instance_type
 
         # Finally, we should unify the inferred type with the type variable
@@ -297,7 +306,7 @@ class TypeSolver(Visitor):
         parameter_types = []
         for parameter in node.signature.parameters:
             type_annotation = self.analyse(parameter.type_annotation)
-            if isinstance(type_annotation, TypeSolver.TypeTag):
+            if isinstance(type_annotation, TypeTag):
                 type_annotation = type_annotation.instance_type
             parameter_types.append(type_annotation)
 
@@ -311,13 +320,13 @@ class TypeSolver(Visitor):
             # expression and unify it with that of the parameter's annotation.
             if parameter.default_value:
                 default_value_type = self.analyse(parameter.default_value)
-                if isinstance(default_value_type, TypeSolver.TypeTag):
+                if isinstance(default_value_type, TypeTag):
                     default_value_type = Type
                 self.environment.unify(type_annotation, default_value_type)
 
         # The return type is simply a type signature we've to evaluate.
         return_type = self.analyse(node.signature.return_type)
-        if isinstance(return_type, TypeSolver.TypeTag):
+        if isinstance(return_type, TypeTag):
             return_type = return_type.instance_type
 
         # Once we've computed the function signature, we can create a type
@@ -347,6 +356,8 @@ class TypeSolver(Visitor):
         for overload in find_overload_decls(node.name, node.__info__['scope']):
             overload_set.add(TypeVariable(overload))
 
+        # FIXME Avoid adding duplicates to the set of overloads.
+
         # Finally, we should continue the type inference in the function body.
         self.visit(node.body)
 
@@ -362,7 +373,7 @@ class TypeSolver(Visitor):
             })
 
         # Then we can unify the struct's name with a type tag.
-        type_tag = TypeSolver.TypeTag(struct_type)
+        type_tag = TypeTag(struct_type)
         self.environment.unify(TypeVariable(node), type_tag)
 
         # The body of a struct can be visited as a normal satement block, as
@@ -376,7 +387,7 @@ class TypeSolver(Visitor):
         # First, we infer and unify the types of the lvalue and rvalue.
         lvalue_type = self.analyse(node.lvalue)
         rvalue_type = self.analyse(node.rvalue)
-        if isinstance(rvalue_type, TypeSolver.TypeTag):
+        if isinstance(rvalue_type, TypeTag):
             rvalue_type = Type
         self.environment.unify(lvalue_type, rvalue_type)
 
@@ -425,7 +436,7 @@ class TypeSolver(Visitor):
         if isinstance(node, Select):
             # First, we need to infer the type of the owner.
             owner_types = self.analyse(node.owner)
-            if isinstance(owner_types, TypeSolver.TypeTag):
+            if isinstance(owner_types, TypeTag):
                 owner_types = owner_types.instance_type
 
             # If the result we got is a type variable, we have no choice but
@@ -463,12 +474,12 @@ class TypeSolver(Visitor):
             domain = []
             for parameter in node.parameters:
                 type_annotation = self.analyse(parameter.type_annotation)
-                if isinstance(type_annotation, TypeSolver.TypeTag):
+                if isinstance(type_annotation, TypeTag):
                     type_annotation = type_annotation.instance_type
                 domain.append(type_annotation)
 
             codomain = self.analyse(node.return_type)
-            if isinstance(codomain, TypeSolver.TypeTag):
+            if isinstance(codomain, TypeTag):
                 codomain = codomain.instance_type
 
             function_type = FunctionType(
@@ -482,7 +493,7 @@ class TypeSolver(Visitor):
         if isinstance(node, PrefixedExpression):
             # First, we have to infer the type of the operand.
             operand_type = self.analyse(node.operand)
-            if isinstance(operand_type, TypeSolver.TypeTag):
+            if isinstance(operand_type, TypeTag):
                 operand_type = Type
 
             # Then, we can get the available signatures for the operator.
@@ -505,7 +516,7 @@ class TypeSolver(Visitor):
         if isinstance(node, BinaryExpression):
             # First, we have to infer the type of the left operand.
             left_type = self.analyse(node.left)
-            if isinstance(left_type, TypeSolver.TypeTag):
+            if isinstance(left_type, TypeTag):
                 left_type = Type
 
             # Then, we can get the available signatures for the operator.
@@ -528,36 +539,71 @@ class TypeSolver(Visitor):
         if isinstance(node, Call):
             # First, we have to get the available signatures for the callee.
             callee_signatures = self.analyse(node.callee)
-            if isinstance(callee_signatures, TypeSolver.TypeTag):
+            if isinstance(callee_signatures, TypeTag):
                 callee_signatures = callee_signatures.instance_type
 
-            # Since it might be possible that we try to infer the type of a
-            # function call before its signature has been inferred, we should
-            # handle cases where `callee_signatures` is still a variable.
-            if isinstance(callee_signatures, TypeVariable):
-                return TypeVariable()
-
-            # Since functions may be overloaded, we group their different
-            # signatures in a TypeUnion. As a result, we can expect
-            # `callee_signatures` to be iterable.
+            # We make `callee_signatures` an iterable if it's not, so we can
+            # use it as a TypeUnion even if it isn't.
             if not isinstance(callee_signatures, TypeUnion):
-                callee_signatures = TypeUnion((callee_signatures,))
+                callee_signatures = (callee_signatures,)
 
-            if not isinstance(callee_signatures.first(), FunctionType):
-                raise InferenceError("'%s' is not a function type" % callee_signatures.first())
+            eligible_signatures = []
+            selected_codomains = []
+
+            for signature in callee_signatures:
+                # We should list all function signatures as candidates.
+                if isinstance(signature, FunctionType):
+                    eligible_signatures.append(signature)
+                    continue
+
+                # When the signature is a variable, we should add a fresh
+                # variable to the list of pre-selected codomains.
+                if isinstance(signature, TypeVariable):
+                    selected_codomains.append(TypeVariable())
+                    continue
+
+                # The callee may also be a non-function type, for calls that
+                # apply a type constructor (e.g. Int(0)). In those cases, we
+                # should list all the constructors of the type as candidates.
+                if not isinstance(signature, FunctionType):
+                    type_constructors = signature.members.get('new', [])
+                    if isinstance(type_constructors, TypeVariable):
+                        selected_codomains.append(signature)
+                    elif isinstance(type_constructors, TypeUnion):
+                        eligible_signatures.extend(type_constructors)
+                    else:
+                        eligible_signatures.append(type_constructors)
+
+            # If we couldn't find any eligible signature, we should return the
+            # type variables we already selected as codomains (if any).
+            if not eligible_signatures:
+                if not selected_codomains:
+                    raise InferenceError(
+                        "function call do not match any candidate in '%s'" % callee_signatures)
+
+                # Avoid creating singletons when there's only one candidate.
+                if len(selected_codomains) == 1:
+                    result = selected_codomains[0]
+                else:
+                    result = TypeUnion(selected_codomains)
+                node.__info__['type'] = result
+                return result
 
             # Then, we have to infer the type of each argument.
             argument_types = []
             for argument in node.arguments:
                 argument_type = self.analyse(argument.value)
-                if isinstance(argument_type, TypeSolver.TypeTag):
+                if isinstance(argument_type, TypeTag):
                     argument_type = Type
                 argument_types.append(argument_type)
 
             # Then, we have to find which signatures agree with the types
             # we've inferred for the function arguments.
             candidates = []
-            for signature in callee_signatures:
+            for signature in eligible_signatures:
+                # Make sure the signature is a function type.
+                assert isinstance(signature, FunctionType)
+
                 # Check the number of parameters.
                 if len(signature.domain) != len(node.arguments):
                     continue
@@ -612,7 +658,7 @@ class TypeSolver(Visitor):
 
             if len(selected_candidates) == 0:
                 raise InferenceError(
-                    "function call do not match any candidate for types '%s'" % callee_signatures)
+                    "function call do not match any candidate in '%s'" % eligible_signatures)
 
             # Unify the argument types of the node with the domain of the
             # selected candidates, to propagate type constraints.
@@ -642,6 +688,9 @@ class TypeSolver(Visitor):
                 if isinstance(codomain, GenericType):
                     codomain = candidate.specialized_parameter(codomain.name)
                 result.add(self.environment[codomain])
+
+            for codomain in selected_codomains:
+                result.add(selected_codomains)
 
             # Avoid creating singletons when there's only one candidate.
             if len(result) == 1:
