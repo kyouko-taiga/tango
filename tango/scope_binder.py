@@ -15,6 +15,9 @@ def bind_scopes(ast):
     scope_binder = ScopeBinder()
     scope_binder.visit(result)
 
+    select_scope_binder = SelectScopeBinder()
+    select_scope_binder.visit(result)
+
     return result
 
 
@@ -225,6 +228,38 @@ class ScopeBinder(Visitor):
         self.visit(node.owner)
 
         # Unfortunately, we can't bind the symbols of a select expression yet,
-        # as we need the type of the owner's expression to identifier where to
-        # look for the member. As a result, we leave that work to the type
-        # solver and simply stop the visit here.
+        # because it will depend on the kind of declaration the owner's
+        # identifier is refencing. We'll perform that task in another pass.
+
+
+class SelectScopeBinder(Visitor):
+
+    def nested_scope(self, node):
+        # If the node is an identifier, we have to walk to the node that
+        # declares it. If it turns out to be a nominal type, we can return the
+        # scope of the type's body.
+        if isinstance(node, (Identifier, TypeIdentifier)):
+            decls = node.__info__['scope'][node.name]
+            if decls and isinstance(decls[0], (StructDecl, EnumDecl)):
+                return decls[0].body.__info__['scope']
+
+        # If the node is a select expression, we first have to get the nested
+        # scope of the owner, in order to walk to the node that declares the
+        # member. If it turns out to be a nominal type, we can return the
+        # scope of the type's body.
+        elif isinstance(node, Select):
+            owner_nested_scope = self.nested_scope(node.owner)
+            if owner_nested_scope is not None:
+                decls = owner_nested_scope[node.member.name]
+                if decls and isinstance(decls[0], (StructDecl, EnumDecl)):
+                    return decls[0].body.__info__['scope']
+
+        # In any other case, either the identifier refers to a dynamic type or
+        # a variable, so we can't decide what's its nested scope.
+        return None
+
+    def visit_Select(self, node):
+        member_scope = self.nested_scope(node.owner)
+        if member_scope:
+            node.member.__info__['scope'] = member_scope
+        self.visit(node.owner)
