@@ -147,5 +147,20 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(f_type, TypeUnion)
         self.assertEqual(len(f_type), 2)
 
+    def test_nested_types(self):
+        solver = TypeSolver()
+        module = self.prepare(
+        '''
+        struct E {
+            struct S { cst y: Self }
+        }
+        cst x: E.S
+        '''
+        )
+        solver.visit(module)
+        declaration_nodes = find('ConstantDecl', module)
+        self.assertEqual(solver.environment[TypeVariable(declaration_nodes[0])].name, 'S')
+        self.assertEqual(solver.environment[TypeVariable(declaration_nodes[1])].name, 'S')
+
     def prepare(self, source):
         return bind_scopes(parse(source))

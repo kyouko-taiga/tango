@@ -255,8 +255,13 @@ class TypeSolver(Visitor):
             else:
                 try:
                     result = self.nominal_types[(signature.__info__['scope'], signature.name)]
+
+                # If the desired name isn't in the nominal type store, it may
+                # be because we haven't visited its declaration yet. It that
+                # case, we need to introduce a new type variable.
                 except KeyError:
-                    raise UndefinedSymbol(signature.name)
+                    result = TypeVariable()
+                    self.nominal_types[(signature.__info__['scope'], signature.name)] = result
 
             signature.__info__['type'] = result
             return result
@@ -278,6 +283,14 @@ class TypeSolver(Visitor):
 
             signature.__info__['type'] = function_type
             return function_type
+
+        if isinstance(signature, Select):
+            # If scope binding was able to identify the scope of the member,
+            # we can treat it as any other kind of identifier.
+            if 'scope' in signature.member.__info__:
+                return self.eval_type_signature(signature.member)
+
+        assert False, "cannot evaluate type signature '%s'" % signature
 
     def visit_Block(self, node):
         # We introduce a new type variable for each symbol declared within the
@@ -389,16 +402,24 @@ class TypeSolver(Visitor):
 
     def visit_StructDecl(self, node):
         # First, we should create a new type for the struct, using fresh type
-        # variables for each of the symbols it defines, and keep it in the
-        # nominal types store.
+        # variables for each of the symbols it defines.
         member_scope = node.body.__info__['scope']
         struct_type = StructType(
-            name = node.name,
+            name    = node.name,
             members = {
                 name: self.environment[TypeVariable((member_scope, name))]
                 for name in node.body.__info__['symbols']
             })
-        self.nominal_types[(node.__info__['scope'], node.name)] = struct_type
+
+        # If the node was in already in the nominal types store (as a result
+        # of trying to access it before visiting this declaration), we should
+        # unify the stored value with the type we just created. Otherwise we
+        # should simply add it to the store.
+        key = (node.__info__['scope'], node.name)
+        if key in self.nominal_types:
+            self.environment.unify(self.nominal_types[key], struct_type)
+        else:
+            self.nominal_types[key] = struct_type
 
         # The struct type itself should be typed with `Type`.
         self.environment.unify(TypeVariable(node), Type)
