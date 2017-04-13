@@ -24,7 +24,7 @@ class SymbolsExtractor(Transformer):
         symbols = set()
 
         for i, statement in enumerate(node.statements):
-            if isinstance(statement, (ConstantDecl, VariableDecl)):
+            if isinstance(statement, (EnumCaseDecl, ConstantDecl, VariableDecl)):
                 # Add the container's identifier to the current scope.
                 symbols.add(statement.name)
 

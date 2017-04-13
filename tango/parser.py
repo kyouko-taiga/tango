@@ -38,6 +38,8 @@ nl_opt = skip(many(some(lambda token: token.type == 'newline')))
 type_signature  = forward_decl()
 expression      = forward_decl()
 call_expression = forward_decl()
+struct_decl     = forward_decl()
+enum_decl       = forward_decl()
 statement       = forward_decl()
 
 def make_identifier(token):
@@ -92,6 +94,17 @@ type_identifier = (
     identifier + maybe(op_('[') + specialization_parameter_list + op_(']'))
     >> make_type_identifier)
 
+def make_nested_type_identifier(args):
+    if args[1]:
+        return Select(
+            owner = make_select_expression((args[0], args[1][:-1])),
+            member = args[1][-1])
+    return args[0]
+
+nested_type_identifier = (
+    type_identifier + many(op_('.') + type_identifier)
+    >> make_nested_type_identifier)
+
 def make_function_parameter(args):
     attributes = args[2] or []
     if args[0].value == 'mut':
@@ -123,7 +136,7 @@ function_signature = (
     op_('->') + type_signature
     >> make_function_signature)
 
-type_signature.define(function_signature | type_identifier)
+type_signature.define(function_signature | nested_type_identifier)
 
 def make_number_literal(token):
     result = Literal(value = token.value)
@@ -325,11 +338,11 @@ function_decl = (
     >> make_function_decl)
 
 type_import_list = (
-    type_identifier + many(op_(',') + type_identifier)
+    nested_type_identifier + many(op_(',') + nested_type_identifier)
     >> flatten)
 
 type_conformance_list = (
-    type_identifier + many(op_('&') + type_identifier)
+    nested_type_identifier + many(op_('&') + nested_type_identifier)
     >> flatten)
 
 def make_enum_case_parameter(args):
@@ -362,13 +375,13 @@ def make_enum_decl(args):
         conformance_list = args[2],
         body = Block(args[3]))
 
-enum_member = enum_case_decl | function_decl
+enum_member = enum_decl | struct_decl | enum_case_decl | function_decl
 
 enum_member_list = (
     maybe(enum_member) + many(nl_ + nl_opt + enum_member) + nl_opt
     >> make_statement_list)
 
-enum_decl = (
+enum_decl.define(
     kw_('enum') + identifier +
     maybe(kw_('import') + type_import_list) +
     maybe(op_(':') + type_conformance_list) +
@@ -382,13 +395,13 @@ def make_struct_decl(args):
         conformance_list = args[2],
         body = Block(args[3]))
 
-struct_member = variable_decl | constant_decl | function_decl
+struct_member = enum_decl | struct_decl | function_decl | variable_decl | constant_decl
 
 struct_members = (
     maybe(struct_member) + many(nl_ + nl_opt + struct_member) + nl_opt
     >> make_statement_list)
 
-struct_decl = (
+struct_decl.define(
     kw_('struct') + identifier +
     maybe(kw_('import') + type_import_list) +
     maybe(op_(':') + type_conformance_list) +
