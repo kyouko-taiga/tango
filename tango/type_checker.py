@@ -365,16 +365,24 @@ class TypeSolver(Visitor):
         # First, we should create a new type for the struct, using fresh type
         # variables for each of the symbols it defines.
         member_scope = node.body.__info__['scope']
-        struct_type = StructType(
-            name    = node.name,
-            members = {
-                name: self.environment[TypeVariable((member_scope, name))]
-                for name in node.body.__info__['symbols']
-            })
 
-        # Then we can unify the struct's name with a type tag.
-        type_tag = TypeTag(struct_type)
-        self.environment.unify(TypeVariable(node), type_tag)
+        # Then, we create a new struct type (unless we already did) that we
+        # enclose it within a type tag that we unify with the struct's name.
+        walked = self.environment[TypeVariable(node)]
+        if isinstance(walked, TypeVariable):
+            struct_type = StructType(
+                name    = node.name,
+                members = {
+                    name: self.environment[TypeVariable((member_scope, name))]
+                    for name in node.body.__info__['symbols']
+                })
+
+            type_tag = TypeTag(struct_type)
+            self.environment.unify(TypeVariable(node), type_tag)
+
+        else:
+            type_tag = walked
+            assert isinstance(type_tag, TypeTag)
 
         # The body of a struct can be visited as a normal satement block, as
         # long as we push a variable on the `current_self_type` stack before,
