@@ -672,23 +672,34 @@ class TypeSolver(Visitor):
             # selected candidates, to propagate type constraints.
             for i, argument_type in enumerate(argument_types):
                 candidate_domains = TypeUnion()
+                overloads = []
                 for candidate in selected_candidates:
                     # If the candidate argument type is generic, we should try
                     # to find its replacement in the candidate's
                     # specialization. Otherwise we simply use the type of the
                     # candidate argument.
                     if isinstance(candidate.domain[i], GenericType):
-                        candidate_domains.add(
-                            candidate.specialized_parameter(candidate.domain[i].name))
+                        arg = candidate.specialized_parameter(candidate.domain[i].name)
                     else:
-                        candidate_domains.add(candidate.domain[i])
+                        arg = candidate.domain[i]
 
-                # We have to make a copy of the type union we created here to
-                # avoid introducing circular substitutions in the environment.
-                # This could happen if `cnadidate_domains` references
-                # `argument_type` somewhere in the hierarchy.
-                candidate_domains = candidate_domains.copy()
-                self.environment.unify(candidate_domains, argument_type)
+                    # We don't unify function type arguments when they're used
+                    # as parameters, to preserve their overloads.
+                    if isinstance(arg, FunctionType):
+                        overloads.append(arg)
+                    else:
+                        candidate_domains.add(arg)
+
+                if candidate_domains.types:
+                    # We have to make a copy of the type union we created here
+                    # to avoid introducing circular substitutions in the
+                    # environment. This could happen if `candidate_domains`
+                    # references `argument_type` somewhere in the hierarchy.
+                    candidate_domains = candidate_domains.copy()
+                    self.environment.unify(candidate_domains, argument_type)
+
+                for overload in overloads:
+                    argument_type.add(overload)
 
             result = TypeUnion()
             for candidate in selected_candidates:
