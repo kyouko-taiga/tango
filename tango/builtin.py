@@ -7,8 +7,15 @@ Nothing  = NominalType('Nothing')
 Anything = NominalType('Anything')
 Self     = NominalType('Self')
 
-Int = NominalType('Int')
+Int      = NominalType('Int')
+Double   = NominalType('Double')
+String   = NominalType('String')
+
 Int.members = {
+    'new': TypeUnion((
+           FunctionType(domain=[Int],      codomain=Int),
+           FunctionType(domain=[Double],   codomain=Int),
+           FunctionType(domain=[String],   codomain=Int, labels=['from_string']))),
     'max': Int,
     'min': Int,
     '+'  : TypeUnion((
@@ -22,8 +29,11 @@ Int.members = {
     '%'  : FunctionType(domain=[Int, Int], codomain=Int),
 }
 
-Double = NominalType('Double')
 Double.members = {
+    'new': TypeUnion((
+           FunctionType(domain=[Double],         codomain=Double),
+           FunctionType(domain=[Int],            codomain=Double),
+           FunctionType(domain=[String],         codomain=Int, labels=['from_string']))),
     '+'  : TypeUnion((
            FunctionType(domain=[Double, Double], codomain=Double),
            FunctionType(domain=[Double],         codomain=Double))),
@@ -35,8 +45,8 @@ Double.members = {
     '%'  : FunctionType(domain=[Double, Double], codomain=Double),
 }
 
-String = NominalType('String')
 String.members = {
+    'new': FunctionType(domain=[String], codomain=String),
     '+'  : FunctionType(domain=[String, String], codomain=String),
 }
 
