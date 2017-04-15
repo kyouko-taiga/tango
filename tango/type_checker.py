@@ -1,6 +1,5 @@
 from collections import OrderedDict
-from itertools import product
-from warnings import warn
+from itertools import chain, product
 
 from .ast import *
 from .builtin import Type, builtin_scope
@@ -57,6 +56,8 @@ class TypeVariable(object):
             self.id = (id.__info__['scope'], id.name)
         else:
             self.id = id
+
+        self.is_generic = False
 
     def __hash__(self):
         return hash(self.id)
@@ -174,13 +175,9 @@ class Substitution(object):
 
         if isinstance(t, FunctionType):
             return FunctionType(
-                domain             = [self.deepwalk(p) for p in t.domain],
-                codomain           = self.deepwalk(t.codomain),
-                labels             = t.labels,
-                generic_parameters = [
-                    (name, self.deepwalk(value))
-                    for name, value in t.generic_parameters.items()
-                ])
+                domain   = [self.deepwalk(p) for p in t.domain],
+                codomain = self.deepwalk(t.codomain),
+                labels   = t.labels)
 
         if not isinstance(t, TypeVariable):
             return t
@@ -257,18 +254,14 @@ class TypeSolver(Visitor):
 
         # If there's an initializing value, we have to infer its type first.
         if node.initial_value:
-            initial_value_type = self.analyse(node.initial_value)
-            if isinstance(initial_value_type, TypeTag):
-                initial_value_type = Type
+            initial_value_type = type_instance(self.analyse(node.initial_value))
 
             # If there's a type annotation as well, we should unify the type
             # it denotes with the one that was inferred from the initializing
             # value. This will not only check that the types match, but will
             # also try to infer specialization arguments of abstract types.
             if node.type_annotation:
-                type_annotation = self.analyse(node.type_annotation)
-                if isinstance(type_annotation, TypeTag):
-                    type_annotation = type_annotation.instance_type
+                type_annotation = type_reference(self.analyse(node.type_annotation))
                 self.environment.unify(type_annotation, initial_value_type)
 
             inferred = initial_value_type
@@ -276,9 +269,7 @@ class TypeSolver(Visitor):
         # If there isn't an initializing value, we should simply use the type
         # annotation.
         else:
-            inferred = self.analyse(node.type_annotation)
-            if isinstance(inferred, TypeTag):
-                inferred = inferred.instance_type
+            inferred = type_reference(self.analyse(node.type_annotation))
 
         # Finally, we should unify the inferred type with the type variable
         # corresponding to the symbol under declaration.
@@ -292,22 +283,16 @@ class TypeSolver(Visitor):
         # each of the function's generic parameters (if any), to populate the
         # environment.
         member_scope = node.body.__info__['scope']
-        generic_parameters = OrderedDict()
         for symbol in node.generic_parameters:
             var = TypeVariable(id=(member_scope, symbol))
             if var not in self.environment:
                 self.environment.unify(var, GenericType(symbol))
-                generic_parameters[symbol] = var
-            else:
-                generic_parameters[symbol] = self.environment[var]
 
         # Unlike container declarations, function parameters always have a
         # type annotation, so we can type them directly.
         parameter_types = []
         for parameter in node.signature.parameters:
-            type_annotation = self.analyse(parameter.type_annotation)
-            if isinstance(type_annotation, TypeTag):
-                type_annotation = type_annotation.instance_type
+            type_annotation = type_reference(self.analyse(parameter.type_annotation))
             parameter_types.append(type_annotation)
 
             # We should unify the type we read from the annotations with the
@@ -319,23 +304,18 @@ class TypeSolver(Visitor):
             # those instances, we should infer the type of the initializing
             # expression and unify it with that of the parameter's annotation.
             if parameter.default_value:
-                default_value_type = self.analyse(parameter.default_value)
-                if isinstance(default_value_type, TypeTag):
-                    default_value_type = Type
+                default_value_type = type_instance(self.analyse(parameter.default_value))
                 self.environment.unify(type_annotation, default_value_type)
 
         # The return type is simply a type signature we've to evaluate.
-        return_type = self.analyse(node.signature.return_type)
-        if isinstance(return_type, TypeTag):
-            return_type = return_type.instance_type
+        return_type = type_reference(self.analyse(node.signature.return_type))
 
         # Once we've computed the function signature, we can create a type
         # for the function itself.
         function_type = FunctionType(
-            domain = parameter_types,
+            domain   = parameter_types,
             codomain = return_type,
-            labels = [parameter.label for parameter in node.signature.parameters],
-            generic_parameters = generic_parameters)
+            labels   = [parameter.label for parameter in node.signature.parameters])
 
         # As functions may be overloaded, we can't unify the function type
         # we've created with the function's name directly. Instead, we should
@@ -394,9 +374,7 @@ class TypeSolver(Visitor):
     def visit_Assignment(self, node):
         # First, we infer and unify the types of the lvalue and rvalue.
         lvalue_type = self.analyse(node.lvalue)
-        rvalue_type = self.analyse(node.rvalue)
-        if isinstance(rvalue_type, TypeTag):
-            rvalue_type = Type
+        rvalue_type = type_instance(self.analyse(node.rvalue))
         self.environment.unify(lvalue_type, rvalue_type)
 
         # If the lvalue is an identifer, we unify its name with the type of
@@ -443,9 +421,7 @@ class TypeSolver(Visitor):
 
         if isinstance(node, Select):
             # First, we need to infer the type of the owner.
-            owner_types = self.analyse(node.owner)
-            if isinstance(owner_types, TypeTag):
-                owner_types = owner_types.instance_type
+            owner_types = type_reference(self.analyse(node.owner))
 
             # If the result we got is a type variable, we have no choice but
             # to return another type variable.
@@ -481,14 +457,10 @@ class TypeSolver(Visitor):
         if isinstance(node, FunctionSignature):
             domain = []
             for parameter in node.parameters:
-                type_annotation = self.analyse(parameter.type_annotation)
-                if isinstance(type_annotation, TypeTag):
-                    type_annotation = type_annotation.instance_type
+                type_annotation = type_reference(self.analyse(parameter.type_annotation))
                 domain.append(type_annotation)
 
-            codomain = self.analyse(node.return_type)
-            if isinstance(codomain, TypeTag):
-                codomain = codomain.instance_type
+            codomain = type_reference(self.analyse(node.return_type))
 
             function_type = FunctionType(
                 domain   = domain,
@@ -500,9 +472,7 @@ class TypeSolver(Visitor):
 
         if isinstance(node, PrefixedExpression):
             # First, we have to infer the type of the operand.
-            operand_type = self.analyse(node.operand)
-            if isinstance(operand_type, TypeTag):
-                operand_type = Type
+            operand_type = type_instance(self.analyse(node.operand))
 
             # Then, we can get the available signatures for the operator.
             candidates = find_operator_candidates(operand_type, node.operator)
@@ -523,9 +493,7 @@ class TypeSolver(Visitor):
 
         if isinstance(node, BinaryExpression):
             # First, we have to infer the type of the left operand.
-            left_type = self.analyse(node.left)
-            if isinstance(left_type, TypeTag):
-                left_type = Type
+            left_type = type_instance(self.analyse(node.left))
 
             # Then, we can get the available signatures for the operator.
             candidates = find_operator_candidates(left_type, node.operator)
@@ -545,51 +513,57 @@ class TypeSolver(Visitor):
             return result
 
         if isinstance(node, Call):
-            # First, we have to get the available signatures for the callee.
-            callee_signatures = self.analyse(node.callee)
-            if isinstance(callee_signatures, TypeTag):
-                callee_signatures = callee_signatures.instance_type
+            # First, we get the possible types of the callee.
+            callee_type = type_reference(self.analyse(node.callee))
+            if not isinstance(callee_type, TypeUnion):
+                callee_type = (callee_type,)
 
-            # We make `callee_signatures` an iterable if it's not, so we can
-            # use it as a TypeUnion even if it isn't.
-            if not isinstance(callee_signatures, TypeUnion):
-                callee_signatures = (callee_signatures,)
-
-            eligible_signatures = []
+            # For each type the callee can represent, we identify which can be
+            # candidates for a function call.
+            candidates = []
             selected_codomains = []
-
-            for signature in callee_signatures:
-                # We should list all function signatures as candidates.
+            for signature in callee_type:
+                # We list all function signatures as candidates.
                 if isinstance(signature, FunctionType):
-                    eligible_signatures.append(signature)
+                    candidates.append(signature)
                     continue
 
-                # When the signature is a variable, we should add a fresh
-                # variable to the list of pre-selected codomains.
+                # If the signature is a variable, it means we don't know its
+                # codomain yet. In that case, we add a fresh variable to the
+                # set of pre-selected codomains.
                 if isinstance(signature, TypeVariable):
                     selected_codomains.append(TypeVariable())
                     continue
 
-                # The callee may also be a non-function type, for calls that
-                # apply a type constructor (e.g. Int(0)). In those cases, we
-                # should list all the constructors of the type as candidates.
-                if not isinstance(signature, FunctionType):
-                    type_constructors = signature.members.get('new', [])
-                    if isinstance(type_constructors, TypeVariable):
-                        selected_codomains.append(signature)
-                    elif isinstance(type_constructors, TypeUnion):
-                        eligible_signatures.extend(type_constructors)
-                    else:
-                        eligible_signatures.append(type_constructors)
+                # If the signature is a non-function type, it may designate a
+                # call to a type constructor. In that case, all constructors
+                # of the type become candidates.
+                if isinstance(signature, BaseType):
+                    constructors = signature.members.get('new', [])
+                    if not isinstance(constructors, TypeUnion):
+                        constructors = (constructors,)
 
-            # If we couldn't find any eligible signature, we should return the
-            # type variables we already selected as codomains (if any).
-            if not eligible_signatures:
+                    for constructor in constructors:
+                        # We list all constructor signatures as candidates.
+                        candidates.append(constructor)
+
+                        # If the constructor is a variable, it means we don't
+                        # know its signature yet. But we do know its codomain
+                        # (as it's a constructor), so we add the type to the
+                        # set of pre-selected codomains.
+                        if isinstance(constructor, TypeVariable):
+                            selected_codomains.append(signature)
+                            continue
+
+            # If we can't find any candidate, we return the type codomains we
+            # already selected (if any).
+            if not candidates:
                 if not selected_codomains:
                     raise InferenceError(
-                        "function call do not match any candidate in '%s'" % callee_signatures)
+                        "function call do not match any candidate in '%s'" %
+                        ', '.join(map(str, callee_type)))
 
-                # Avoid creating singletons when there's only one candidate.
+                # Avoid creating signletons when there's only one result.
                 if len(selected_codomains) == 1:
                     result = selected_codomains[0]
                 else:
@@ -600,23 +574,25 @@ class TypeSolver(Visitor):
             # Then, we have to infer the type of each argument.
             argument_types = []
             for argument in node.arguments:
-                argument_type = self.analyse(argument.value)
-                if isinstance(argument_type, TypeTag):
-                    argument_type = Type
+                argument_type = type_instance(self.analyse(argument.value))
                 argument_types.append(argument_type)
 
-            # Then, we have to find which signatures agree with the types
-            # we've inferred for the function arguments.
-            candidates = []
-            for signature in eligible_signatures:
-                # Make sure the signature is a function type.
-                assert isinstance(signature, FunctionType)
+            # Either the return type was already inferred in a previous pass,
+            # or create a new variable for it.
+            return_type = node.__info__.get('type', TypeVariable())
 
-                # Check the number of parameters.
+            # Once we've got signature candidates and argument types, we can
+            # filter out signatures that aren't compatible with the argument
+            # types we inferred.
+            compatible_candidates = []
+            for signature in candidates:
+                assert(isinstance(signature, FunctionType))
+
+                # We check it the number of parameters match.
                 if len(signature.domain) != len(node.arguments):
                     continue
 
-                # Check the labels of parameters.
+                # We check if the labels match.
                 valid = True
                 for expected_label, argument in zip(signature.labels, node.arguments):
                     if (expected_label == '_') and (argument.name is not None):
@@ -628,60 +604,57 @@ class TypeSolver(Visitor):
                 if not valid:
                     continue
 
+                compatible_candidates.append(signature)
+
                 # NOTE Using profiling, we might determine that it could s be
                 # more efficient to already eliminate candidates whose domain
                 # or codomain doesn't match the argument and return types of
                 # our node here, before they are specialized.
 
-                candidates.append(signature)
+            # Once we've identified compatible candidates, we can specialize
+            # each of them for the argument types we inferred, and possibly
+            # the return type we inferred from a previous pass.
+            choices = [ai if isinstance(ai, TypeUnion) else (ai,) for ai in argument_types]
+            choices.append(return_type if isinstance(return_type, TypeUnion) else (return_type,))
 
-            # Specialize the generic arguments of the candidates with the
-            # argument types we inferred.
-            specialized_candidates = (specialize(c, argument_types) for c in candidates)
-            candidates = list(c for specialized in specialized_candidates for c in specialized)
+            specialized_candidates = []
+            for types in product(*choices):
+                specializer = FunctionType(domain=types[0:-1], codomain=types[-1])
+                specialized_candidates.extend(flatten(
+                    specialize(candidate, specializer) for candidate in compatible_candidates))
 
-            # Check the specialized candidate to filter out those whose
-            # signature doesn't match the node's arguments or return type.
+            # Then we filter out the specialized candidates whose signature
+            # doesn't match the node's arguments or return type.
             selected_candidates = []
-            for signature in candidates:
+            for signature in specialized_candidates:
                 valid = True
-                for expected_type, proposed_type in zip(signature.domain, argument_types):
-                    if isinstance(expected_type, GenericType):
-                        expected_type = signature.specialized_parameter(expected_type.name)
-                    if not matches(expected_type, proposed_type):
+                for expected_type, argument_type in zip(signature.domain, argument_types):
+                    if not matches(expected_type, argument_type):
                         valid = False
                         break
                 if not valid:
                     continue
 
-                if 'type' in node.__info__:
-                    expected_type = signature.codomain
-                    proposed_type = node.__info__['type']
-                    if isinstance(expected_type, GenericType):
-                        expected_type = signature.specialized_parameter(expected_type.name)
-                    if not matches(expected_type, proposed_type):
-                        continue
+                if not matches(signature.codomain, return_type):
+                    continue
 
                 selected_candidates.append(signature)
 
-            if len(selected_candidates) == 0:
-                raise InferenceError(
-                    "function call do not match any candidate in '%s'" % eligible_signatures)
+            # If we can't find any candidate, we return the type codomains we
+            # already selected (if any).
+            if not selected_candidates:
+                if not selected_codomains:
+                    raise InferenceError(
+                        "function call do not match any candidate in '%s'" %
+                        ', '.join(map(str, callee_type)))
 
-            # Unify the argument types of the node with the domain of the
+            # We unify the argument types of the node with the domain of the
             # selected candidates, to propagate type constraints.
             for i, argument_type in enumerate(argument_types):
                 candidate_domains = TypeUnion()
                 overloads = []
                 for candidate in selected_candidates:
-                    # If the candidate argument type is generic, we should try
-                    # to find its replacement in the candidate's
-                    # specialization. Otherwise we simply use the type of the
-                    # candidate argument.
-                    if isinstance(candidate.domain[i], GenericType):
-                        arg = candidate.specialized_parameter(candidate.domain[i].name)
-                    else:
-                        arg = candidate.domain[i]
+                    arg = self.environment[candidate.domain[i]]
 
                     # We don't unify function type arguments when they're used
                     # as parameters, to preserve their overloads.
@@ -703,10 +676,7 @@ class TypeSolver(Visitor):
 
             result = TypeUnion()
             for candidate in selected_candidates:
-                codomain = candidate.codomain
-                if isinstance(codomain, GenericType):
-                    codomain = candidate.specialized_parameter(codomain.name)
-                result.add(self.environment[codomain])
+                result.add(self.environment[candidate.codomain])
 
             for codomain in selected_codomains:
                 result.add(selected_codomains)
@@ -727,6 +697,30 @@ class TypeSolver(Visitor):
             # multiple configurations of argument groups.
 
         assert False, "no type inference for node '%s'" % node.__class__.__name__
+
+
+def type_instance(signature):
+    assert isinstance(signature, (BaseType, TypeVariable))
+
+    if isinstance(signature, TypeTag):
+        return Type
+    if isinstance(signature, GenericType):
+        if isinstance(signature.signature, str):
+            return Type
+        return type_instance(signature.signature)
+    return signature
+
+
+def type_reference(signature):
+    assert isinstance(signature, (BaseType, TypeVariable))
+
+    if isinstance(signature, TypeTag):
+        return signature.instance_type
+    if isinstance(signature, GenericType):
+        if isinstance(signature.signature, str):
+            return signature
+        return type_reference(signature.signature)
+    return signature
 
 
 def find_operator_candidates(operand_type, operator):
@@ -762,40 +756,62 @@ def find_overload_decls(name, scope):
     return []
 
 
-def specialize(signature, specialized_argument_types):
-    # There's noting to do if the signature doesn't have generic parameters.
-    if not signature.generic_parameters:
-        yield signature
+def specialize(unspecialized, specializer, specializations=None):
+    if not unspecialized.is_generic:
+        yield unspecialized
         return
 
-    generics = signature.generic_parameters
+    specializations = specializations if (specializations is not None) else {}
+    if id(unspecialized) in specializations:
+        # FIXME Maybe we should check whether the stored specialization result
+        # is compatible with the replacements we otherwise would have yielded.
+        for t in specializations[id(unspecialized)]:
+            yield t
+        return
 
-    # Create the set of all possible combination of arguments, that is the
-    # cartesian product `a0 x a1 x ... an`, considering all `ai` that aren't
-    # type unions to be singleton of themselves.
-    choices = [ai if isinstance(ai, TypeUnion) else (ai,) for ai in specialized_argument_types]
-    argument_types_combinations = product(*choices)
+    if isinstance(unspecialized, GenericType):
+        if isinstance(specializer, TypeUnion):
+            for t in specializer:
+                yield t if not t.is_generic else TypeVariable()
+        else:
+            yield specializer if not specializer.is_generic else TypeVariable()
+        return
 
-    # Specialize the generic types used in the function parameters for each
-    # possible combination of arguments.
-    specialized_signatures = []
-    for combination in argument_types_combinations:
-        specializations = {}
-        for original, replacement in zip(signature.domain, combination):
-            if isinstance(original, GenericType):
-                assert specializations.get(original.name) in (None, replacement)
-                specializations[original.name] = replacement
+    if isinstance(unspecialized, FunctionType):
+        # If the specializer isn't a function type as well, we can't do
+        # anything.
+        if not isinstance(specializer, FunctionType):
+            return
 
-        yield FunctionType(
-            domain             = signature.domain,
-            codomain           = signature.codomain,
-            labels             = signature.labels,
-            generic_parameters = OrderedDict([
-                (name, specializations.get(name, generic))
-                for name, generic in signature.generic_parameters.items()
-            ]))
+        specialized_domain = []
 
-    # TODO Handle abstract types
+        for original, replacement in zip(unspecialized.domain, specializer.domain):
+            if original.is_generic:
+                specialized = list(specialize(original, replacement, specializations))
+                specializations[id(original)] = specialized
+                specialized_domain.append(specialized)
+            else:
+                specialized_domain.append((original,))
+
+        if unspecialized.codomain.is_generic:
+            specialized = list(specialize(unspecialized.codomain, specializer.codomain, specializations))
+            specializations[id(unspecialized.codomain)] = specialized
+            specialized_codomain = specialized
+        else:
+            specialized_codomain = (unspecialized.codomain,)
+
+        # FIXME Determine if a replacement can be a type union (or `specialize` returned
+        # more than one result for the domain or codomain). If it can't, then it that
+        # cartesian product will always be a singleton.
+        for specialized in product(*chain(specialized_domain, (specialized_codomain,))):
+            yield FunctionType(
+                domain   = specialized[0:-1],
+                codomain = specialized[-1],
+                labels   = unspecialized.labels)
+
+        return
+
+    assert False, 'cannot specialize %s' % unspecialized.__class__.__name__
 
 
 def matches(t, u):
@@ -813,3 +829,7 @@ def matches(t, u):
                 and all(matches(t.members[it], u.members[it]) for it in t.members))
 
     return t == u
+
+
+def flatten(iterable):
+    return (i for it in iterable for i in it)

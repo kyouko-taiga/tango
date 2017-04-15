@@ -57,7 +57,7 @@ class TestParser(unittest.TestCase):
         f_type = solver.environment[TypeVariable(declaration_node)]
         self.assertIsInstance(f_type, TypeUnion)
         self.assertEqual(len(f_type), 1)
-        self.assertFalse(f_type.first().generic_parameters)
+        self.assertFalse(f_type.first().is_generic)
         self.assertFalse(f_type.first().domain)
         self.assertFalse(f_type.first().labels)
         self.assertEqual(f_type.first().codomain, Nothing)
@@ -69,7 +69,7 @@ class TestParser(unittest.TestCase):
         f_type = solver.environment[TypeVariable(declaration_node)]
         self.assertIsInstance(f_type, TypeUnion)
         self.assertEqual(len(f_type), 1)
-        self.assertFalse(f_type.first().generic_parameters)
+        self.assertFalse(f_type.first().is_generic)
         self.assertEqual(len(f_type.first().domain), 2)
         self.assertEqual(f_type.first().domain[0], Int)
         self.assertEqual(f_type.first().domain[1], String)
@@ -85,14 +85,11 @@ class TestParser(unittest.TestCase):
         f_type = solver.environment[TypeVariable(declaration_node)]
         self.assertIsInstance(f_type, TypeUnion)
         self.assertEqual(len(f_type), 1)
-        self.assertEqual(len(f_type.first().generic_parameters), 2)
+        self.assertTrue(f_type.first().is_generic)
         self.assertEqual(len(f_type.first().domain), 2)
-        self.assertEqual(f_type.first().domain[0], f_type.first().generic_parameters['T'])
-        self.assertEqual(f_type.first().domain[1], f_type.first().generic_parameters['U'])
         self.assertEqual(len(f_type.first().labels), 2)
         self.assertEqual(f_type.first().labels[0], 'x')
         self.assertIsNone(f_type.first().labels[1])
-        self.assertEqual(f_type.first().codomain, f_type.first().generic_parameters['T'])
 
     def test_shadowing(self):
         solver = TypeSolver()

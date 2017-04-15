@@ -6,8 +6,26 @@ class BaseType(object):
     def __init__(self, members=None):
         self.members = members or {}
 
+    @property
+    def is_generic(self):
+        return False
+
     def __eq__(self, other):
         return self is other
+
+
+class GenericType(BaseType):
+
+    def __init__(self, signature):
+        super().__init__()
+        self.signature = signature
+
+    @property
+    def is_generic(self):
+        return True
+
+    def __str__(self):
+        return 'Generic(%s)' % self.signature
 
 
 class TypeUnion(BaseType):
@@ -22,6 +40,10 @@ class TypeUnion(BaseType):
         if types is not None:
             for t in types:
                 self.add(t)
+
+    @property
+    def is_generic(self):
+        return any(t.is_generic for t in self.types)
 
     def add(self, t):
         if t not in self.types:
@@ -68,10 +90,6 @@ class NominalType(BaseType):
         return str(self.name)
 
 
-class GenericType(NominalType):
-    pass
-
-
 class StructType(NominalType):
     pass
 
@@ -82,41 +100,24 @@ class StructuralType(BaseType):
 
 class FunctionType(StructuralType):
 
-    def __init__(
-            self, generic_parameters=None, domain=None, codomain=None, labels=None):
-
+    def __init__(self, domain=None, codomain=None, labels=None):
         super().__init__()
-
-        self.generic_parameters = OrderedDict(generic_parameters or [])
         self.domain = domain or []
         self.codomain = codomain or Nothing
         self.labels = labels or [None for _ in self.domain]
 
-    def specialized_parameter(self, generic_name):
-        return self.generic_parameters.get(generic_name, self.generic_parameters[generic_name])
+    @property
+    def is_generic(self):
+        return any(t.is_generic for t in self.domain) or self.codomain.is_generic
 
     def __eq__(self, other):
         return (type(self) == type(other)
-                and (self.generic_parameters == other.generic_parameters)
                 and (len(self.domain) == len(other.domain))
                 and all(t == u for t, u in zip(self.domain, other.domain))
                 and (self.codomain == other.codomain)
                 and all(l == m for l, m in zip(self.labels, other.labels)))
 
     def __str__(self):
-        if self.generic_parameters:
-            prefix = '<%s> ' % ', '.join(map(str, self.generic_parameters.values()))
-        else:
-            prefix = ''
-
-        domain = (
-            t if not isinstance(t, GenericType) else self.specialized_parameter(t.name)
-            for t in self.domain)
-        codomain = (
-            self.codomain if not isinstance(self.codomain, GenericType)
-            else self.specialized_parameter(self.codomain.name))
-
-        return '%s(%s) -> %s' % (
-            prefix,
-            ', '.join('%s: %s' % (self.labels[i] or '_', t) for i, t in enumerate(domain)),
-            codomain)
+        return '(%s) -> %s' % (
+            ', '.join('%s: %s' % (self.labels[i] or '_', t) for i, t in enumerate(self.domain)),
+            self.codomain)
