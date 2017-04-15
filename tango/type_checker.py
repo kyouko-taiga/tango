@@ -4,6 +4,7 @@ from itertools import chain, product
 from .ast import *
 from .builtin import Type, builtin_scope
 from .errors import UndefinedSymbol, InferenceError
+from .scope import Scope
 from .types import BaseType, FunctionType, GenericType, StructType, TypeUnion
 
 
@@ -196,7 +197,7 @@ class Substitution(object):
 
     def print_debug(self):
         for (symbol, inferred_type) in self.storage.items():
-            if isinstance(symbol.id, tuple):
+            if isinstance(symbol.id, tuple) and isinstance(symbol.id[0], Scope):
                 scope, name = symbol.id
                 if scope.id == 0:
                     continue
@@ -621,7 +622,8 @@ class TypeSolver(Visitor):
             for types in product(*choices):
                 specializer = FunctionType(domain=types[0:-1], codomain=types[-1])
                 specialized_candidates.extend(flatten(
-                    specialize(candidate, specializer) for candidate in compatible_candidates))
+                    specialize(candidate, specializer, node)
+                    for candidate in compatible_candidates))
 
             # Then we filter out the specialized candidates whose signature
             # doesn't match the node's arguments or return type.
@@ -659,7 +661,10 @@ class TypeSolver(Visitor):
                     # We don't unify function type arguments when they're used
                     # as parameters, to preserve their overloads.
                     if isinstance(arg, FunctionType):
-                        overloads.append(arg)
+                        # We don't unify generic specializations neither, as
+                        # it would pollute the type of generic name otherwise.
+                        if not argument_type.is_generic:
+                            overloads.append(arg)
                     else:
                         candidate_domains.add(arg)
 
@@ -756,7 +761,7 @@ def find_overload_decls(name, scope):
     return []
 
 
-def specialize(unspecialized, specializer, specializations=None):
+def specialize(unspecialized, specializer, call_node, specializations=None):
     if not unspecialized.is_generic:
         yield unspecialized
         return
@@ -772,9 +777,11 @@ def specialize(unspecialized, specializer, specializations=None):
     if isinstance(unspecialized, GenericType):
         if isinstance(specializer, TypeUnion):
             for t in specializer:
-                yield t if not t.is_generic else TypeVariable()
+                yield t if not t.is_generic else TypeVariable(id=(id(t), id(call_node)))
+        if specializer.is_generic:
+            yield TypeVariable(id=(id(specializer), id(call_node)))
         else:
-            yield specializer if not specializer.is_generic else TypeVariable()
+            yield specializer
         return
 
     if isinstance(unspecialized, FunctionType):
@@ -787,14 +794,15 @@ def specialize(unspecialized, specializer, specializations=None):
 
         for original, replacement in zip(unspecialized.domain, specializer.domain):
             if original.is_generic:
-                specialized = list(specialize(original, replacement, specializations))
+                specialized = list(specialize(original, replacement, call_node, specializations))
                 specializations[id(original)] = specialized
                 specialized_domain.append(specialized)
             else:
                 specialized_domain.append((original,))
 
         if unspecialized.codomain.is_generic:
-            specialized = list(specialize(unspecialized.codomain, specializer.codomain, specializations))
+            specialized = list(specialize(
+                unspecialized.codomain, specializer.codomain, call_node, specializations))
             specializations[id(unspecialized.codomain)] = specialized
             specialized_codomain = specialized
         else:
@@ -827,6 +835,18 @@ def matches(t, u):
         return ((t.name == u.name)
                 and not (t.members.keys() ^ u.members.keys())
                 and all(matches(t.members[it], u.members[it]) for it in t.members))
+
+    # Note that unification of function types is stricter than what `matches`
+    # checks, requiring `t` and `u` to be equal under `__eq__`. Relaxing the
+    # constraint here is what lets us matching a generic signature to its
+    # specialization when visiting Call nodes. However, we normally only unify
+    # generic signatures with themselves in FunctionDecl nodes, so having a
+    # more relaxed match function shouldn't cause any issue.
+    if isinstance(t, FunctionType) and isinstance(u, FunctionType):
+        return (len(t.domain) == len(u.domain)
+                and all(matches(t.domain[i], u.domain[i]) for i in range(len(t.domain)))
+                and matches(t.codomain, u.codomain)
+                and matches(t.labels, u.labels))
 
     return t == u
 

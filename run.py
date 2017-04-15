@@ -48,11 +48,11 @@ if __name__ == '__main__':
     types = infer_types(module)
 
     for (symbol, inferred_type) in types.items():
-        if isinstance(symbol.id, tuple):
+        if isinstance(symbol.id, tuple) and isinstance(symbol.id[0], Scope):
             scope, name = symbol.id
             if scope.id == 0:
                 continue
-            print(scope.uri + '.' + name + ':', inferred_type)
+            print('{:15}{:}'.format(scope.uri + '.' + name, inferred_type))
         # else:
         #     print(symbol, inferred_type)
         # print('%s.%s: %s' % (scope.uri, name, ', '.join(map(str, inferred_type))))
