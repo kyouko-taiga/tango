@@ -540,14 +540,14 @@ class TypeSolver(Visitor):
                 # call to a type constructor. In that case, all constructors
                 # of the type become candidates.
                 if isinstance(signature, BaseType):
-                    constructors = signature.members.get('new', [])
+                    if 'new' not in signature.members:
+                        continue
+                    constructors = self.environment[signature.members['new']]
+
                     if not isinstance(constructors, TypeUnion):
                         constructors = (constructors,)
 
                     for constructor in constructors:
-                        # We list all constructor signatures as candidates.
-                        candidates.append(constructor)
-
                         # If the constructor is a variable, it means we don't
                         # know its signature yet. But we do know its codomain
                         # (as it's a constructor), so we add the type to the
@@ -555,6 +555,9 @@ class TypeSolver(Visitor):
                         if isinstance(constructor, TypeVariable):
                             selected_codomains.append(signature)
                             continue
+
+                        # Otherwise, we'll list it as a candidate.
+                        candidates.append(constructor)
 
             # If we can't find any candidate, we return the type codomains we
             # already selected (if any).
