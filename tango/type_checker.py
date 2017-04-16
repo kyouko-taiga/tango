@@ -422,25 +422,41 @@ class TypeSolver(Visitor):
 
         if isinstance(node, Select):
             # First, we need to infer the type of the owner.
-            owner_types = type_reference(self.analyse(node.owner))
+            owner_types = self.analyse(node.owner)
 
-            # If the result we got is a type variable, we have no choice but
-            # to return another type variable.
-            if isinstance(owner_types, TypeVariable):
-                return TypeVariable()
+            # We raise a flag if the owner we're visiting isn't a type tag, to
+            # decide whether or not we should perform automatic self binding.
+            as_instance_member = not isinstance(owner_types, TypeTag)
 
-            # If the result we got is an actual type (or union of), we should
-            # look for a member with the requested name in its (or their)
-            # definition(s).
+            owner_types = type_reference(owner_types)
             if not isinstance(owner_types, TypeUnion):
                 owner_types = (owner_types,)
 
             candidates = []
             for owner_type in owner_types:
+                # If the owner's type is a variable, we have no choice but to
+                # return another unrelated type variable.
                 if isinstance(owner_type, TypeVariable):
                     candidates.append(TypeVariable())
+
+                # If the owner's type could be inferred, we should look for
+                # members with the requested name in its definition(s).
                 elif isinstance(owner_type, BaseType) and (node.member.name in owner_type.members):
-                    candidates.append(owner_type.members[node.member.name])
+                    members = self.environment[owner_type.members[node.member.name]]
+                    if not isinstance(members, TypeUnion):
+                        members = (members,)
+
+                    for member in members:
+                        # If we're visiting a type's instance, and the member
+                        # is a method of the type, we should create a new
+                        # function type to apply automatic self binding.
+                        if as_instance_member and isinstance(member, FunctionType):
+                            candidates.append(FunctionType(
+                                domain   = member.domain[1:],
+                                codomain = member.codomain,
+                                labels   = member.labels[1:]))
+                        else:
+                            candidates.append(member)
 
             if len(candidates) == 0:
                 raise InferenceError(
@@ -556,8 +572,14 @@ class TypeSolver(Visitor):
                             selected_codomains.append(signature)
                             continue
 
-                        # Otherwise, we'll list it as a candidate.
-                        candidates.append(constructor)
+                        # Otherwise, we'll build a new signature that doesn't
+                        # require the first `self` parameter (for automatic
+                        # self binding), and we'll list it as a candidate.
+                        assert isinstance(constructor, FunctionType)
+                        candidates.append(FunctionType(
+                            domain   = constructor.domain[1:],
+                            codomain = constructor.codomain,
+                            labels   = constructor.labels[1:]))
 
             # If we can't find any candidate, we return the type codomains we
             # already selected (if any).
