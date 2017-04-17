@@ -343,9 +343,14 @@ class TestParser(unittest.TestCase):
     def test_enum_case_parameter(self):
         parser = tango.enum_case_parameter + skip(finished)
 
+        result = parser.parse(tango.tokenize('_: Int'))
+        self.assertIsInstance(result, ast.EnumCaseParameter)
+        self.assertIsNone(result.label)
+        self.assertEqual(result.type_annotation.name, 'Int')
+
         result = parser.parse(tango.tokenize('x: Int'))
         self.assertIsInstance(result, ast.EnumCaseParameter)
-        self.assertEqual(result.name, 'x')
+        self.assertEqual(result.label, 'x')
         self.assertEqual(result.type_annotation.name, 'Int')
 
     def test_enum_case_decl(self):
@@ -359,9 +364,9 @@ class TestParser(unittest.TestCase):
         result = parser.parse(tango.tokenize('case a(_: Int, _: Int)'))
         self.assertIsInstance(result, ast.EnumCaseDecl)
         self.assertEqual(result.name, 'a')
-        self.assertEqual(result.parameters[0].name, '_')
+        self.assertIsNone(result.parameters[0].label)
         self.assertEqual(result.parameters[0].type_annotation.name, 'Int')
-        self.assertEqual(result.parameters[1].name, '_')
+        self.assertIsNone(result.parameters[1].label)
         self.assertEqual(result.parameters[1].type_annotation.name, 'Int')
 
     def test_enum_decl(self):
@@ -390,7 +395,7 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(result, ast.EnumDecl)
         self.assertEqual(result.body.statements[0].name, 'a')
         self.assertEqual(result.body.statements[1].name, 'b')
-        self.assertEqual(result.body.statements[1].parameters[0].name, 'x')
+        self.assertEqual(result.body.statements[1].parameters[0].label, 'x')
         self.assertEqual(result.body.statements[1].parameters[0].type_annotation.name, 'Int')
 
         result = parser.parse(tango.tokenize(

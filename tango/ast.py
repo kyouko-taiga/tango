@@ -275,13 +275,13 @@ class FunctionDecl(Node):
 
 class EnumCaseParameter(Node):
 
-    def __init__(self, name, type_annotation):
+    def __init__(self, label, type_annotation):
         super().__init__()
-        self.name = name
+        self.label = label
         self.type_annotation = type_annotation
 
     def __str__(self):
-        return '%s: %s' % (self.name, self.type_annotation)
+        return '%s: %s' % (self.label or '_', self.type_annotation)
 
 
 class EnumCaseDecl(Node):

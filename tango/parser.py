@@ -347,7 +347,7 @@ type_conformance_list = (
 
 def make_enum_case_parameter(args):
     return EnumCaseParameter(
-        name = args[0],
+        label = args[0] if (args[0] != '_') else None,
         type_annotation = args[1])
 
 enum_case_parameter = (
