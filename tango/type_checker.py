@@ -5,7 +5,7 @@ from .ast import *
 from .builtin import Type, builtin_scope
 from .errors import UndefinedSymbol, InferenceError
 from .scope import Scope
-from .types import BaseType, FunctionType, GenericType, StructType, TypeUnion
+from .types import BaseType, EnumType, FunctionType, GenericType, StructType, TypeUnion
 
 
 def infer_types(node, max_iter=100):
@@ -342,35 +342,68 @@ class TypeSolver(Visitor):
         # Finally, we should continue the type inference in the function body.
         self.visit(node.body)
 
-    def visit_StructDecl(self, node):
-        # First, we should create a new type for the struct, using fresh type
+    def visit_nominal_type(self, node, type_class):
+        # First, we should create a new type for the nominal, using fresh type
         # variables for each of the symbols it defines.
         member_scope = node.body.__info__['scope']
 
-        # Then, we create a new struct type (unless we already did) that we
-        # enclose it within a type tag that we unify with the struct's name.
+        # Then, we create a new type (unless we already did) that we enclose
+        # within a type tag we unify with the struct's name.
         walked = self.environment[TypeVariable(node)]
         if isinstance(walked, TypeVariable):
-            struct_type = StructType(
+            type_tag = TypeTag(type_class(
                 name    = node.name,
                 members = {
                     name: self.environment[TypeVariable((member_scope, name))]
                     for name in node.body.__info__['symbols']
-                })
+                }))
 
-            type_tag = TypeTag(struct_type)
             self.environment.unify(TypeVariable(node), type_tag)
 
         else:
             type_tag = walked
             assert isinstance(type_tag, TypeTag)
 
-        # The body of a struct can be visited as a normal satement block, as
+        # The body of a type can be visited as a normal satement block, as
         # long as we push a variable on the `current_self_type` stack before,
         # to properly catch references to `Self`.
         self.current_self_type.append(type_tag)
         self.visit(node.body)
         self.current_self_type.pop()
+
+    def visit_StructDecl(self, node):
+        self.visit_nominal_type(node, StructType)
+
+    def visit_EnumDecl(self, node):
+        self.visit_nominal_type(node, EnumType)
+
+    def visit_EnumCaseDecl(self, node):
+        # Enum case declaration should always be visited in the context of an
+        # enum declaration. Consequently, the top `current_self_type` should
+        # refer to that enum type.
+        assert self.current_self_type and isinstance(self.current_self_type[-1], TypeTag)
+        enum_type = self.current_self_type[-1].instance_type
+
+        # If the case doesn't have any associated value, we type it as the
+        # enum type directly.
+        if not node.parameters:
+            self.environment.unify(TypeVariable(node), enum_type)
+            return
+
+        # If the case does have associated values, we first have to infer
+        # their types.
+        parameter_types = []
+        for parameter in node.parameters:
+            type_annotation = type_reference(self.analyse(parameter.type_annotation))
+            parameter_types.append(type_annotation)
+
+        # Then, we can type the case as a function taking associated values to
+        # return the enum type.
+        case_type = FunctionType(
+            domain   = parameter_types,
+            codomain = enum_type,
+            labels   = [parameter.label for parameter in node.parameters])
+        self.environment.unify(TypeVariable(node), case_type)
 
     def visit_Assignment(self, node):
         # First, we infer and unify the types of the lvalue and rvalue.

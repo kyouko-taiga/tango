@@ -94,6 +94,10 @@ class StructType(NominalType):
     pass
 
 
+class EnumType(NominalType):
+    pass
+
+
 class StructuralType(BaseType):
     pass
 
