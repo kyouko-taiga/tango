@@ -247,6 +247,24 @@ call_expression.define(
     function_identifier + op_('(') + maybe(call_argument_list) + op_(')')
     >> make_call)
 
+def make_if_statement(args):
+    return If(
+        condition   = args[0],
+        body        = args[1],
+        else_clause = args[2])
+
+# TODO Pattern matching conditions.
+condition = expression
+
+else_clause = forward_decl()
+
+if_statement = (
+    kw_('if') + condition + block + maybe(else_clause)
+    >> make_if_statement)
+
+else_clause.define(
+    (kw_('else') + if_statement) | (kw_('else') + block))
+
 def make_assignment(args):
     return Assignment(
         lvalue = args[0],
@@ -414,6 +432,7 @@ statement.define(
     function_decl |
     enum_decl |
     struct_decl |
+    if_statement |
     assignment |
     return_statement |
     call_expression)

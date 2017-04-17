@@ -176,6 +176,20 @@ class BinaryExpression(Node):
         return '%s %s %s' % (self.left, self.operator, self.right)
 
 
+class If(Node):
+
+    def __init__(self, condition, body, else_clause=None):
+        super().__init__()
+        self.condition = condition
+        self.body = body
+        self.else_clause = else_clause
+
+    def __str__(self):
+        if self.else_clause:
+            return 'if %s %s else %s' % (self.condition, self.body, self.else_clause)
+        return 'if %s %s' % (self.condition, self.body)
+
+
 class Assignment(Node):
 
     def __init__(self, lvalue, rvalue):

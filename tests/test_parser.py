@@ -187,6 +187,22 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(result.arguments[0].value, ast.BinaryExpression)
         self.assertIsInstance(result.arguments[0].value.right, ast.PrefixedExpression)
 
+    def test_if_statement(self):
+        parser = tango.if_statement + skip(finished)
+
+        result = parser.parse(tango.tokenize('if a {}'))
+        self.assertIsInstance(result, ast.If)
+        self.assertEqual(result.condition.name, 'a')
+        self.assertFalse(result.body.statements, 'a')
+        self.assertIsNone(result.else_clause)
+
+        result = parser.parse(tango.tokenize('if a {} else {}'))
+        self.assertIsInstance(result.else_clause, ast.Block)
+
+        result = parser.parse(tango.tokenize('if a {} else if b {}'))
+        self.assertIsInstance(result.else_clause, ast.If)
+        self.assertEqual(result.else_clause.condition.name, 'b')
+
     def test_assignment(self):
         parser = tango.assignment + skip(finished)
 
