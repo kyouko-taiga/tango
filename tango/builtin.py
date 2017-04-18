@@ -28,6 +28,12 @@ Int.members = {
     '*'  : FunctionType(domain=[Int, Int], codomain=Int),
     '/'  : FunctionType(domain=[Int, Int], codomain=Int),
     '%'  : FunctionType(domain=[Int, Int], codomain=Int),
+    '<'  : FunctionType(domain=[Int, Int], codomain=Bool),
+    '<=' : FunctionType(domain=[Int, Int], codomain=Bool),
+    '==' : FunctionType(domain=[Int, Int], codomain=Bool),
+    '!=' : FunctionType(domain=[Int, Int], codomain=Bool),
+    '>=' : FunctionType(domain=[Int, Int], codomain=Bool),
+    '>'  : FunctionType(domain=[Int, Int], codomain=Bool),
 }
 
 Double.members = {
@@ -44,6 +50,12 @@ Double.members = {
     '*'  : FunctionType(domain=[Double, Double], codomain=Double),
     '/'  : FunctionType(domain=[Double, Double], codomain=Double),
     '%'  : FunctionType(domain=[Double, Double], codomain=Double),
+    '<'  : FunctionType(domain=[Double, Double], codomain=Bool),
+    '<=' : FunctionType(domain=[Double, Double], codomain=Bool),
+    '==' : FunctionType(domain=[Double, Double], codomain=Bool),
+    '!=' : FunctionType(domain=[Double, Double], codomain=Bool),
+    '>=' : FunctionType(domain=[Double, Double], codomain=Bool),
+    '>'  : FunctionType(domain=[Double, Double], codomain=Bool),
 }
 
 String.members = {
