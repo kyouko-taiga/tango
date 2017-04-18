@@ -122,13 +122,11 @@ class ScopeBinder(Visitor):
 
         # Push a new scope on the stack before visiting the function's
         # declaration, pre-filled with the symbols declared within the
-        # function's body, as well as its generic parameters.
+        # function's generic parameters.
         self.current_scope.children.append(Scope(parent=self.scopes[-1]))
         self.scopes.append(self.current_scope.children[-1])
-        for symbol in node.body.__info__['symbols']:
-            self.current_scope[symbol] = []
         for symbol in node.generic_parameters:
-            self.current_scope[symbol] = []
+            self.current_scope[symbol] = [Identifier(name=symbol)]
         node.body.__info__['scope'] = self.current_scope
 
         # Initialize the set that keeps track of what identifier is being
@@ -141,7 +139,9 @@ class ScopeBinder(Visitor):
         for parameter in node.signature.parameters:
             self.visit(parameter.type_annotation)
             if parameter.default_value:
+                self.under_declaration[self.current_scope].add(parameter.name)
                 self.visit(parameter.default_value)
+                self.under_declaration[self.current_scope].remove(parameter.name)
 
         # Visit the return type of the function (unless it's been inferred as
         # an actual type by the parser).
@@ -149,11 +149,28 @@ class ScopeBinder(Visitor):
             self.visit(node.signature.return_type)
 
         # Add the parameter names to the function's scope. Note that we do
-        # *after* we've visited the default values, and the return type, so
+        # that *after* we visited the default values and the return type, so
         # as to avoid binding any of them to the parameter names.
         for parameter in node.signature.parameters:
-            self.current_scope.add(parameter.name, parameter)
+            # Make sure the parameter's name doesn't collide with the name of
+            # a generic parameter.
+            if parameter.name in self.current_scope:
+                raise DuplicateDeclaration(parameter.name)
+
+            self.current_scope[parameter.name] = [parameter]
             parameter.__info__['scope'] = self.current_scope
+
+        # Insert the symbols declared within the function's block into the
+        # current scope. Note that we do that *after* we visited the default
+        # values and the return type, so as to avoid binding any of them to
+        # the symbols of the function's scope.
+        for symbol in node.body.__info__['symbols']:
+            # Note that we could detect whether a symbol collides with a the
+            # name of a parameter or generic parameter here. But letting the
+            # scope binder find about the error while visiting the duplicate
+            # declaration makes for better error messages.
+            if symbol not in self.current_scope:
+                self.current_scope[symbol] = []
 
         # Finally, visit the function's body.
         self.visit(node.body)
