@@ -38,6 +38,10 @@ class SymbolsExtractor(Transformer):
                 # Add the name of the type declaration to the current scope.
                 symbols.add(statement.name)
 
+            if isinstance(statement, If):
+                # Extract the symbols from the body of the if expression.
+                node.statements[i] = self.visit(statement)
+
         node.__info__['symbols'] = symbols
         return node
 
@@ -69,18 +73,65 @@ class ScopeBinder(Visitor):
     def current_scope(self):
         return self.scopes[-1]
 
-    def visit_ModuleDecl(self, node):
-        # Push a new scope on the stack before visiting the node's block, pre-
-        # filled with the symbols declared within the latter.
+    def push_scope(self):
+        # Push a new scope on the stack.
         self.current_scope.children.append(Scope(parent=self.scopes[-1]))
         self.scopes.append(self.current_scope.children[-1])
-        for symbol in node.body.__info__['symbols']:
-            self.current_scope[symbol] = []
-        node.body.__info__['scope'] = self.current_scope
 
         # Initialize the set that keeps track of what identifier is being
         # declared when visiting its declaration.
         self.under_declaration[self.current_scope] = set()
+
+    def visit_If(self, node):
+        # Push a new scope on the stack before visiting the node's, pre-filled
+        # with the symbols declared within the node's pattern parameters.
+        self.push_scope()
+        for parameter in node.pattern.parameters:
+            self.current_scope[parameter.name] = []
+        node.body.__info__['scope'] = self.current_scope
+
+        # Visit the node's pattern.
+        self.visit(node.pattern)
+
+        # Insert the symbols declared within the function's block into the
+        # current scope. Note that we do that *after* we visited the default
+        # values and the return type, so as to avoid binding ayny of them to
+        # the symbols of the function's scope.
+        for symbol in node.body.__info__['symbols']:
+            # Note that we could detect whether a symbol collides with a the
+            # name of a parameter or generic parameter here. But letting the
+            # scope binder find about the error while visiting the duplicate
+            # declaration makes for better error messages.
+            if symbol not in self.current_scope:
+                self.current_scope[symbol] = []
+
+        # Visit the node's body.
+        self.visit(node.body)
+        self.scopes.pop()
+
+        # If the node's else clause is a simple block, we have to push a new
+        # scope on the stack before visiting it.
+        if isinstance(node.else_clause, Block):
+            self.push_scope()
+            for symbol in node.body.__info__['symbols']:
+                self.current_scope[symbol] = []
+            node.body.__info__['scope'] = self.current_scope
+
+            self.visit(node.else_clause)
+            self.scopes.pop()
+
+        # If the node's else clause is another if expression, we can let its
+        # visitor create a new scope for it.
+        elif isinstance(node.else_clause, If):
+            self.visit(node.else_clause)
+
+    def visit_ModuleDecl(self, node):
+        # Push a new scope on the stack before visiting the node's block, pre-
+        # filled with the symbols declared within the latter.
+        self.push_scope()
+        for symbol in node.body.__info__['symbols']:
+            self.current_scope[symbol] = []
+        node.body.__info__['scope'] = self.current_scope
 
         self.visit(node.body)
         self.scopes.pop()
@@ -123,15 +174,10 @@ class ScopeBinder(Visitor):
         # Push a new scope on the stack before visiting the function's
         # declaration, pre-filled with the symbols declared within the
         # function's generic parameters.
-        self.current_scope.children.append(Scope(parent=self.scopes[-1]))
-        self.scopes.append(self.current_scope.children[-1])
+        self.push_scope()
         for symbol in node.generic_parameters:
             self.current_scope[symbol] = [Identifier(name=symbol)]
         node.body.__info__['scope'] = self.current_scope
-
-        # Initialize the set that keeps track of what identifier is being
-        # declared when visiting its declaration.
-        self.under_declaration[self.current_scope] = set()
 
         # Visit the default values of the function's parameters (if any). Note
         # that we allow such default values to refer to the function itself,
@@ -189,15 +235,10 @@ class ScopeBinder(Visitor):
 
         # Push a new scope on the stack before visiting the enum's body, pre-
         # filled with the symbols it declares.
-        self.current_scope.children.append(Scope(parent=self.scopes[-1]))
-        self.scopes.append(self.current_scope.children[-1])
+        self.push_scope()
         for symbol in node.body.__info__['symbols']:
             self.current_scope[symbol] = []
         node.body.__info__['scope'] = self.current_scope
-
-        # Initialize the set that keeps track of what identifier is being
-        # declared when visiting its declaration.
-        self.under_declaration[self.current_scope] = set()
 
         # Finally, visit the enum's body.
         self.visit(node.body)

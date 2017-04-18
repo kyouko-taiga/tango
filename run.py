@@ -31,6 +31,8 @@ if __name__ == '__main__':
     # Parse the given source file.
     module = parse(source)
     module.name = '__main__'
+    # print(module)
+    # exit(0)
 
     # Extract the symbols declared in each scopes.
     symbols_extractor = SymbolsExtractor()
