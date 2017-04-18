@@ -12,7 +12,7 @@ def tokenize(s):
         ('comment',    (r'#.*\n',)),
         ('newline',    (r'[\r\n]+',)),
         ('space',      (r'[ \t\v]+',)),
-        ('operator',   (r'(\->)|(not)|[=\+\-\*\/%\.:,&@<>{}\[\]\(\)]',)),
+        ('operator',   (r'\->|not|and|or|[><=!]=|[=\+\-\*\/%\.:,&@<>{}\[\]\(\)]',)),
         ('identifier', (r'[^\W\d][\w]*',)),
         ('number',     (r'[-+]?(0|([1-9][0-9]*))(\.[0-9]+)?([Ee][+-]?[0-9]+)?',)),
         ('string',     (r'\'[^\']*\'',)),
@@ -54,8 +54,12 @@ pfx_op = (op('+') | op('-') | op('not')) >> make_identifier
 
 mul_op = (op('*') | op('/') | op('%')) >> make_identifier
 add_op = (op('+') | op('-')) >> make_identifier
+cmp_op = (op('<') | op('<=') | op('>=') | op('>')) >> make_identifier
+eq_op  = (op('==') | op('!=')) >> make_identifier
+and_op = op('and') >> make_identifier
+or_op  = op('or') >> make_identifier
 
-operator_identifier = pfx_op | mul_op | add_op
+operator_identifier = pfx_op | or_op | and_op | eq_op | cmp_op | mul_op | add_op
 
 def make_statement_list(args):
     if args[0] is None:
@@ -220,10 +224,15 @@ def make_binary_expression(args):
     # simply return the operand "as is".
     return args[0]
 
-operand  = pfx_expr | (op_('(') + expression + op_(')'))
-mul_expr = operand + many(mul_op + operand) >> make_binary_expression
-add_expr = mul_expr + many(add_op + mul_expr) >> make_binary_expression
-bin_expr = add_expr
+operand = pfx_expr | (op_('(') + expression + op_(')'))
+expr_50 = operand + many(mul_op + operand) >> make_binary_expression
+expr_40 = expr_50 + many(add_op + expr_50) >> make_binary_expression
+expr_30 = expr_40 + many(cmp_op + expr_40) >> make_binary_expression
+expr_20 = expr_30 + many(eq_op  + expr_30) >> make_binary_expression
+expr_10 = expr_20 + many(and_op + expr_20) >> make_binary_expression
+expr_00 = expr_10 + many(or_op  + expr_10) >> make_binary_expression
+
+bin_expr = expr_00
 
 expression.define(bin_expr)
 
