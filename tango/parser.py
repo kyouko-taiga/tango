@@ -38,6 +38,7 @@ nl_opt = skip(many(some(lambda token: token.type == 'newline')))
 type_signature  = forward_decl()
 expression      = forward_decl()
 call_expression = forward_decl()
+container_decl  = forward_decl()
 struct_decl     = forward_decl()
 enum_decl       = forward_decl()
 statement       = forward_decl()
@@ -173,6 +174,19 @@ select_expression = (
     variable_identifier + many(op_('.') + variable_identifier)
     >> make_select_expression)
 
+def make_closure(args):
+    return Closure(
+        parameters = args[0],
+        statements = args[1])
+
+closure_parameter_list = (
+    kw_('let') + container_decl + many(op_(',') + container_decl) + kw_('in')
+    >> flatten)
+
+closure = (
+    op_('{') + nl_opt + maybe(closure_parameter_list) + statement_list + op_('}')
+    >> make_closure)
+
 def make_prefixed_expression(args):
     if args[0]:
         return PrefixedExpression(
@@ -180,7 +194,7 @@ def make_prefixed_expression(args):
             operand = args[1])
     return args[1]
 
-primary = identifier | constant | op_('(') + expression + op_(')')
+primary = closure | identifier | constant | op_('(') + expression + op_(')')
 
 sfx_expr = call_expression | select_expression | primary
 
@@ -290,7 +304,7 @@ def make_container_decl(args):
         type_annotation = args[2],
         initial_value = args[3])
 
-container_decl = (
+container_decl.define(
     (kw('cst') | kw('mut')) + identifier +
     maybe(op_(':') + type_signature) +
     maybe(op_('=') + expression)

@@ -110,6 +110,23 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.owner.name, 'Int')
         self.assertEqual(result.member.name, '+')
 
+    def test_closure(self):
+        parser = tango.closure + skip(finished)
+
+        result = parser.parse(tango.tokenize('{ return 0 }'))
+        self.assertIsInstance(result, ast.Closure)
+        self.assertFalse(result.parameters)
+        self.assertEqual(result.statements[0].value.value, '0')
+
+        result = parser.parse(tango.tokenize('{ let cst x in return 0 }'))
+        self.assertIsInstance(result, ast.Closure)
+        self.assertEqual(result.parameters[0].name, 'x')
+
+        result = parser.parse(tango.tokenize('{ let cst x, cst y in return 0 }'))
+        self.assertIsInstance(result, ast.Closure)
+        self.assertEqual(result.parameters[0].name, 'x')
+        self.assertEqual(result.parameters[1].name, 'y')
+
     def test_prefixed_expression(self):
         parser = tango.pfx_expr + skip(finished)
 

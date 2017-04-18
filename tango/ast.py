@@ -176,6 +176,20 @@ class BinaryExpression(Node):
         return '%s %s %s' % (self.left, self.operator, self.right)
 
 
+class Closure(Node):
+
+    def __init__(self, statements, parameters=None):
+        super().__init__()
+        self.statements = statements
+        self.parameters = parameters or []
+
+    def __str__(self):
+        statements = ''.join('\n%s' % statement for statement in self.statements)
+        if self.parameters:
+            return '{ let %s in %s }' % (', '.join(map(str, self.parameters)), statements)
+        return '{ %s }' % statements
+
+
 class If(Node):
 
     def __init__(self, condition, body, else_clause=None):
