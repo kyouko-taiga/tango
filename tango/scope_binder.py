@@ -113,9 +113,9 @@ class ScopeBinder(Visitor):
         # scope on the stack before visiting it.
         if isinstance(node.else_clause, Block):
             self.push_scope()
-            for symbol in node.body.__info__['symbols']:
+            for symbol in node.else_clause.__info__['symbols']:
                 self.current_scope[symbol] = []
-            node.body.__info__['scope'] = self.current_scope
+            node.else_clause.__info__['scope'] = self.current_scope
 
             self.visit(node.else_clause)
             self.scopes.pop()
