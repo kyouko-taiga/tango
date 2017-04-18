@@ -503,7 +503,7 @@ class TypeSolver(Visitor):
             operand_type = type_instance(self.analyse(node.operand))
 
             # Then, we can get the available signatures for the operator.
-            candidates = find_operator_candidates(operand_type, node.operator)
+            candidates = self.find_operator_candidates(operand_type, node.operator)
             if len(candidates) == 0:
                 raise InferenceError(
                     "%s has a no member '%s'" % (operand_type, node.operator))
@@ -524,7 +524,7 @@ class TypeSolver(Visitor):
             left_type = type_instance(self.analyse(node.left))
 
             # Then, we can get the available signatures for the operator.
-            candidates = find_operator_candidates(left_type, node.operator)
+            candidates = self.find_operator_candidates(left_type, node.operator)
             if len(candidates) == 0:
                 raise InferenceError(
                     "%s has a no member '%s'" % (left_type, node.operator))
@@ -739,6 +739,31 @@ class TypeSolver(Visitor):
 
         assert False, "no type inference for node '%s'" % node.__class__.__name__
 
+    def find_operator_candidates(self, operand_type, operator):
+        # If the operand's type is a variable, we have no choice but to return
+        # another type variable.
+        if isinstance(operand_type, TypeVariable):
+            return [TypeVariable()]
+
+        # Otherwise, we can simply search its members to find signature
+        # candidates for the given operator.
+        if not isinstance(operand_type, TypeUnion):
+            operand_type = (operand_type,)
+
+        candidates = []
+        for expr_type in (self.environment[t] for t in operand_type):
+            if isinstance(expr_type, TypeVariable):
+                candidates.append(TypeVariable())
+
+            elif isinstance(expr_type, BaseType) and (operator in expr_type.members):
+                candidate = self.environment[expr_type.members[operator]]
+                if isinstance(candidate, TypeUnion):
+                    candidates.extend(self.environment[c] for c in candidate)
+                else:
+                    candidates.append(candidate)
+
+        return candidates
+
 
 def type_instance(signature):
     assert isinstance(signature, (BaseType, TypeVariable))
@@ -762,31 +787,6 @@ def type_reference(signature):
             return signature
         return type_reference(signature.signature)
     return signature
-
-
-def find_operator_candidates(operand_type, operator):
-    # If the operand's type is a variable, we have no choice but to return
-    # another type variable.
-    if isinstance(operand_type, TypeVariable):
-        return TypeVariable()
-
-    # Otherwise, we can simply search its members to find signature candidates
-    # for the given operator.
-    if not isinstance(operand_type, TypeUnion):
-        operand_type = (operand_type,)
-
-    candidates = []
-    for expr_type in operand_type:
-        if isinstance(expr_type, TypeVariable):
-            candidates.append(TypeVariable())
-        elif isinstance(expr_type, BaseType) and (operator in expr_type.members):
-            candidate = expr_type.members[operator]
-            if isinstance(candidate, TypeUnion):
-                candidates.extend(candidate)
-            else:
-                candidates.append(candidate)
-
-    return candidates
 
 
 def find_overload_decls(name, scope):
