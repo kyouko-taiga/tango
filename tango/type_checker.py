@@ -2,7 +2,7 @@ from collections import OrderedDict
 from itertools import chain, product
 
 from .ast import *
-from .builtin import Type, builtin_scope
+from .builtin import Bool, Type, builtin_scope
 from .errors import UndefinedSymbol, InferenceError
 from .scope import Scope
 from .types import BaseType, EnumType, FunctionType, GenericType, StructType, TypeTag, TypeUnion
@@ -397,6 +397,23 @@ class TypeSolver(Visitor):
 
         # Note that for now, only identifiers are valid lvalues.
         assert False, '%s is not a valid lvalue' % node.target.__class__.__name__
+
+    def visit_If(self, node):
+        # First, we visit the types of the pattern parameters (if any).
+        for parameter in node.pattern.parameters:
+            self.visit(parameter)
+
+        # Then, we infer the type of the pattern expression.
+        condition_type = type_instance(self.analyse(node.pattern.expression))
+
+        # The condition of an if expressions should always be a boolean, so we
+        # can unify the type of the pattern expression with Bool.
+        self.environment.unify(condition_type, Bool)
+
+        # Finally we can visit the node's body and else clause (if any).
+        self.visit(node.body)
+        if node.else_clause:
+            self.visit(node.else_clause)
 
     def analyse(self, node):
         if isinstance(node, BaseType):
