@@ -10,6 +10,7 @@ Self     = NominalType('Self')
 Int      = NominalType('Int')
 Double   = NominalType('Double')
 String   = NominalType('String')
+Bool     = NominalType('Bool')
 
 Int.members = {
     'new': TypeUnion((
@@ -46,8 +47,14 @@ Double.members = {
 }
 
 String.members = {
-    'new': FunctionType(domain=[String], codomain=String),
+    'new': FunctionType(domain=[String],         codomain=String),
     '+'  : FunctionType(domain=[String, String], codomain=String),
+}
+
+Bool.members = {
+    'new': FunctionType(domain=[Bool],       codomain=Bool),
+    'and': FunctionType(domain=[Bool, Bool], codomain=Bool),
+    'or' : FunctionType(domain=[Bool, Bool], codomain=Bool),
 }
 
 builtin_scope = Scope()
@@ -59,4 +66,7 @@ builtin_scope.members = {
     'Int'     : TypeTag(Int),
     'Double'  : TypeTag(Double),
     'String'  : TypeTag(String),
+    'Bool'    : TypeTag(Bool),
+    'true'    : Bool,
+    'false'   : Bool,
 }
