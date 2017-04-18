@@ -1,5 +1,5 @@
 from .scope import Scope
-from .types import FunctionType, NominalType, TypeUnion
+from .types import FunctionType, NominalType, TypeTag, TypeUnion
 
 
 Type     = NominalType('Type')
@@ -52,11 +52,11 @@ String.members = {
 
 builtin_scope = Scope()
 builtin_scope.members = {
-    'Type'    : Type,
-    'Nothing' : Nothing,
-    'Anything': Anything,
-    'Self'    : Self,
-    'Int'     : Int,
-    'Double'  : Double,
-    'String'  : String,
+    'Type'    : TypeTag(Type),
+    'Nothing' : TypeTag(Nothing),
+    'Anything': TypeTag(Anything),
+    'Self'    : TypeTag(Self),
+    'Int'     : TypeTag(Int),
+    'Double'  : TypeTag(Double),
+    'String'  : TypeTag(String),
 }

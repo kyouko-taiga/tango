@@ -5,7 +5,7 @@ from .ast import *
 from .builtin import Type, builtin_scope
 from .errors import UndefinedSymbol, InferenceError
 from .scope import Scope
-from .types import BaseType, EnumType, FunctionType, GenericType, StructType, TypeUnion
+from .types import BaseType, EnumType, FunctionType, GenericType, StructType, TypeTag, TypeUnion
 
 
 def infer_types(node, max_iter=100):
@@ -68,25 +68,6 @@ class TypeVariable(object):
 
     def __str__(self):
         return '$%i' % hash(self)
-
-
-class TypeTag(BaseType):
-    # Types themselves should be typed with `Type`. But there're many
-    # instances where we need the type name to refer to the type's itself and
-    # not that of the first-class type value (e.g. `Int.+`). Whether the type
-    # name should be interpreted as a first-class value or a reference to its
-    # own type depends on where the name is used. As a result, it is simpler
-    # to store a `TypeTag` object in the solver's environment, so that we can
-    # choose what type we want depending on the context.
-
-    def __init__(self, instance_type):
-        self.instance_type = instance_type
-
-    def __eq__(self, other):
-        return (type(self) == type(other)) and (self.instance_type == other.instance_type)
-
-    def __str__(self):
-        return 'TypeTag<%s>' % self.instance_type
 
 
 class Substitution(object):
@@ -224,8 +205,8 @@ class TypeSolver(Visitor):
     def __init__(self):
         # A simple substitution map: (TypeVariable) -> Type.
         self.environment = Substitution({
-            TypeVariable(id=(builtin_scope, symbol)): TypeTag(obj)
-            for symbol, obj in builtin_scope.members.items() if isinstance(obj, BaseType)
+            TypeVariable(id=(builtin_scope, symbol)): obj
+            for symbol, obj in builtin_scope.members.items()
         })
 
         # Methods, properties and enum cases may use `Self` as a placeholder
