@@ -204,13 +204,32 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(result.arguments[0].value, ast.BinaryExpression)
         self.assertIsInstance(result.arguments[0].value.right, ast.PrefixedExpression)
 
+    def test_pattern(self):
+        parser = tango.pattern + skip(finished)
+
+        result = parser.parse(tango.tokenize('a'))
+        self.assertIsInstance(result, ast.Pattern)
+        self.assertFalse(result.parameters)
+        self.assertEqual(result.expression.name, 'a')
+
+        result = parser.parse(tango.tokenize('let cst x in a'))
+        self.assertIsInstance(result, ast.Pattern)
+        self.assertEqual(result.parameters[0].name, 'x')
+        self.assertEqual(result.expression.name, 'a')
+
+        result = parser.parse(tango.tokenize('let cst x, mut y in a'))
+        self.assertIsInstance(result, ast.Pattern)
+        self.assertEqual(result.parameters[0].name, 'x')
+        self.assertEqual(result.parameters[1].name, 'y')
+        self.assertEqual(result.expression.name, 'a')
+
     def test_if_statement(self):
         parser = tango.if_statement + skip(finished)
 
         result = parser.parse(tango.tokenize('if a {}'))
         self.assertIsInstance(result, ast.If)
-        self.assertEqual(result.condition.name, 'a')
-        self.assertFalse(result.body.statements, 'a')
+        self.assertEqual(result.pattern.expression.name, 'a')
+        self.assertFalse(result.body.statements)
         self.assertIsNone(result.else_clause)
 
         result = parser.parse(tango.tokenize('if a {} else {}'))
@@ -218,7 +237,19 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('if a {} else if b {}'))
         self.assertIsInstance(result.else_clause, ast.If)
-        self.assertEqual(result.else_clause.condition.name, 'b')
+        self.assertEqual(result.else_clause.pattern.expression.name, 'b')
+
+        result = parser.parse(tango.tokenize('if let cst x in a {}'))
+        self.assertIsInstance(result, ast.If)
+        self.assertEqual(result.pattern.parameters[0].name, 'x')
+        self.assertEqual(result.pattern.expression.name, 'a')
+        self.assertFalse(result.body.statements)
+        self.assertIsNone(result.else_clause)
+
+        result = parser.parse(tango.tokenize('if let cst x, mut y in a {}'))
+        self.assertIsInstance(result, ast.If)
+        self.assertEqual(result.pattern.parameters[0].name, 'x')
+        self.assertEqual(result.pattern.parameters[1].name, 'y')
 
     def test_assignment(self):
         parser = tango.assignment + skip(finished)

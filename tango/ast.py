@@ -190,18 +190,31 @@ class Closure(Node):
         return '{ %s }' % statements
 
 
+class Pattern(Node):
+
+    def __init__(self, expression, parameters=None):
+        super().__init__()
+        self.expression = expression
+        self.parameters = parameters or []
+
+    def __str__(self):
+        if self.parameters:
+            return 'let %s in %s' % (', '.join(map(str, self.parameters)), self.expression)
+        return str(self.expression)
+
+
 class If(Node):
 
-    def __init__(self, condition, body, else_clause=None):
+    def __init__(self, pattern, body, else_clause=None):
         super().__init__()
-        self.condition = condition
+        self.pattern = pattern
         self.body = body
         self.else_clause = else_clause
 
     def __str__(self):
         if self.else_clause:
-            return 'if %s %s else %s' % (self.condition, self.body, self.else_clause)
-        return 'if %s %s' % (self.condition, self.body)
+            return 'if %s %s else %s' % (self.pattern, self.body, self.else_clause)
+        return 'if %s %s' % (self.pattern, self.body)
 
 
 class Assignment(Node):

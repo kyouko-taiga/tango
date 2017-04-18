@@ -261,19 +261,29 @@ call_expression.define(
     function_identifier + op_('(') + maybe(call_argument_list) + op_(')')
     >> make_call)
 
+def make_pattern(args):
+    return Pattern(
+        parameters = args[0],
+        expression = args[1])
+
+pattern_parameter_list = (
+    kw_('let') + container_decl + many(op_(',') + container_decl) + kw_('in')
+    >> flatten)
+
+pattern = (
+    maybe(pattern_parameter_list) + expression
+    >> make_pattern)
+
 def make_if_statement(args):
     return If(
-        condition   = args[0],
+        pattern     = args[0],
         body        = args[1],
         else_clause = args[2])
-
-# TODO Pattern matching conditions.
-condition = expression
 
 else_clause = forward_decl()
 
 if_statement = (
-    kw_('if') + condition + block + maybe(else_clause)
+    kw_('if') + pattern + block + maybe(else_clause)
     >> make_if_statement)
 
 else_clause.define(
