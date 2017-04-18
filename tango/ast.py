@@ -233,36 +233,20 @@ class Call(Node):
         self.arguments = arguments or []
 
     def __str__(self):
-        return '%s(%s)'
+        return '%s(%s)' % (self.callee, ', '.join(map(str, self.arguments)))
 
 
-class ConstantDecl(Node):
+class ContainerDecl(Node):
 
-    def __init__(self, name, type_annotation, initial_value):
+    def __init__(self, name, is_constant, type_annotation, initial_value):
         super().__init__()
         self.name = name
+        self.is_constant = is_constant
         self.type_annotation = type_annotation
         self.initial_value = initial_value
 
     def __str__(self):
-        result = 'cst %s' % self.name
-        if self.type_annotation is not None:
-            result += ': %s' % self.type_annotation
-        if self.initial_value is not None:
-            result += ' = %s' % self.initial_value
-        return result
-
-
-class VariableDecl(Node):
-
-    def __init__(self, name, type_annotation, initial_value):
-        super().__init__()
-        self.name = name
-        self.type_annotation = type_annotation
-        self.initial_value = initial_value
-
-    def __str__(self):
-        result = 'mut %s' % self.name
+        result = ('cst ' if self.is_constant else 'mut ') + self.name
         if self.type_annotation is not None:
             result += ': %s' % self.type_annotation
         if self.initial_value is not None:

@@ -14,25 +14,25 @@ class TestParser(unittest.TestCase):
         solver = TypeSolver()
         module = self.prepare('cst x = 0')
         solver.visit(module)
-        declaration_node = find('ConstantDecl:first', module)[0]
+        declaration_node = find('ContainerDecl:first', module)[0]
         self.assertEqual(solver.environment[TypeVariable(declaration_node)], Int)
 
         solver = TypeSolver()
         module = self.prepare('cst x: Int')
         solver.visit(module)
-        declaration_node = find('ConstantDecl:first', module)[0]
+        declaration_node = find('ContainerDecl:first', module)[0]
         self.assertEqual(solver.environment[TypeVariable(declaration_node)], Int)
 
         solver = TypeSolver()
         module = self.prepare('cst x: Int = 0')
         solver.visit(module)
-        declaration_node = find('ConstantDecl:first', module)[0]
+        declaration_node = find('ContainerDecl:first', module)[0]
         self.assertEqual(solver.environment[TypeVariable(declaration_node)], Int)
 
         solver = TypeSolver()
         module = self.prepare('cst x: (cst _: Int) -> Nothing')
         solver.visit(module)
-        declaration_node = find('ConstantDecl:first', module)[0]
+        declaration_node = find('ContainerDecl:first', module)[0]
         x_type = solver.environment[TypeVariable(declaration_node)]
         self.assertIsInstance(x_type, FunctionType)
 
@@ -45,7 +45,7 @@ class TestParser(unittest.TestCase):
         '''
         )
         solver.visit(module)
-        declaration_nodes = find('ConstantDecl', module)
+        declaration_nodes = find('ContainerDecl', module)
         for declaration_node in declaration_nodes:
             self.assertEqual(solver.environment[TypeVariable(declaration_node)], Int)
 
@@ -100,7 +100,7 @@ class TestParser(unittest.TestCase):
         '''
         )
         solver.visit(module)
-        declaration_nodes = find('ConstantDecl', module)
+        declaration_nodes = find('ContainerDecl', module)
         self.assertEqual(solver.environment[TypeVariable(declaration_nodes[0])], Int)
         self.assertEqual(solver.environment[TypeVariable(declaration_nodes[1])], String)
 
@@ -112,7 +112,7 @@ class TestParser(unittest.TestCase):
         '''
         )
         solver.visit(module)
-        declaration_nodes = find('ConstantDecl', module)
+        declaration_nodes = find('ContainerDecl', module)
         self.assertEqual(solver.environment[TypeVariable(declaration_nodes[0])], Int)
         self.assertEqual(solver.environment[TypeVariable(declaration_nodes[1])], Int)
 
@@ -155,7 +155,7 @@ class TestParser(unittest.TestCase):
         '''
         )
         solver.visit(module)
-        declaration_nodes = find('ConstantDecl', module)
+        declaration_nodes = find('ContainerDecl', module)
         self.assertEqual(solver.environment[TypeVariable(declaration_nodes[0])].name, 'S')
         self.assertEqual(solver.environment[TypeVariable(declaration_nodes[1])].name, 'S')
 

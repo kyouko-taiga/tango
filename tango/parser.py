@@ -283,29 +283,18 @@ return_statement = (
     kw_('return') + expression
     >> make_return_statement)
 
-def make_constant_decl(args):
-    return ConstantDecl(
-        name = args[0],
-        type_annotation = args[1],
-        initial_value = args[2])
+def make_container_decl(args):
+    return ContainerDecl(
+        is_constant = args[0].value == 'cst',
+        name = args[1],
+        type_annotation = args[2],
+        initial_value = args[3])
 
-constant_decl = (
-    kw_('cst') + identifier +
+container_decl = (
+    (kw('cst') | kw('mut')) + identifier +
     maybe(op_(':') + type_signature) +
     maybe(op_('=') + expression)
-    >> make_constant_decl)
-
-def make_variable_decl(args):
-    return VariableDecl(
-        name = args[0],
-        type_annotation = args[1],
-        initial_value = args[2])
-
-variable_decl = (
-    kw_('mut') + identifier +
-    maybe(op_(':') + type_signature) +
-    maybe(op_('=') + expression)
-    >> make_variable_decl)
+    >> make_container_decl)
 
 def make_function_decl_parameter(args):
     attributes = args[3] or []
@@ -413,7 +402,7 @@ def make_struct_decl(args):
         conformance_list = args[2],
         body = Block(args[3]))
 
-struct_member = enum_decl | struct_decl | function_decl | variable_decl | constant_decl
+struct_member = enum_decl | struct_decl | function_decl | container_decl
 
 struct_members = (
     maybe(struct_member) + many(nl_ + nl_opt + struct_member) + nl_opt
@@ -427,8 +416,7 @@ struct_decl.define(
     >> make_struct_decl)
 
 statement.define(
-    constant_decl |
-    variable_decl |
+    container_decl |
     function_decl |
     enum_decl |
     struct_decl |

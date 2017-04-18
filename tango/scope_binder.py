@@ -27,7 +27,7 @@ class SymbolsExtractor(Transformer):
         symbols = set()
 
         for i, statement in enumerate(node.statements):
-            if isinstance(statement, (EnumCaseDecl, ConstantDecl, VariableDecl)):
+            if isinstance(statement, (EnumCaseDecl, ContainerDecl)):
                 # Add the container's identifier to the current scope.
                 symbols.add(statement.name)
 
@@ -85,7 +85,7 @@ class ScopeBinder(Visitor):
         self.visit(node.body)
         self.scopes.pop()
 
-    def visit_ConstantDecl(self, node):
+    def visit_ContainerDecl(self, node):
         # Make sure the container's name wasn't already declared within the
         # current scope.
         if self.current_scope[node.name]:
@@ -105,9 +105,6 @@ class ScopeBinder(Visitor):
         # Finally, insert the container's name in the current scope.
         self.current_scope.add(node.name, node)
         node.__info__['scope'] = self.current_scope
-
-    def visit_VariableDecl(self, node):
-        self.visit_ConstantDecl(node)
 
     def visit_FunctionDecl(self, node):
         # If the function's identifer was already declared within the current

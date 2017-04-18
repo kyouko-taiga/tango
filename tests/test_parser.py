@@ -326,32 +326,33 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.signature.parameters[0].name, 'x')
         self.assertEqual(result.signature.return_type.name, 'Nothing')
 
-    def test_variable_decl(self):
-        parser = tango.variable_decl + skip(finished)
-
-        result = parser.parse(tango.tokenize('mut x'))
-        self.assertIsInstance(result, ast.VariableDecl)
-        self.assertEqual(result.name, 'x')
-        self.assertIsNone(result.type_annotation)
-        self.assertIsNone(result.initial_value)
-
-        result = parser.parse(tango.tokenize('mut x: Int'))
-        self.assertIsInstance(result, ast.VariableDecl)
-        self.assertEqual(result.name, 'x')
-        self.assertEqual(result.type_annotation.name, 'Int')
-        self.assertIsNone(result.initial_value)
-
-    def test_constant_decl(self):
-        parser = tango.constant_decl + skip(finished)
+    def test_container_decl(self):
+        parser = tango.container_decl + skip(finished)
 
         result = parser.parse(tango.tokenize('cst x'))
-        self.assertIsInstance(result, ast.ConstantDecl)
+        self.assertIsInstance(result, ast.ContainerDecl)
+        self.assertTrue(result.is_constant)
         self.assertEqual(result.name, 'x')
         self.assertIsNone(result.type_annotation)
         self.assertIsNone(result.initial_value)
 
         result = parser.parse(tango.tokenize('cst x: Int'))
-        self.assertIsInstance(result, ast.ConstantDecl)
+        self.assertIsInstance(result, ast.ContainerDecl)
+        self.assertTrue(result.is_constant)
+        self.assertEqual(result.name, 'x')
+        self.assertEqual(result.type_annotation.name, 'Int')
+        self.assertIsNone(result.initial_value)
+
+        result = parser.parse(tango.tokenize('mut x'))
+        self.assertIsInstance(result, ast.ContainerDecl)
+        self.assertFalse(result.is_constant)
+        self.assertEqual(result.name, 'x')
+        self.assertIsNone(result.type_annotation)
+        self.assertIsNone(result.initial_value)
+
+        result = parser.parse(tango.tokenize('mut x: Int'))
+        self.assertIsInstance(result, ast.ContainerDecl)
+        self.assertFalse(result.is_constant)
         self.assertEqual(result.name, 'x')
         self.assertEqual(result.type_annotation.name, 'Int')
         self.assertIsNone(result.initial_value)

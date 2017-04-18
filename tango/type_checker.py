@@ -247,7 +247,7 @@ class TypeSolver(Visitor):
         for statement in node.statements:
             self.visit(statement)
 
-    def visit_ConstantDecl(self, node):
+    def visit_ContainerDecl(self, node):
         # If there isn't neither a type annotation, nor an initializing value,
         # we can't infer any type information.
         if not (node.type_annotation or node.initial_value):
@@ -275,9 +275,6 @@ class TypeSolver(Visitor):
         # Finally, we should unify the inferred type with the type variable
         # corresponding to the symbol under declaration.
         self.environment.unify(TypeVariable(node), inferred)
-
-    def visit_VariableDecl(self, node):
-        return self.visit_ConstantDecl(node)
 
     def visit_FunctionDecl(self, node):
         # First, we should create (unless we already did) a generic type for
