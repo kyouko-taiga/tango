@@ -1,15 +1,14 @@
-from .ast import Transformer, Visitor
+from .ast import *
 from .builtin import builtin_scope
 from .errors import DuplicateDeclaration, UndefinedSymbol
-from .parser import *
 from .scope import Scope
 from .types import BaseType
 
 
-def bind_scopes(ast):
+def bind_scopes(node):
     # Extract the symbols declared in each scopes.
     symbols_extractor = SymbolsExtractor()
-    result = symbols_extractor.visit(ast)
+    result = symbols_extractor.visit(node)
 
     # Bind all identifiers to their respective scope.
     scope_binder = ScopeBinder()

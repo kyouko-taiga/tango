@@ -117,7 +117,7 @@ def make_function_parameter(args):
 
     return FunctionParameter(
         name = args[1],
-        label = args[1],
+        label = args[1] if (args[1] != '_') else None,
         attributes = attributes,
         type_annotation = args[3])
 

@@ -110,6 +110,13 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.owner.name, 'Int')
         self.assertEqual(result.member.name, '+')
 
+    def test_implicit_select_expression(self):
+        parser = tango.implicit_select_expression + skip(finished)
+
+        result = parser.parse(tango.tokenize('.a'))
+        self.assertIsInstance(result, ast.ImplicitSelect)
+        self.assertEqual(result.member, 'a')
+
     def test_closure(self):
         parser = tango.closure + skip(finished)
 

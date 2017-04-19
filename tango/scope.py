@@ -42,15 +42,6 @@ class Scope(object):
     def __getitem__(self, name):
         return self.members[name]
 
-        # TODO Provide the overloads of function types whose signature are not
-        # shadowed from the enclosing scopes.
-
-        # if name in self.members:
-        #     return self.members[name]
-        # if self.parent is not None:
-        #     return self.parent[name]
-        # raise KeyError(name)
-
     def __setitem__(self, name, value):
         self.members[name] = value
 

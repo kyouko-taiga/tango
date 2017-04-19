@@ -1,15 +1,20 @@
 fun f() -> Int {}
 fun f() -> String {}
+fun f() -> Double {}
 
 cst x = f()
 
 fun g(cst _ arg: Int) -> Int {}
 fun g(cst _ arg: String) -> String {}
+fun g<T>(cst _ arg: T) -> T {}
 
 cst y = g(x)
 
 fun h(cst _ arg: Int) -> Int {}
+fun h(cst _ arg: Double) -> Int {}
 
-# In either cases, the declaration of z should force x and y to be typed Int.
-# cst z: Int = y
+# x and y should be typed [Int | Double]
 cst z = h(y)
+
+# x and y should be typed Int
+# cst z: Int = y

@@ -27,7 +27,7 @@ def infer_types(node, max_iter=100):
         if i > max_iter:
             raise InferenceError('could not reach a fixed point after %s iterations' % max_iter)
 
-    return type_solver.environment.reified().storage
+    return (node, type_solver.environment.reified())
 
 
 class TypesFinder(Visitor):
