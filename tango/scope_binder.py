@@ -233,6 +233,9 @@ class ScopeBinder(Visitor):
         self.current_scope.add(node.name, node)
         node.__info__['scope'] = self.current_scope
 
+        # Insert the enum's name in the typenames of the current scope.
+        self.current_scope.typenames.add(node.name)
+
         # Push a new scope on the stack before visiting the enum's body, pre-
         # filled with the symbols it declares.
         self.push_scope()
@@ -295,7 +298,7 @@ class SelectScopeBinder(Visitor):
         # scope of the type's body.
         if isinstance(node, (Identifier, TypeIdentifier)):
             decls = node.__info__['scope'][node.name]
-            if decls and isinstance(decls[0], (StructDecl, EnumDecl)):
+            if isinstance(decls, list) and decls and isinstance(decls[0], (StructDecl, EnumDecl)):
                 return decls[0].body.__info__['scope']
 
         # If the node is a select expression, we first have to get the nested

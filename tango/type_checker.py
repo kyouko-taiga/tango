@@ -5,7 +5,7 @@ from .ast import *
 from .builtin import Bool, Type, builtin_scope
 from .errors import UndefinedSymbol, InferenceError
 from .scope import Scope
-from .types import BaseType, EnumType, FunctionType, GenericType, StructType, TypeTag, TypeUnion
+from .types import BaseType, EnumType, FunctionType, GenericType, StructType, TypeUnion
 
 
 def infer_types(node, max_iter=100):
@@ -103,7 +103,7 @@ class Substitution(object):
         elif isinstance(a, TypeUnion) and isinstance(b, TypeUnion):
             results = []
             for ita, itb in product(a, b):
-                if matches(ita, itb):
+                if self.matches(ita, itb):
                     self.unify(ita, itb)
                     results.append(ita)
 
@@ -114,7 +114,7 @@ class Substitution(object):
 
         elif isinstance(a, TypeUnion) and isinstance(b, BaseType):
             for it in a:
-                if matches(it, b):
+                if self.matches(it, b):
                     self.unify(it, b)
                     a.replace_content((it,))
                     break
@@ -134,9 +134,6 @@ class Substitution(object):
             for it in a.members:
                 self.unify(a.members[it], b.members[it])
 
-        elif isinstance(a, TypeTag) and isinstance(b, TypeTag):
-            self.unify(a.instance_type, b.instance_type)
-
         elif isinstance(a, BaseType) and isinstance(b, BaseType):
             if a != b:
                 raise InferenceError("type '%s' does not match '%s'" % (a, b))
@@ -146,6 +143,42 @@ class Substitution(object):
 
         else:
             assert False, 'cannot unify %r and %r' % (a, b)
+
+    def matches(self, t, u):
+        a = self[t]
+        b = self[u]
+
+        if a == b:
+            return True
+
+        if isinstance(t, TypeVariable):
+            return True
+        if isinstance(u, TypeVariable):
+            return True
+
+        if isinstance(t, TypeUnion):
+            return any(self.matches(it, u) for it in t)
+        if isinstance(u, TypeUnion):
+            return self.matches(u, t)
+
+        if isinstance(t, StructType) and isinstance(u, StructType):
+            return ((t.name == u.name)
+                    and not (t.members.keys() ^ u.members.keys())
+                    and all(self.matches(t.members[it], u.members[it]) for it in t.members))
+
+        # Note that unification of function types is stricter than what `matches`
+        # checks, requiring `t` and `u` to be equal under `__eq__`. Relaxing the
+        # constraint here is what lets us matching a generic signature to its
+        # specialization when visiting Call nodes. However, we normally only unify
+        # generic signatures with themselves in FunctionDecl nodes, so having a
+        # more relaxed match function shouldn't cause any issue.
+        if isinstance(t, FunctionType) and isinstance(u, FunctionType):
+            return (len(t.domain) == len(u.domain)
+                    and all(self.matches(t.domain[i], u.domain[i]) for i in range(len(t.domain)))
+                    and self.matches(t.codomain, u.codomain)
+                    and self.matches(t.labels, u.labels))
+
+        return t == u
 
     def deepwalk(self, t):
         if isinstance(t, TypeUnion):
@@ -199,8 +232,10 @@ class TypeSolver(Visitor):
         # A dummy AST node whose sole purpose is to specify type information for
         # some internally created nodes.
 
-        def __init__(self, type):
+        def __init__(self, type, is_typename=False):
+            super().__init__()
             self.type = type
+            self.is_typename = is_typename
 
     def __init__(self):
         # A simple substitution map: (TypeVariable) -> Type.
@@ -236,14 +271,14 @@ class TypeSolver(Visitor):
 
         # If there's an initializing value, we have to infer its type first.
         if node.initial_value:
-            initial_value_type = type_instance(self.analyse(node.initial_value))
+            initial_value_type = self.read_type_instance(node.initial_value)
 
             # If there's a type annotation as well, we should unify the type
             # it denotes with the one that was inferred from the initializing
             # value. This will not only check that the types match, but will
             # also try to infer specialization arguments of abstract types.
             if node.type_annotation:
-                type_annotation = type_reference(self.analyse(node.type_annotation))
+                type_annotation = self.read_type_reference(node.type_annotation)
                 self.environment.unify(type_annotation, initial_value_type)
 
             inferred = initial_value_type
@@ -251,7 +286,7 @@ class TypeSolver(Visitor):
         # If there isn't an initializing value, we should simply use the type
         # annotation.
         else:
-            inferred = type_reference(self.analyse(node.type_annotation))
+            inferred = self.read_type_reference(node.type_annotation)
 
         # Finally, we should unify the inferred type with the type variable
         # corresponding to the symbol under declaration.
@@ -266,28 +301,30 @@ class TypeSolver(Visitor):
             var = TypeVariable(id=(member_scope, symbol))
             if var not in self.environment:
                 self.environment.unify(var, GenericType(symbol))
+                member_scope.typenames.add(symbol)
 
         # Unlike container declarations, function parameters always have a
         # type annotation, so we can type them directly.
         parameter_types = []
         for parameter in node.signature.parameters:
-            type_annotation = type_reference(self.analyse(parameter.type_annotation))
-            parameter_types.append(type_annotation)
+            type_annotation = self.read_type_reference(parameter.type_annotation)
 
             # We should unify the type we read from the annotations with the
             # type variable corresponding to the parameter name, so that it'll
             # be typed in the function's body.
-            self.environment.unify(TypeVariable(parameter), type_annotation)
+            parameter_type = TypeVariable(parameter)
+            self.environment.unify(parameter_type, type_annotation)
+            parameter_types.append(parameter_type)
 
             # Function parameters may be associated with a default value. In
             # those instances, we should infer the type of the initializing
             # expression and unify it with that of the parameter's annotation.
             if parameter.default_value:
-                default_value_type = type_instance(self.analyse(parameter.default_value))
+                default_value_type = self.read_type_instance(parameter.default_value)
                 self.environment.unify(type_annotation, default_value_type)
 
         # The return type is simply a type signature we've to evaluate.
-        return_type = type_reference(self.analyse(node.signature.return_type))
+        return_type = self.read_type_reference(node.signature.return_type)
 
         # Once we've computed the function signature, we can create a type
         # for the function itself.
@@ -329,23 +366,22 @@ class TypeSolver(Visitor):
         # within a type tag we unify with the struct's name.
         walked = self.environment[TypeVariable(node)]
         if isinstance(walked, TypeVariable):
-            type_tag = TypeTag(type_class(
+            type_instance = type_class(
                 name    = node.name,
                 members = {
                     name: self.environment[TypeVariable((member_scope, name))]
                     for name in node.body.__info__['symbols']
-                }))
+                })
 
-            self.environment.unify(TypeVariable(node), type_tag)
+            self.environment.unify(TypeVariable(node), type_instance)
 
         else:
-            type_tag = walked
-            assert isinstance(type_tag, TypeTag)
+            type_instance = walked
 
         # The body of a type can be visited as a normal satement block, as
         # long as we push a variable on the `current_self_type` stack before,
         # to properly catch references to `Self`.
-        self.current_self_type.append(type_tag)
+        self.current_self_type.append(type_instance)
         self.visit(node.body)
         self.current_self_type.pop()
 
@@ -359,8 +395,8 @@ class TypeSolver(Visitor):
         # Enum case declaration should always be visited in the context of an
         # enum declaration. Consequently, the top `current_self_type` should
         # refer to that enum type.
-        assert self.current_self_type and isinstance(self.current_self_type[-1], TypeTag)
-        enum_type = self.current_self_type[-1].instance_type
+        assert self.current_self_type and isinstance(self.current_self_type[-1], EnumType)
+        enum_type = self.current_self_type[-1]
 
         # If the case doesn't have any associated value, we type it as the
         # enum type directly.
@@ -372,7 +408,7 @@ class TypeSolver(Visitor):
         # their types.
         parameter_types = []
         for parameter in node.parameters:
-            type_annotation = type_reference(self.analyse(parameter.type_annotation))
+            type_annotation = self.read_type_reference(parameter.type_annotation)
             parameter_types.append(type_annotation)
 
         # Then, we can type the case as a function taking associated values to
@@ -386,7 +422,7 @@ class TypeSolver(Visitor):
     def visit_Assignment(self, node):
         # First, we infer and unify the types of the lvalue and rvalue.
         lvalue_type = self.analyse(node.lvalue)
-        rvalue_type = type_instance(self.analyse(node.rvalue))
+        rvalue_type = self.read_type_instance(node.rvalue)
         self.environment.unify(lvalue_type, rvalue_type)
 
         # If the lvalue is an identifer, we unify its name with the type of
@@ -404,7 +440,7 @@ class TypeSolver(Visitor):
             self.visit(parameter)
 
         # Then, we infer the type of the pattern expression.
-        condition_type = type_instance(self.analyse(node.pattern.expression))
+        condition_type = self.read_type_instance(node.pattern.expression)
 
         # The condition of an if expressions should always be a boolean, so we
         # can unify the type of the pattern expression with Bool.
@@ -450,15 +486,13 @@ class TypeSolver(Visitor):
 
         if isinstance(node, Select):
             # First, we need to infer the type of the owner.
-            owner_types = self.analyse(node.owner)
+            owner_types = self.read_type_reference(node.owner)
+            if not isinstance(owner_types, TypeUnion):
+                owner_types = (owner_types,)
 
             # We raise a flag if the owner we're visiting isn't a type tag, to
             # decide whether or not we should perform automatic self binding.
-            as_instance_member = not isinstance(owner_types, TypeTag)
-
-            owner_types = type_reference(owner_types)
-            if not isinstance(owner_types, TypeUnion):
-                owner_types = (owner_types,)
+            as_instance_member = not self.is_typename(node.owner)
 
             candidates = []
             for owner_type in owner_types:
@@ -514,10 +548,8 @@ class TypeSolver(Visitor):
 
             # Once we've inferred the type of the node's owner, we can create
             # a temporary Select node to fallback and the usual analysis.
-            if not isinstance(owner_type, TypeTag):
-                owner_type = TypeTag(owner_type)
             select_node = Select(
-                owner  = TypeSolver.TypeNode(owner_type),
+                owner  = TypeSolver.TypeNode(owner_type, is_typename=True),
                 member = Identifier(name=node.member))
 
             result = self.analyse(select_node)
@@ -528,10 +560,10 @@ class TypeSolver(Visitor):
         if isinstance(node, FunctionSignature):
             domain = []
             for parameter in node.parameters:
-                type_annotation = type_reference(self.analyse(parameter.type_annotation))
+                type_annotation = self.read_type_reference(parameter.type_annotation)
                 domain.append(type_annotation)
 
-            codomain = type_reference(self.analyse(node.return_type))
+            codomain = self.read_type_reference(node.return_type)
 
             function_type = FunctionType(
                 domain   = domain,
@@ -543,7 +575,7 @@ class TypeSolver(Visitor):
 
         if isinstance(node, PrefixedExpression):
             # First, we have to infer the type of the operand.
-            operand_type = type_instance(self.analyse(node.operand))
+            operand_type = self.read_type_instance(node.operand)
 
             # Then, we can get the available signatures for the operator.
             candidates = self.find_operator_candidates(operand_type, node.operator)
@@ -564,7 +596,7 @@ class TypeSolver(Visitor):
 
         if isinstance(node, BinaryExpression):
             # First, we have to infer the type of the left operand.
-            left_type = type_instance(self.analyse(node.left))
+            left_type = self.read_type_instance(node.left)
 
             # Then, we can get the available signatures for the operator.
             candidates = self.find_operator_candidates(left_type, node.operator)
@@ -585,7 +617,7 @@ class TypeSolver(Visitor):
 
         if isinstance(node, Call):
             # First, we get the possible types of the callee.
-            callee_type = type_reference(self.analyse(node.callee))
+            callee_type = self.read_type_reference(node.callee)
             if not isinstance(callee_type, TypeUnion):
                 callee_type = (callee_type,)
 
@@ -660,7 +692,7 @@ class TypeSolver(Visitor):
             # Then, we have to infer the type of each argument.
             argument_types = []
             for argument in node.arguments:
-                argument_type = type_instance(self.analyse(argument.value))
+                argument_type = self.read_type_instance(argument.value)
                 argument_types.append(argument_type)
 
             # Either the return type was already inferred in a previous pass,
@@ -692,7 +724,7 @@ class TypeSolver(Visitor):
 
                 compatible_candidates.append(signature)
 
-                # NOTE Using profiling, we might determine that it could s be
+                # NOTE Using profiling, we might determine that it could be
                 # more efficient to already eliminate candidates whose domain
                 # or codomain doesn't match the argument and return types of
                 # our node here, before they are specialized.
@@ -707,7 +739,7 @@ class TypeSolver(Visitor):
             for types in product(*choices):
                 specializer = FunctionType(domain=types[0:-1], codomain=types[-1])
                 specialized_candidates.extend(flatten(
-                    specialize(candidate, specializer, node)
+                    specialize(self.environment.deepwalk(candidate), specializer, node)
                     for candidate in compatible_candidates))
 
             # Then we filter out the specialized candidates whose signature
@@ -716,13 +748,13 @@ class TypeSolver(Visitor):
             for signature in specialized_candidates:
                 valid = True
                 for expected_type, argument_type in zip(signature.domain, argument_types):
-                    if not matches(expected_type, argument_type):
+                    if not self.environment.matches(expected_type, argument_type):
                         valid = False
                         break
                 if not valid:
                     continue
 
-                if not matches(signature.codomain, return_type):
+                if not self.environment.matches(signature.codomain, return_type):
                     continue
 
                 selected_candidates.append(signature)
@@ -788,6 +820,28 @@ class TypeSolver(Visitor):
 
         assert False, "no type inference for node '%s'" % node.__class__.__name__
 
+    def read_type_instance(self, node):
+        if self.is_typename(node):
+            return Type
+        return self.analyse(node)
+
+    def read_type_reference(self, node):
+        return self.analyse(node)
+
+    def is_typename(self, node):
+        if isinstance(node, (Identifier, TypeIdentifier)):
+            return ((node.name == 'Self')
+                    or (('scope' in node.__info__)
+                        and (node.name in node.__info__['scope'].typenames)))
+
+        if isinstance(node, Select):
+            return self.is_typename(node.member)
+
+        if isinstance(node, TypeSolver.TypeNode):
+            return node.is_typename
+
+        return False
+
     def find_operator_candidates(self, operand_type, operator):
         # If the operand's type is a variable, we have no choice but to return
         # another type variable.
@@ -812,30 +866,6 @@ class TypeSolver(Visitor):
                     candidates.append(candidate)
 
         return candidates
-
-
-def type_instance(signature):
-    assert isinstance(signature, (BaseType, TypeVariable))
-
-    if isinstance(signature, TypeTag):
-        return Type
-    if isinstance(signature, GenericType):
-        if isinstance(signature.signature, str):
-            return Type
-        return type_instance(signature.signature)
-    return signature
-
-
-def type_reference(signature):
-    assert isinstance(signature, (BaseType, TypeVariable))
-
-    if isinstance(signature, TypeTag):
-        return signature.instance_type
-    if isinstance(signature, GenericType):
-        if isinstance(signature.signature, str):
-            return signature
-        return type_reference(signature.signature)
-    return signature
 
 
 def find_overload_decls(name, scope):
@@ -905,35 +935,6 @@ def specialize(unspecialized, specializer, call_node, specializations=None):
         return
 
     assert False, 'cannot specialize %s' % unspecialized.__class__.__name__
-
-
-def matches(t, u):
-    if isinstance(t, TypeVariable):
-        return True
-    if isinstance(u, TypeVariable):
-        return True
-    if isinstance(t, TypeUnion):
-        return any(matches(it, u) for it in t)
-    if isinstance(u, TypeUnion):
-        return matches(u, t)
-    if isinstance(t, StructType) and isinstance(u, StructType):
-        return ((t.name == u.name)
-                and not (t.members.keys() ^ u.members.keys())
-                and all(matches(t.members[it], u.members[it]) for it in t.members))
-
-    # Note that unification of function types is stricter than what `matches`
-    # checks, requiring `t` and `u` to be equal under `__eq__`. Relaxing the
-    # constraint here is what lets us matching a generic signature to its
-    # specialization when visiting Call nodes. However, we normally only unify
-    # generic signatures with themselves in FunctionDecl nodes, so having a
-    # more relaxed match function shouldn't cause any issue.
-    if isinstance(t, FunctionType) and isinstance(u, FunctionType):
-        return (len(t.domain) == len(u.domain)
-                and all(matches(t.domain[i], u.domain[i]) for i in range(len(t.domain)))
-                and matches(t.codomain, u.codomain)
-                and matches(t.labels, u.labels))
-
-    return t == u
 
 
 def flatten(iterable):

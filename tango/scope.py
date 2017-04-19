@@ -11,6 +11,15 @@ class Scope(object):
         # (String) -> [Node]
         self.members = {}
 
+        # Types are first-class citizen (typed with `Type`), but there're many
+        # instances where we need the type name to refer to the type's itself
+        # rather than the first-class type value (e.g. in annotations).
+        # Whether the type name should be interpreted as a first-class value
+        # or a reference to its own type depends on where the name is used. As
+        # a result, we've to know what symbols refer to a type name in a given
+        # scope, so that we can decide what semantics give those identifiers.
+        self.typenames = set()
+
     @property
     def uri(self):
         if self.parent is None:

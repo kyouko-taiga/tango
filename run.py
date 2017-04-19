@@ -1,7 +1,7 @@
 import sys
 
 from tango.parser import parse
-from tango.scope_binder import SymbolsExtractor, ScopeBinder
+from tango.scope_binder import SymbolsExtractor, ScopeBinder, SelectScopeBinder
 from tango.type_checker import infer_types
 
 from tango.ast import Node
@@ -43,6 +43,11 @@ if __name__ == '__main__':
     # Bind all identifiers to their respective scope.
     scope_binder = ScopeBinder()
     scope_binder.visit(module)
+    # print(dumps(module.to_dict(), indent=2, sort_keys=True, cls=SetEncoder))
+    # exit(0)
+
+    select_scope_binder = SelectScopeBinder()
+    select_scope_binder.visit(module)
     # print(dumps(module.to_dict(), indent=2, sort_keys=True, cls=SetEncoder))
     # exit(0)
 
