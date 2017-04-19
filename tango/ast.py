@@ -155,15 +155,12 @@ class Select(Node):
 
 class ImplicitSelect(Node):
 
-    def __init__(self, case, arguments=None):
+    def __init__(self, member):
         super().__init__()
-        self.case = case
-        self.arguments = arguments or []
+        self.member = member
 
     def __str__(self):
-        if self.arguments:
-            return '.%s(%s)' % (self.case, ', '.join(map(str, self.arguments)))
-        return '.%s' % self.case
+        return '.%s' % self.member
 
 
 class PrefixedExpression(Node):

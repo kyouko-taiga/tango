@@ -54,7 +54,7 @@ if __name__ == '__main__':
             scope, name = symbol.id
             if scope.id == 0:
                 continue
-            print('{:15}{:}'.format(scope.uri + '.' + name, inferred_type))
+            print('{:20}{:}'.format(scope.uri + '.' + name, inferred_type))
         # else:
         #     print(symbol, inferred_type)
         # print('%s.%s: %s' % (scope.uri, name, ', '.join(map(str, inferred_type))))

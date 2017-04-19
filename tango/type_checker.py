@@ -499,31 +499,28 @@ class TypeSolver(Visitor):
             return result
 
         if isinstance(node, ImplicitSelect):
-            # If we didn't infer the type of the enum yet, we've no choice but
-            # to return a type variable.
-            if 'type' not in node.__info__:
-                node.__info__['type'] = TypeVariable()
-                return node.__info__['type']
+            # If we didn't infer the type of the node's owner yet, we've no
+            # choice but to return a type variable.
+            if 'owner_type' not in node.__info__:
+                node.__info__['owner_type'] = TypeVariable()
+                return node.__info__['owner_type']
 
-            # If we already created a variable for the enum type, but couldn't
-            # infer its value yet, we should return the same variable.
-            enum_type = self.environment[node.__info__['type']]
-            if isinstance(enum_type, TypeVariable):
-                return enum_type
+            # If we already created a variable for the type of the node's
+            # owner, but couldn't infer its value yet, we should return the
+            # same variable.
+            owner_type = self.environment[node.__info__['owner_type']]
+            if isinstance(owner_type, TypeVariable):
+                return owner_type
 
-            # Once we've inferred the type of the enum, we can create either a
-            # temporary Select node, if the current node doesn't have any
-            # argument, or a temporary Call node if it does, to fallback on
-            # the usual analysis.
-            temp_node = Select(
-                owner  = TypeSolver.TypeNode(TypeTag(enum_type)),
-                member = Identifier(name=node.case))
-            if node.arguments:
-                temp_node = Call(
-                    callee    = temp_node,
-                    arguments = node.arguments)
+            # Once we've inferred the type of the node's owner, we can create
+            # a temporary Select node to fallback and the usual analysis.
+            if not isinstance(owner_type, TypeTag):
+                owner_type = TypeTag(owner_type)
+            select_node = Select(
+                owner  = TypeSolver.TypeNode(owner_type),
+                member = Identifier(name=node.member))
 
-            result = self.analyse(temp_node)
+            result = self.analyse(select_node)
             node.__info__['type'] = result
             return result
 
@@ -602,10 +599,16 @@ class TypeSolver(Visitor):
                     candidates.append(signature)
                     continue
 
-                # If the signature is a variable, it means we don't know its
-                # codomain yet. In that case, we add a fresh variable to the
-                # set of pre-selected codomains.
                 if isinstance(signature, TypeVariable):
+                    # If the signature is a variable, but the callee is an
+                    # implicit select, we know that the codomain is that of
+                    # the callee's owner.
+                    if isinstance(node.callee, ImplicitSelect):
+                        selected_codomains.append(signature)
+                        continue
+
+                    # Otherwise, we can't know the codomain yet, and we add a
+                    # fresh variable to the set of pre-selected codomains.
                     selected_codomains.append(TypeVariable())
                     continue
 
