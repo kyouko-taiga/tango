@@ -38,6 +38,7 @@ nl_opt = skip(many(some(lambda token: token.type == 'newline')))
 type_signature  = forward_decl()
 expression      = forward_decl()
 call_expression = forward_decl()
+implicit_select = forward_decl()
 container_decl  = forward_decl()
 struct_decl     = forward_decl()
 enum_decl       = forward_decl()
@@ -200,7 +201,7 @@ def make_prefixed_expression(args):
 
 primary = closure | identifier | constant | op_('(') + expression + op_(')')
 
-sfx_expr = call_expression | select_expression | primary
+sfx_expr = call_expression | select_expression | implicit_select | primary
 
 pfx_expr = (
     maybe(pfx_op) + sfx_expr
@@ -269,6 +270,14 @@ function_identifier = select_expression | variable_identifier
 call_expression.define(
     function_identifier + op_('(') + maybe(call_argument_list) + op_(')')
     >> make_call)
+
+def make_implicit_select(args):
+    return ImplicitSelect(case = args[0], arguments = args[1])
+
+implicit_select.define(
+    op_('.') + identifier +
+    maybe(op_('(') + call_argument_list + op_(')'))
+    >> make_implicit_select)
 
 def make_pattern(args):
     return Pattern(

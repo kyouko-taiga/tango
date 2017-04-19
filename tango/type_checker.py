@@ -429,8 +429,6 @@ class TypeSolver(Visitor):
         if isinstance(node, Literal):
             return node.__info__['type']
 
-        # If the node is an identifier, we should simply try to get its type
-        # from the environment.
         if isinstance(node, (Identifier, TypeIdentifier)):
             # If the identifier's name is the special `Self` keyword, we
             # should the tag of the type under declaration.
@@ -439,6 +437,8 @@ class TypeSolver(Visitor):
                     result = self.current_self_type[-1]
                 except IndexError:
                     raise InferenceError("invalid use of 'Self' outside of a type declaration")
+
+            # Otherwise we should try to get its type from the environment.
             else:
                 try:
                     result = self.environment[TypeVariable(node)]
@@ -495,6 +495,35 @@ class TypeSolver(Visitor):
             else:
                 result = TypeUnion(self.environment[candidate.codomain] for candidate in candidates)
 
+            node.__info__['type'] = result
+            return result
+
+        if isinstance(node, ImplicitSelect):
+            # If we didn't infer the type of the enum yet, we've no choice but
+            # to return a type variable.
+            if 'type' not in node.__info__:
+                node.__info__['type'] = TypeVariable()
+                return node.__info__['type']
+
+            # If we already created a variable for the enum type, but couldn't
+            # infer its value yet, we should return the same variable.
+            enum_type = self.environment[node.__info__['type']]
+            if isinstance(enum_type, TypeVariable):
+                return enum_type
+
+            # Once we've inferred the type of the enum, we can create either a
+            # temporary Select node, if the current node doesn't have any
+            # argument, or a temporary Call node if it does, to fallback on
+            # the usual analysis.
+            temp_node = Select(
+                owner  = TypeSolver.TypeNode(TypeTag(enum_type)),
+                member = Identifier(name=node.case))
+            if node.arguments:
+                temp_node = Call(
+                    callee    = temp_node,
+                    arguments = node.arguments)
+
+            result = self.analyse(temp_node)
             node.__info__['type'] = result
             return result
 
