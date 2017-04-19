@@ -793,9 +793,6 @@ class TypeSolver(Visitor):
                     candidate_domains = candidate_domains.copy()
                     self.environment.unify(candidate_domains, argument_type)
 
-                for overload in overloads:
-                    argument_type.add(overload)
-
             result = TypeUnion()
             for candidate in selected_candidates:
                 result.add(self.environment[candidate.codomain])
