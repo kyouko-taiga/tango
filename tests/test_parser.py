@@ -336,12 +336,38 @@ class TestParser(unittest.TestCase):
         self.assertIsNone(result.label)
         self.assertEqual(result.iterator.name, 'x')
         self.assertEqual(result.sequence.name, 'a')
+        self.assertFalse(result.body.statements)
 
         result = parser.parse(tango.tokenize('foo: for cst x in a {}'))
         self.assertIsInstance(result, ast.For)
         self.assertEqual(result.label, 'foo')
         self.assertEqual(result.iterator.name, 'x')
         self.assertEqual(result.sequence.name, 'a')
+        self.assertFalse(result.body.statements)
+
+    def test_while_loop(self):
+        parser = tango.while_loop + skip(finished)
+
+        result = parser.parse(tango.tokenize('while a {}'))
+        self.assertIsInstance(result, ast.While)
+        self.assertIsNone(result.label)
+        self.assertFalse(result.pattern.parameters)
+        self.assertEqual(result.pattern.expression.name, 'a')
+        self.assertFalse(result.body.statements)
+
+        result = parser.parse(tango.tokenize('while let cst x in a {}'))
+        self.assertIsInstance(result, ast.While)
+        self.assertIsNone(result.label)
+        self.assertEqual(result.pattern.parameters[0].name, 'x')
+        self.assertEqual(result.pattern.expression.name, 'a')
+        self.assertFalse(result.body.statements)
+
+        result = parser.parse(tango.tokenize('foo: while let cst x in a {}'))
+        self.assertIsInstance(result, ast.While)
+        self.assertEqual(result.label, 'foo')
+        self.assertEqual(result.pattern.parameters[0].name, 'x')
+        self.assertEqual(result.pattern.expression.name, 'a')
+        self.assertFalse(result.body.statements)
 
     def test_assignment(self):
         parser = tango.assignment + skip(finished)

@@ -334,6 +334,20 @@ class For(Node):
         return result
 
 
+class While(Node):
+
+    def __init__(self, pattern, body, label=None):
+        self.pattern = pattern
+        self.body = body
+        self.label = label
+
+    def __str__(self):
+        result = 'while %s %s' % (self.pattern, self.body)
+        if self.label:
+            return ('%s: ' % self.label) + result
+        return result
+
+
 class ContainerDecl(Node):
 
     def __init__(self, name, is_constant, type_annotation, initial_value):

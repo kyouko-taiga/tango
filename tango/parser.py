@@ -373,6 +373,17 @@ for_loop = (
     kw_('for') + (container_decl | kw('_')) + kw_('in') + expression + block
     >> make_for_loop)
 
+def make_while_loop(args):
+    return While(
+        label   = args[0],
+        pattern = args[1],
+        body    = args[2])
+
+while_loop = (
+    maybe(identifier + op_(':')) +
+    kw_('while') + pattern + block
+    >> make_while_loop)
+
 def make_container_decl(args):
     return ContainerDecl(
         is_constant = args[0].value == 'cst',
@@ -512,6 +523,7 @@ statement.define(
     struct_decl |
     assignment |
     for_loop |
+    while_loop |
     return_statement |
     break_statement |
     continue_statement |
