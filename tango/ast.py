@@ -266,7 +266,7 @@ class SwitchCaseClause(Node):
         self.body = body
 
     def __str__(self):
-        return 'case %s %s' % (self.pattern, self.body)
+        return 'case %s %s' % (self.pattern or '_', self.body)
 
 
 class Switch(Node):

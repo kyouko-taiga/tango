@@ -342,11 +342,11 @@ if_expression.define(
 
 def make_switch_case_clause(args):
     return SwitchCaseClause(
-        pattern = args[0],
+        pattern = args[0] if isinstance(args[0], Pattern) else None,
         body    = args[1])
 
 switch_case_clause = (
-    kw_('case') + pattern + block
+    kw_('case') + (kw('_') | pattern) + block
     >> make_switch_case_clause)
 
 switch_case_clause_list = (

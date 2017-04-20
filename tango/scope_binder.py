@@ -76,32 +76,34 @@ class ScopeBinder(Visitor):
         # declared when visiting its declaration.
         self.under_declaration[self.current_scope] = set()
 
-    def visit_If(self, node):
-        # Push a new scope on the stack before visiting the node's, pre-filled
-        # with the symbols declared within the node's pattern parameters.
+    def visit_pattern_matching_node(self, node):
+        # Push a new scope on the stack before visiting the node's pattern,
+        # pre-filled with the symbols declared as pattern parameters.
         self.push_scope()
-        for parameter in node.pattern.parameters:
-            self.current_scope[parameter.name] = []
+        if node.pattern:
+            for parameter in node.pattern.parameters:
+                self.current_scope[parameter.name] = []
+            self.visit(node.pattern)
+
+        # Insert the symbols declared within the node's body into the current
+        # scope. Note that we do that *after* we visited the declarations of
+        # pattern parameters, so as to avoid binding any of them to the
+        # symbols of the node's scope.
         node.body.__info__['scope'] = self.current_scope
-
-        # Visit the node's pattern.
-        self.visit(node.pattern)
-
-        # Insert the symbols declared within the function's block into the
-        # current scope. Note that we do that *after* we visited the default
-        # values and the return type, so as to avoid binding ayny of them to
-        # the symbols of the function's scope.
         for symbol in node.body.__info__['symbols']:
             # Note that we could detect whether a symbol collides with a the
-            # name of a parameter or generic parameter here. But letting the
-            # scope binder find about the error while visiting the duplicate
-            # declaration makes for better error messages.
+            # name of a parameter here. But letting the scope binder find
+            # about the error while visiting the duplicate declaration makes
+            # for better error messages.
             if symbol not in self.current_scope:
                 self.current_scope[symbol] = []
 
         # Visit the node's body.
         self.visit(node.body)
         self.scopes.pop()
+
+    def visit_If(self, node):
+        self.visit_pattern_matching_node(node)
 
         # If the node's else clause is a simple block, we have to push a new
         # scope on the stack before visiting it.
@@ -118,6 +120,9 @@ class ScopeBinder(Visitor):
         # visitor create a new scope for it.
         elif isinstance(node.else_clause, If):
             self.visit(node.else_clause)
+
+    def visit_SwitchCaseClause(self, node):
+        self.visit_pattern_matching_node(node)
 
     def visit_ModuleDecl(self, node):
         # Push a new scope on the stack before visiting the node's block, pre-
