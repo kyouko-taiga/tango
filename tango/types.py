@@ -89,6 +89,9 @@ class NominalType(BaseType):
     def __str__(self):
         return str(self.name)
 
+    def __repr__(self):
+        return '<NominalType %s>' % self.name
+
 
 class StructType(NominalType):
     pass

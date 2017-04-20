@@ -29,7 +29,7 @@ class TestTypeSolver(unittest.TestCase):
 
         module = self.prepare('cst x: String = 0')
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
 
         module = self.prepare('cst x: (cst _: Int) -> Nothing')
         (module, environment) = infer_types(module)
@@ -110,11 +110,11 @@ class TestTypeSolver(unittest.TestCase):
 
         module = self.prepare('fun f(cst x: Int = 1.0) {}')
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
 
         module = self.prepare('fun f<T>(cst x: T = 1.0) {}')
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
 
         module = self.prepare('fun f(cst x: (cst y: Int) -> Int) {}')
         (module, environment) = infer_types(module)
@@ -143,19 +143,19 @@ class TestTypeSolver(unittest.TestCase):
 
     def test_function_return_type_unification(self):
         module = self.prepare('fun f() -> Int { return 0 }')
-        (module, environment) = infer_types(module)
+        infer_types(module)
 
         module = self.prepare('fun f() -> Int { return 0.0 }')
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
 
         module = self.prepare('fun f() { return 0.0 }')
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
 
         module = self.prepare('fun f<T>() -> T { return 0.0 }')
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
 
         module = self.prepare(
         '''
@@ -169,7 +169,7 @@ class TestTypeSolver(unittest.TestCase):
             }
         }
         ''')
-        (module, environment) = infer_types(module)
+        infer_types(module)
 
         module = self.prepare(
         '''
@@ -184,7 +184,7 @@ class TestTypeSolver(unittest.TestCase):
         }
         ''')
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
 
         module = self.prepare(
         '''
@@ -199,7 +199,7 @@ class TestTypeSolver(unittest.TestCase):
         }
         ''')
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
 
     def test_parameter_overloading(self):
         module = self.prepare(
@@ -533,7 +533,7 @@ class TestTypeSolver(unittest.TestCase):
         '''
         )
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
 
     def test_functions_as_first_class(self):
         module = self.prepare(
@@ -656,7 +656,7 @@ class TestTypeSolver(unittest.TestCase):
         '''
         )
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
 
         module = self.prepare(
         '''
@@ -665,7 +665,7 @@ class TestTypeSolver(unittest.TestCase):
         '''
         )
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
 
         module = self.prepare(
         '''
@@ -674,7 +674,7 @@ class TestTypeSolver(unittest.TestCase):
         '''
         )
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
 
         module = self.prepare(
         '''
@@ -685,7 +685,7 @@ class TestTypeSolver(unittest.TestCase):
         '''
         )
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
 
     def test_call_with_overloading(self):
         module = self.prepare(
@@ -1049,10 +1049,10 @@ class TestTypeSolver(unittest.TestCase):
 
     def test_if_as_statement(self):
         module = self.prepare('if true {} else {}')
-        (module, environment) = infer_types(module)
+        infer_types(module)
 
         module = self.prepare('if false {} else if 1 < 3 {}')
-        (module, environment) = infer_types(module)
+        infer_types(module)
 
         module = self.prepare(
         '''
@@ -1060,11 +1060,24 @@ class TestTypeSolver(unittest.TestCase):
         if x {}
         '''
         )
-        (module, environment) = infer_types(module)
+        infer_types(module)
 
         module = self.prepare('if 0 {}')
         with self.assertRaises(InferenceError):
-            (module, environment) = infer_types(module)
+            infer_types(module)
+
+        module = self.prepare(
+        '''
+        mut x = 1
+        if true {
+            x = 2
+        } else {
+            x = 'foo'
+        }
+        '''
+        )
+        with self.assertRaises(InferenceError):
+            infer_types(module)
 
     def test_if_with_pattern(self):
         module = self.prepare(
@@ -1100,7 +1113,7 @@ class TestTypeSolver(unittest.TestCase):
             cst a = 9
             return 1
         } else if true {
-            cst a = '9'
+            cst a = 'bar'
             return 2
         }
         '''
@@ -1118,6 +1131,90 @@ class TestTypeSolver(unittest.TestCase):
         (module, environment) = infer_types(module)
         x_type = self.type_of(find('ContainerDecl', module)[0], environment)
         self.assertEqual(x_type, Bool)
+
+        module = self.prepare(
+        '''
+        cst x = if true {
+            return 1
+        } else if true {
+            return 'bar'
+        }
+        '''
+        )
+        with self.assertRaises(InferenceError):
+            infer_types(module)
+
+    def test_if_with_pattern(self):
+        module = self.prepare(
+        '''
+        cst e: E = .bar(x: 0, y: .foo)
+        switch e {
+            case let cst a, cst b in .bar(x: a, y: b) {}
+        }
+
+        enum E {
+            case foo
+            case bar(x: Int, y: Self)
+
+            fun == (cst _ lhs: Self, cst _ rhs: Self) -> Bool {}
+        }
+        '''
+        )
+        (module, environment) = infer_types(module)
+        declaration_nodes = find('ContainerDecl', module)
+        a_type = self.type_of(declaration_nodes[1], environment)
+        self.assertEqual(a_type, Int)
+        b_type = self.type_of(declaration_nodes[2], environment)
+        self.assertIsInstance(b_type, EnumType)
+        self.assertEqual(b_type.name, 'E')
+
+    def test_switch_as_statement(self):
+        module = self.prepare(
+        '''
+        mut x = 1
+        switch x {
+            case 1 { x = 2 }
+            case 2 { x = 'foo' }
+        }
+        '''
+        )
+        with self.assertRaises(InferenceError):
+            infer_types(module)
+
+    def test_switch_as_expression(self):
+        module = self.prepare(
+        '''
+        cst x = switch 0 {
+            case 0 {
+                cst a = 9
+                return 'foo'
+            }
+            case _ {
+                cst a = '9'
+                return 'bar'
+            }
+        }
+        '''
+        )
+        (module, environment) = infer_types(module)
+        declaration_nodes = find('ContainerDecl:*', module)
+        x_type = self.type_of(declaration_nodes[0], environment)
+        self.assertEqual(x_type, String)
+        a0_type = self.type_of(declaration_nodes[1], environment)
+        self.assertEqual(a0_type, Int)
+        a1_type = self.type_of(declaration_nodes[2], environment)
+        self.assertEqual(a1_type, String)
+
+        module = self.prepare(
+        '''
+        cst x = switch 0 {
+            case 0 { return 'foo' }
+            case _ { return 0 }
+        }
+        '''
+        )
+        with self.assertRaises(InferenceError):
+            infer_types(module)
 
     def type_of(self, node, environment):
         return environment.storage[TypeVariable(node)]
