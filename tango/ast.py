@@ -231,6 +231,12 @@ class Closure(Node):
         return '{ %s }' % statements
 
 
+class Wildcard(Node):
+
+    def __str__(self):
+        return '_'
+
+
 class Pattern(Node):
 
     def __init__(self, expression, parameters=None):
@@ -240,8 +246,8 @@ class Pattern(Node):
 
     def __str__(self):
         if self.parameters:
-            return 'let %s in %s' % (', '.join(map(str, self.parameters)), self.expression)
-        return str(self.expression)
+            return 'let %s in %s' % (', '.join(map(str, self.parameters)), self.expression or '_')
+        return str(self.expression or '_')
 
 
 class If(Node):
@@ -266,7 +272,7 @@ class SwitchCaseClause(Node):
         self.body = body
 
     def __str__(self):
-        return 'case %s %s' % (self.pattern or '_', self.body)
+        return 'case %s %s' % (self.pattern, self.body)
 
 
 class Switch(Node):

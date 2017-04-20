@@ -272,6 +272,11 @@ class TestParser(unittest.TestCase):
         self.assertFalse(result.parameters)
         self.assertEqual(result.expression.name, 'a')
 
+        result = parser.parse(tango.tokenize('_'))
+        self.assertIsInstance(result, ast.Pattern)
+        self.assertFalse(result.parameters)
+        self.assertIsInstance(result.expression, ast.Wildcard)
+
         result = parser.parse(tango.tokenize('let cst x in a'))
         self.assertIsInstance(result, ast.Pattern)
         self.assertEqual(result.parameters[0].name, 'x')

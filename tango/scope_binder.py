@@ -80,10 +80,9 @@ class ScopeBinder(Visitor):
         # Push a new scope on the stack before visiting the node's pattern,
         # pre-filled with the symbols declared as pattern parameters.
         self.push_scope()
-        if node.pattern:
-            for parameter in node.pattern.parameters:
-                self.current_scope[parameter.name] = []
-            self.visit(node.pattern)
+        for parameter in node.pattern.parameters:
+            self.current_scope[parameter.name] = []
+        self.visit(node.pattern)
 
         # Insert the symbols declared within the node's body into the current
         # scope. Note that we do that *after* we visited the declarations of

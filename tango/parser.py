@@ -45,6 +45,8 @@ struct_decl       = forward_decl()
 enum_decl         = forward_decl()
 statement         = forward_decl()
 
+wildcard = kw_('_') >> (lambda _: Wildcard())
+
 def make_identifier(token):
     return token.value
 
@@ -324,7 +326,7 @@ pattern_parameter_list = (
     >> flatten)
 
 pattern = (
-    maybe(pattern_parameter_list) + expression
+    maybe(pattern_parameter_list) + (wildcard | expression)
     >> make_pattern)
 
 def make_if_expression(args):
@@ -342,11 +344,11 @@ if_expression.define(
 
 def make_switch_case_clause(args):
     return SwitchCaseClause(
-        pattern = args[0] if isinstance(args[0], Pattern) else None,
+        pattern = args[0],
         body    = args[1])
 
 switch_case_clause = (
-    kw_('case') + (kw('_') | pattern) + block
+    kw_('case') + pattern + block
     >> make_switch_case_clause)
 
 switch_case_clause_list = (

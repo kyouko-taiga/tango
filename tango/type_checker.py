@@ -463,15 +463,14 @@ class TypeSolver(Visitor):
         assert False, '%s is not a valid lvalue' % node.target.__class__.__name__
 
     def visit_If(self, node):
-        # First, we infer the types of the pattern parameters (if any).
-        for parameter in node.pattern.parameters:
-            self.visit(parameter)
+        # First, we visit the node's pattern.
+        self.visit(node.pattern)
 
-        # Then, we infer the type of the pattern expression.
+        # Then, we infer the type of the node's pattern expression.
         condition_type = self.read_type_instance(node.pattern.expression)
 
         # The condition of an if expressions should always be a boolean, so we
-        # can unify the type of the pattern expression with Bool.
+        # can unify the type of the node's pattern expression with Bool.
         self.environment.unify(condition_type, Bool)
 
         # Then we can visit the node's body and else clause (if any).
@@ -483,13 +482,15 @@ class TypeSolver(Visitor):
         # First, we infer the type of the switch's argument.
         argument_type = self.analyse(node.expression)
 
-        # Then, we visit the pattern (if any) of each clause, unifying the
-        # type of its expression with that of the switch's argument.
         for clause in node.clauses:
-            if clause.pattern:
-                self.visit(clause.pattern)
-                clause_expression_type = self.read_type_instance(clause.pattern.expression)
-                self.environment.unify(clause_expression_type, argument_type)
+            # Then, we visit the pattern of each clause, before unifying their
+            # respective expression type with that of the switch's argument.
+            self.visit(clause.pattern)
+            clause_expression_type = self.read_type_instance(clause.pattern.expression)
+            self.environment.unify(clause_expression_type, argument_type)
+
+            # Finally, we can visit each clause's body.
+            self.visit(clause.body)
 
     def visit_Return(self, node):
         self.read_type_instance(node.value)
@@ -875,6 +876,11 @@ class TypeSolver(Visitor):
 
             node.__info__['type'] = result
             return result
+
+        if isinstance(node, Wildcard):
+            if 'type' in node.__info__:
+                return node.__info__['type']
+            return TypeVariable()
 
         assert False, "no type inference for node '%s'" % node.__class__.__name__
 
