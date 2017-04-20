@@ -250,6 +250,22 @@ class TypeSolver(Visitor):
         # the context we'll be evaluation typing informations.
         self.current_self_type = []
 
+    class ReturnFinder(Visitor):
+
+        def __init__(self):
+            self.return_statements = []
+
+        def visit_Block(self, node):
+            for statement in node.statements:
+                if isinstance(statement, Return):
+                    self.return_statements.append(statement)
+
+                # We don't add return statements of if nodes used as rvalues.
+                if isinstance(statement, If) and not statement.__info__.get('rvalue'):
+                    sub_finder = TypeSolver.ReturnFinder()
+                    sub_finder.visit(statement)
+                    self.return_statements.extend(sub_finder.return_statements)
+
     def visit_Block(self, node):
         # We introduce a new type variable for each symbol declared within the
         # current block before visiting its statements, so we can handle cases
@@ -260,12 +276,17 @@ class TypeSolver(Visitor):
             if var not in self.environment:
                 self.environment[var] = TypeVariable()
 
+        # We also store a reference to all return statements within the block,
+        # so we can later unify their types (e.g. for functions).
+        node.__info__['return_statements'] = []
         for statement in node.statements:
             self.visit(statement)
+            if isinstance(statement, Return):
+                node.__info__['return_statements'].append(statement)
 
     def visit_ContainerDecl(self, node):
         # If there isn't neither a type annotation, nor an initializing value,
-        # we can't infer any type information.
+        # we can't infer any additional type information.
         if not (node.type_annotation or node.initial_value):
             return
 
@@ -354,8 +375,16 @@ class TypeSolver(Visitor):
 
         # FIXME Avoid adding duplicates to the set of overloads.
 
-        # Finally, we should continue the type inference in the function body.
+        # We continue the type inference in the function body.
         self.visit(node.body)
+
+        # Finally, we have to unify the type of the return values of the
+        # function with its return type.
+        return_finder = TypeSolver.ReturnFinder()
+        return_finder.visit(node)
+        for statement in return_finder.return_statements:
+            return_value_type = statement.value.__info__['type']
+            self.environment.unify(return_value_type, function_type.codomain)
 
     def visit_nominal_type(self, node, type_class):
         # First, we should create a new type for the nominal, using fresh type
@@ -420,6 +449,9 @@ class TypeSolver(Visitor):
         self.environment.unify(TypeVariable(node), case_type)
 
     def visit_Assignment(self, node):
+        # Flag the right node as an rvalue.
+        node.rvalue.__info__['rvalue'] = True
+
         # First, we infer and unify the types of the lvalue and rvalue.
         lvalue_type = self.analyse(node.lvalue)
         rvalue_type = self.read_type_instance(node.rvalue)
@@ -446,10 +478,19 @@ class TypeSolver(Visitor):
         # can unify the type of the pattern expression with Bool.
         self.environment.unify(condition_type, Bool)
 
-        # Finally we can visit the node's body and else clause (if any).
+        # Then we can visit the node's body and else clause (if any).
         self.visit(node.body)
         if node.else_clause:
             self.visit(node.else_clause)
+
+        # If the node is an rvalue (i.e. used as an expression), we have to
+        # unify the types of all return values.
+        # TODO
+
+    def visit_Return(self, node):
+        # Flag the return value as an rvalue and inferring its type.
+        node.value.__info__['rvalue'] = True
+        self.analyse(node.value)
 
     def analyse(self, node):
         if isinstance(node, BaseType):
@@ -474,12 +515,9 @@ class TypeSolver(Visitor):
                 except IndexError:
                     raise InferenceError("invalid use of 'Self' outside of a type declaration")
 
-            # Otherwise we should try to get its type from the environment.
+            # Otherwise we should get its type from the environment.
             else:
-                try:
-                    result = self.environment[TypeVariable(node)]
-                except KeyError:
-                    raise UndefinedSymbol(node.name)
+                result = self.environment[TypeVariable(node)]
 
             node.__info__['type'] = result
             return result

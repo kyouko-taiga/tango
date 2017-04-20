@@ -141,6 +141,66 @@ class TestTypeSolver(unittest.TestCase):
         self.assertEqual(f_type.codomain.labels, ['y'])
         self.assertEqual(f_type.codomain.codomain, Int)
 
+    def test_function_return_type_unification(self):
+        module = self.prepare('fun f() -> Int { return 0 }')
+        (module, environment) = infer_types(module)
+
+        module = self.prepare('fun f() -> Int { return 0.0 }')
+        with self.assertRaises(InferenceError):
+            (module, environment) = infer_types(module)
+
+        module = self.prepare('fun f() { return 0.0 }')
+        with self.assertRaises(InferenceError):
+            (module, environment) = infer_types(module)
+
+        module = self.prepare('fun f<T>() -> T { return 0.0 }')
+        with self.assertRaises(InferenceError):
+            (module, environment) = infer_types(module)
+
+        module = self.prepare(
+        '''
+        fun f() -> Int {
+            if true {
+                return 0
+            } else if false {
+                return 1
+            } else {
+                return 2
+            }
+        }
+        ''')
+        (module, environment) = infer_types(module)
+
+        module = self.prepare(
+        '''
+        fun f() -> Int {
+            if true {
+                return 0
+            } else if false {
+                return '1'
+            } else {
+                return 2
+            }
+        }
+        ''')
+        with self.assertRaises(InferenceError):
+            (module, environment) = infer_types(module)
+
+        module = self.prepare(
+        '''
+        fun f() -> Int {
+            if true {
+                return 0
+            } else if false {
+                return 1
+            } else {
+                return '2'
+            }
+        }
+        ''')
+        with self.assertRaises(InferenceError):
+            (module, environment) = infer_types(module)
+
     def test_parameter_overloading(self):
         module = self.prepare(
         '''
