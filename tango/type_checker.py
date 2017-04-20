@@ -856,9 +856,9 @@ class TypeSolver(Visitor):
             # we'll adopt for variadics parameters, we might have to check
             # multiple configurations of argument groups.
 
-        if isinstance(node, If):
+        if isinstance(node, (If, Switch)):
             # First we visit the node as if it was a statement.
-            self.visit_If(node)
+            self.visit(node)
 
             # Then, we have to unify the type of all return values.
             return_finder = TypeSolver.ReturnFinder()
