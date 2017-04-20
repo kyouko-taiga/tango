@@ -299,6 +299,50 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.clauses[0].pattern.expression.name, 'b')
         self.assertEqual(result.clauses[1].pattern.expression.name, 'c')
 
+    def test_break_statement(self):
+        parser = tango.break_statement + skip(finished)
+
+        result = parser.parse(tango.tokenize('break'))
+        self.assertIsInstance(result, ast.Break)
+        self.assertIsNone(result.label)
+
+        result = parser.parse(tango.tokenize('break foo'))
+        self.assertIsInstance(result, ast.Break)
+        self.assertEqual(result.label, 'foo')
+
+    def test_continue_statement(self):
+        parser = tango.continue_statement + skip(finished)
+
+        result = parser.parse(tango.tokenize('continue'))
+        self.assertIsInstance(result, ast.Continue)
+        self.assertIsNone(result.label)
+
+        result = parser.parse(tango.tokenize('continue foo'))
+        self.assertIsInstance(result, ast.Continue)
+        self.assertEqual(result.label, 'foo')
+
+    def test_for_loop(self):
+        parser = tango.for_loop + skip(finished)
+
+        result = parser.parse(tango.tokenize('for _ in a {}'))
+        self.assertIsInstance(result, ast.For)
+        self.assertIsNone(result.label)
+        self.assertIsNone(result.iterator)
+        self.assertEqual(result.sequence.name, 'a')
+        self.assertFalse(result.body.statements)
+
+        result = parser.parse(tango.tokenize('for cst x in a {}'))
+        self.assertIsInstance(result, ast.For)
+        self.assertIsNone(result.label)
+        self.assertEqual(result.iterator.name, 'x')
+        self.assertEqual(result.sequence.name, 'a')
+
+        result = parser.parse(tango.tokenize('foo: for cst x in a {}'))
+        self.assertIsInstance(result, ast.For)
+        self.assertEqual(result.label, 'foo')
+        self.assertEqual(result.iterator.name, 'x')
+        self.assertEqual(result.sequence.name, 'a')
+
     def test_assignment(self):
         parser = tango.assignment + skip(finished)
 

@@ -347,6 +347,32 @@ return_statement = (
     kw_('return') + expression
     >> make_return_statement)
 
+def make_break_statement(args):
+    return Break(label = args)
+
+break_statement = (
+    kw_('break') + maybe(identifier)
+    >> make_break_statement)
+
+def make_continue_statement(args):
+    return Continue(label = args)
+
+continue_statement = (
+    kw_('continue') + maybe(identifier)
+    >> make_continue_statement)
+
+def make_for_loop(args):
+    return For(
+        label    = args[0],
+        iterator = args[1] if isinstance(args[1], ContainerDecl) else None,
+        sequence = args[2],
+        body     = args[3])
+
+for_loop = (
+    maybe(identifier + op_(':')) +
+    kw_('for') + (container_decl | kw('_')) + kw_('in') + expression + block
+    >> make_for_loop)
+
 def make_container_decl(args):
     return ContainerDecl(
         is_constant = args[0].value == 'cst',
@@ -485,7 +511,10 @@ statement.define(
     enum_decl |
     struct_decl |
     assignment |
+    for_loop |
     return_statement |
+    break_statement |
+    continue_statement |
     call_expression |
     if_expression |
     switch_expression)

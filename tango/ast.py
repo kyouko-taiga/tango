@@ -249,27 +249,6 @@ class Switch(Node):
             ''.join('\n%s' % clause for clause in self.clauses))
 
 
-class Assignment(Node):
-
-    def __init__(self, lvalue, rvalue):
-        super().__init__()
-        self.lvalue = lvalue
-        self.rvalue = rvalue
-
-    def __str__(self):
-        return '%s = %s' % (self.lvalue, self.rvalue)
-
-
-class Return(Node):
-
-    def __init__(self, value):
-        super().__init__()
-        self.value = value
-
-    def __str__(self):
-        return 'return %s' % self.value
-
-
 class CallArgument(Node):
 
     def __init__(self, value, name=None, attributes=None):
@@ -293,6 +272,66 @@ class Call(Node):
 
     def __str__(self):
         return '%s(%s)' % (self.callee, ', '.join(map(str, self.arguments)))
+
+
+class Assignment(Node):
+
+    def __init__(self, lvalue, rvalue):
+        super().__init__()
+        self.lvalue = lvalue
+        self.rvalue = rvalue
+
+    def __str__(self):
+        return '%s = %s' % (self.lvalue, self.rvalue)
+
+
+class Return(Node):
+
+    def __init__(self, value):
+        super().__init__()
+        self.value = value
+
+    def __str__(self):
+        return 'return %s' % self.value
+
+
+class Break(Node):
+
+    def __init__(self, label=None):
+        super().__init__()
+        self.label = label
+
+    def __str__(self):
+        if self.label:
+            return 'break %s' % self.label
+        return 'break'
+
+
+class Continue(Node):
+
+    def __init__(self, label=None):
+        super().__init__()
+        self.label = label
+
+    def __str__(self):
+        if self.label:
+            return 'continue %s' % self.label
+        return 'continue'
+
+
+class For(Node):
+
+    def __init__(self, iterator, sequence, body, label=None):
+        self.iterator = iterator
+        self.sequence = sequence
+        self.body = body
+        self.label = label
+
+    def __str__(self):
+        result = 'for %s in %s %s' % (self.iterator or '_', self.sequence, self.body)
+        if self.label:
+            return ('%s: ' % self.label) + result
+        return result
 
 
 class ContainerDecl(Node):
