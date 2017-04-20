@@ -463,7 +463,7 @@ class TypeSolver(Visitor):
         assert False, '%s is not a valid lvalue' % node.target.__class__.__name__
 
     def visit_If(self, node):
-        # First, we visit the types of the pattern parameters (if any).
+        # First, we infer the types of the pattern parameters (if any).
         for parameter in node.pattern.parameters:
             self.visit(parameter)
 
@@ -479,8 +479,20 @@ class TypeSolver(Visitor):
         if node.else_clause:
             self.visit(node.else_clause)
 
+    def visit_Switch(self, node):
+        # First, we infer the type of the switch's argument.
+        argument_type = self.analyse(node.expression)
+
+        # Then, we visit the pattern (if any) of each clause, unifying the
+        # type of its expression with that of the switch's argument.
+        for clause in node.clauses:
+            if clause.pattern:
+                self.visit(clause.pattern)
+                clause_expression_type = self.read_type_instance(clause.pattern.expression)
+                self.environment.unify(clause_expression_type, argument_type)
+
     def visit_Return(self, node):
-        self.analyse(node.value)
+        self.read_type_instance(node.value)
 
     def analyse(self, node):
         if isinstance(node, BaseType):
