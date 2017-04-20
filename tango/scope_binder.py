@@ -265,12 +265,12 @@ class ScopeBinder(Visitor):
     def visit_Identifier(self, node):
         # If we're currently visiting the declaration of the identifier, we
         # should necessarily bind it to an enclosing scope.
-        if node.name in self.under_declaration[self.current_scope]:
-            if self.current_scope.parent is None:
-                raise UndefinedSymbol(node.name)
-            defining_scope = self.current_scope.parent.defining_scope(node.name)
-        else:
-            defining_scope = self.current_scope.defining_scope(node.name)
+        defining_scope = self.current_scope.defining_scope(node.name)
+        if defining_scope is not None:
+            if node.name in self.under_declaration.get(defining_scope, {}):
+                if defining_scope.parent is None:
+                    raise UndefinedSymbol(node.name)
+                defining_scope = defining_scope.parent.defining_scope(node.name)
 
         if defining_scope is None:
             raise UndefinedSymbol(node.name)
