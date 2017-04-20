@@ -91,6 +91,58 @@ class TestParser(unittest.TestCase):
             self.assertIsInstance(result, ast.Identifier)
             self.assertEqual(result.name, s)
 
+    def test_array_literal(self):
+        parser = tango.array_literal + skip(finished)
+
+        result = parser.parse(tango.tokenize('[]'))
+        self.assertIsInstance(result, ast.ArrayLiteral)
+        self.assertFalse(result.items)
+
+        result = parser.parse(tango.tokenize('[a]'))
+        self.assertIsInstance(result, ast.ArrayLiteral)
+        self.assertEqual(len(result.items), 1)
+        self.assertEqual(result.items[0].name, 'a')
+
+        result = parser.parse(tango.tokenize('[a + b, f()]'))
+        self.assertIsInstance(result, ast.ArrayLiteral)
+        self.assertEqual(len(result.items), 2)
+        self.assertIsInstance(result.items[0], ast.BinaryExpression)
+        self.assertIsInstance(result.items[1], ast.Call)
+
+    def test_dictionary_item(self):
+        parser = tango.dictionary_literal_item + skip(finished)
+
+        result = parser.parse(tango.tokenize('a: b'))
+        self.assertIsInstance(result, ast.DictionaryLiteralItem)
+        self.assertEqual(result.key.name, 'a')
+        self.assertEqual(result.value.name, 'b')
+
+        result = parser.parse(tango.tokenize('f(): 1 + 3'))
+        self.assertIsInstance(result, ast.DictionaryLiteralItem)
+        self.assertIsInstance(result.key, ast.Call)
+        self.assertIsInstance(result.value, ast.BinaryExpression)
+
+    def test_dictionary_literal(self):
+        parser = tango.dictionary_literal + skip(finished)
+
+        result = parser.parse(tango.tokenize('[:]'))
+        self.assertIsInstance(result, ast.DictionaryLiteral)
+        self.assertFalse(result.items)
+
+        result = parser.parse(tango.tokenize('[a: b]'))
+        self.assertIsInstance(result, ast.DictionaryLiteral)
+        self.assertEqual(len(result.items), 1)
+        self.assertEqual(result.items[0].key.name, 'a')
+        self.assertEqual(result.items[0].value.name, 'b')
+
+        result = parser.parse(tango.tokenize('[a: b, f(): 1 + 3]'))
+        self.assertIsInstance(result, ast.DictionaryLiteral)
+        self.assertEqual(len(result.items), 2)
+        self.assertEqual(result.items[0].key.name, 'a')
+        self.assertEqual(result.items[0].value.name, 'b')
+        self.assertIsInstance(result.items[1].key, ast.Call)
+        self.assertIsInstance(result.items[1].value, ast.BinaryExpression)
+
     def test_select_expression(self):
         parser = tango.select_expression + skip(finished)
 

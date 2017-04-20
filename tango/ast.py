@@ -140,6 +140,39 @@ class Literal(Node):
         return str(self.value)
 
 
+class ArrayLiteral(Node):
+
+    def __init__(self, items=None):
+        super().__init__()
+        self.items = items or []
+
+    def __str__(self):
+        return '[%s]' % ', '.join(map(str, self.items))
+
+
+class DictionaryLiteralItem(Node):
+
+    def __init__(self, key, value):
+        super().__init__()
+        self.key = key
+        self.value = value
+
+    def __str__(self):
+        return '%s: %s' % (self.key, self.value)
+
+
+class DictionaryLiteral(Node):
+
+    def __init__(self, items=None):
+        super().__init__()
+        self.items = items or []
+
+    def __str__(self):
+        if self.items:
+            return '[%s]' % ', '.join(map(str, self.items))
+        return '[:]'
+
+
 class Select(Node):
 
     def __init__(self, owner, member):
@@ -169,7 +202,7 @@ class PrefixedExpression(Node):
         self.operand = operand
 
     def __str__(self):
-        return '%s%s' % (self.operator, self.operand)
+        return '%s %s' % (self.operator, self.operand)
 
 
 class BinaryExpression(Node):

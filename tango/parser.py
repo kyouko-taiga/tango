@@ -153,14 +153,45 @@ def make_number_literal(token):
         result.__info__['type'] = Int
     return result
 
+number_literal = token_of_type('number') >> make_number_literal
+
 def make_string_literal(token):
     result = Literal(value = token.value)
     result.__info__['type'] = String
     return result
 
-number_literal = token_of_type('number') >> make_number_literal
 string_literal = token_of_type('string') >> make_string_literal
-constant = number_literal | string_literal
+
+def make_array_literal(args):
+    return ArrayLiteral(items = args)
+
+array_literal_items = (
+    expression + many(op_(',') + expression) + maybe(op_(','))
+    >> flatten)
+
+array_literal = (
+    op_('[') + maybe(array_literal_items) + op_(']')
+    >> make_array_literal)
+
+def make_dictionary_literal_item(args):
+    return DictionaryLiteralItem(
+        key   = args[0],
+        value = args[1])
+
+dictionary_literal_item = (
+    expression + op_(':') + expression
+    >> make_dictionary_literal_item)
+
+dictionary_literal_items = (
+    dictionary_literal_item + many(op_(',') + dictionary_literal_item) + maybe(op_(','))
+    >> flatten)
+
+def make_dictionary_literal(args):
+    return DictionaryLiteral(items = args if isinstance(args, list) else None)
+
+dictionary_literal = (
+    op_('[') + (dictionary_literal_items | op(':')) + op_(']')
+    >> make_dictionary_literal)
 
 def make_variable_identifier(name):
     return Identifier(name = name)
@@ -207,7 +238,8 @@ def make_prefixed_expression(args):
             operand = args[1])
     return args[1]
 
-primary = closure | identifier | constant | op_('(') + expression + op_(')')
+literal = dictionary_literal | array_literal | number_literal | string_literal
+primary = closure | literal | identifier | op_('(') + expression + op_(')')
 
 sfx_expr = (
     call_expression | if_expression | switch_expression |
