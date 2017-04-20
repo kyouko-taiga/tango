@@ -38,6 +38,7 @@ nl_opt = skip(many(some(lambda token: token.type == 'newline')))
 type_signature  = forward_decl()
 expression      = forward_decl()
 call_expression = forward_decl()
+if_expression   = forward_decl()
 container_decl  = forward_decl()
 struct_decl     = forward_decl()
 enum_decl       = forward_decl()
@@ -207,7 +208,8 @@ def make_prefixed_expression(args):
 
 primary = closure | identifier | constant | op_('(') + expression + op_(')')
 
-sfx_expr = call_expression | select_expression | implicit_select_expression | primary
+sfx_expr = (
+    call_expression | if_expression | select_expression | implicit_select_expression | primary)
 
 pfx_expr = (
     maybe(pfx_op) + sfx_expr
@@ -290,20 +292,18 @@ pattern = (
     maybe(pattern_parameter_list) + expression
     >> make_pattern)
 
-def make_if_statement(args):
+def make_if_expression(args):
     return If(
         pattern     = args[0],
         body        = args[1],
         else_clause = args[2])
 
-else_clause = forward_decl()
+else_clause = (
+    (kw_('else') + if_expression) | (kw_('else') + block))
 
-if_statement = (
+if_expression.define(
     kw_('if') + pattern + block + maybe(else_clause)
-    >> make_if_statement)
-
-else_clause.define(
-    (kw_('else') + if_statement) | (kw_('else') + block))
+    >> make_if_expression)
 
 def make_assignment(args):
     return Assignment(
@@ -460,10 +460,10 @@ statement.define(
     function_decl |
     enum_decl |
     struct_decl |
-    if_statement |
     assignment |
     return_statement |
-    call_expression)
+    call_expression |
+    if_expression)
 
 def make_module_decl(args):
     return ModuleDecl(

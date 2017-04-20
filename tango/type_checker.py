@@ -260,8 +260,7 @@ class TypeSolver(Visitor):
                 if isinstance(statement, Return):
                     self.return_statements.append(statement)
 
-                # We don't add return statements of if nodes used as rvalues.
-                if isinstance(statement, If) and not statement.__info__.get('rvalue'):
+                if isinstance(statement, If):
                     sub_finder = TypeSolver.ReturnFinder()
                     sub_finder.visit(statement)
                     self.return_statements.extend(sub_finder.return_statements)
@@ -449,9 +448,6 @@ class TypeSolver(Visitor):
         self.environment.unify(TypeVariable(node), case_type)
 
     def visit_Assignment(self, node):
-        # Flag the right node as an rvalue.
-        node.rvalue.__info__['rvalue'] = True
-
         # First, we infer and unify the types of the lvalue and rvalue.
         lvalue_type = self.analyse(node.lvalue)
         rvalue_type = self.read_type_instance(node.rvalue)
@@ -483,13 +479,7 @@ class TypeSolver(Visitor):
         if node.else_clause:
             self.visit(node.else_clause)
 
-        # If the node is an rvalue (i.e. used as an expression), we have to
-        # unify the types of all return values.
-        # TODO
-
     def visit_Return(self, node):
-        # Flag the return value as an rvalue and inferring its type.
-        node.value.__info__['rvalue'] = True
         self.analyse(node.value)
 
     def analyse(self, node):
@@ -852,6 +842,27 @@ class TypeSolver(Visitor):
             # argument. Depending on the definitive syntax and restrictions
             # we'll adopt for variadics parameters, we might have to check
             # multiple configurations of argument groups.
+
+        if isinstance(node, If):
+            # First we visit the node as if it was a statement.
+            self.visit_If(node)
+
+            # Then, we have to unify the type of all return values.
+            return_finder = TypeSolver.ReturnFinder()
+            return_finder.visit(node)
+
+            # Since the node is used as an rvalue, it must have at least one
+            # return statement.
+            if not return_finder.return_statements:
+                raise InferenceError('if expressions used as rvalues must return something')
+
+            result = return_finder.return_statements[0].value.__info__['type']
+            for statement in return_finder.return_statements[1:]:
+                return_value_type = statement.value.__info__['type']
+                self.environment.unify(return_value_type, result)
+
+            node.__info__['type'] = result
+            return result
 
         assert False, "no type inference for node '%s'" % node.__class__.__name__
 

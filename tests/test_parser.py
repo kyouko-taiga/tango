@@ -231,8 +231,8 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.parameters[1].name, 'y')
         self.assertEqual(result.expression.name, 'a')
 
-    def test_if_statement(self):
-        parser = tango.if_statement + skip(finished)
+    def test_if_expression(self):
+        parser = tango.if_expression + skip(finished)
 
         result = parser.parse(tango.tokenize('if a {}'))
         self.assertIsInstance(result, ast.If)
@@ -266,6 +266,19 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(result, ast.Assignment)
         self.assertEqual(result.lvalue.name, 'x')
         self.assertEqual(result.rvalue.value, '0')
+
+        result = parser.parse(tango.tokenize('x = if a {} else {}'))
+        self.assertIsInstance(result, ast.Assignment)
+        self.assertEqual(result.lvalue.name, 'x')
+        self.assertIsInstance(result.rvalue, ast.If)
+        self.assertEqual(result.rvalue.pattern.expression.name, 'a')
+
+        result = parser.parse(tango.tokenize('x = if a {} else if b {} else {}'))
+        self.assertIsInstance(result, ast.Assignment)
+        self.assertEqual(result.lvalue.name, 'x')
+        self.assertIsInstance(result.rvalue, ast.If)
+        self.assertEqual(result.rvalue.pattern.expression.name, 'a')
+        self.assertEqual(result.rvalue.else_clause.pattern.expression.name, 'b')
 
     def test_return_statement(self):
         parser = tango.return_statement + skip(finished)

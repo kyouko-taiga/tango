@@ -1047,7 +1047,7 @@ class TestTypeSolver(unittest.TestCase):
         x_type = self.type_of(declaration_nodes[1], environment)
         self.assertEqual(x_type, Int)
 
-    def test_if_expression(self):
+    def test_if_as_statement(self):
         module = self.prepare('if true {} else {}')
         (module, environment) = infer_types(module)
 
@@ -1066,7 +1066,7 @@ class TestTypeSolver(unittest.TestCase):
         with self.assertRaises(InferenceError):
             (module, environment) = infer_types(module)
 
-    def test_id_expression_with_pattern(self):
+    def test_if_with_pattern(self):
         module = self.prepare(
         '''
         cst e: E = .bar(x: 0, y: .foo)
@@ -1087,6 +1087,37 @@ class TestTypeSolver(unittest.TestCase):
         b_type = self.type_of(declaration_nodes[2], environment)
         self.assertIsInstance(b_type, EnumType)
         self.assertEqual(b_type.name, 'E')
+
+    def test_if_as_expression(self):
+        module = self.prepare('cst x = if true { return 0 } else { return 1 }')
+        (module, environment) = infer_types(module)
+        x_type = self.type_of(find('ContainerDecl', module)[0], environment)
+        self.assertEqual(x_type, Int)
+
+        module = self.prepare(
+        '''
+        cst x = if true {
+            cst a = 9
+            return 1
+        } else if true {
+            cst a = '9'
+            return 2
+        }
+        '''
+        )
+        (module, environment) = infer_types(module)
+        declaration_nodes = find('ContainerDecl:*', module)
+        x_type = self.type_of(declaration_nodes[0], environment)
+        self.assertEqual(x_type, Int)
+        a0_type = self.type_of(declaration_nodes[1], environment)
+        self.assertEqual(a0_type, Int)
+        a1_type = self.type_of(declaration_nodes[2], environment)
+        self.assertEqual(a1_type, String)
+
+        module = self.prepare('cst x = true and if true { return true } else { return false }')
+        (module, environment) = infer_types(module)
+        x_type = self.type_of(find('ContainerDecl', module)[0], environment)
+        self.assertEqual(x_type, Bool)
 
     def type_of(self, node, environment):
         return environment.storage[TypeVariable(node)]

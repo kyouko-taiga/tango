@@ -31,15 +31,10 @@ class SymbolsExtractor(Transformer):
                 symbols.add(statement.name)
 
             if isinstance(statement, (FunctionDecl, EnumDecl, StructDecl)):
-                # Extract the symbols from the body of the type declaration.
-                node.statements[i] = self.visit(statement)
-
                 # Add the name of the type declaration to the current scope.
                 symbols.add(statement.name)
 
-            if isinstance(statement, If):
-                # Extract the symbols from the body of the if expression.
-                node.statements[i] = self.visit(statement)
+        self.generic_visit(node)
 
         node.__info__['symbols'] = symbols
         return node
