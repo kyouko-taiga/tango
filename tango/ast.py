@@ -57,9 +57,7 @@ class Block(Node):
         self.statements = statements or []
 
     def __str__(self):
-        if self.statements:
-            return '{%s\n}' % ''.join('\n%s' % statement for statement in self.statements)
-        return '{}'
+        return '{%s\n}' % ''.join('\n%s' % statement for statement in self.statements)
 
 
 class SpecializationParameter(Node):
@@ -225,6 +223,30 @@ class If(Node):
         if self.else_clause:
             return 'if %s %s else %s' % (self.pattern, self.body, self.else_clause)
         return 'if %s %s' % (self.pattern, self.body)
+
+
+class SwitchCaseClause(Node):
+
+    def __init__(self, pattern, body):
+        super().__init__()
+        self.pattern = pattern
+        self.body = body
+
+    def __str__(self):
+        return 'case %s %s' % (self.pattern, self.body)
+
+
+class Switch(Node):
+
+    def __init__(self, expression, clauses=None):
+        super().__init__()
+        self.expression = expression
+        self.clauses = clauses or []
+
+    def __str__(self):
+        return 'switch %s {%s}' % (
+            self.expression,
+            ''.join('\n%s' % clause for clause in self.clauses))
 
 
 class Assignment(Node):

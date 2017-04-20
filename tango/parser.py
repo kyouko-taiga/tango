@@ -35,14 +35,15 @@ kw_    = lambda value: skip(a(Token('identifier', value)))
 nl_    = skip(some(lambda token: token.type == 'newline'))
 nl_opt = skip(many(some(lambda token: token.type == 'newline')))
 
-type_signature  = forward_decl()
-expression      = forward_decl()
-call_expression = forward_decl()
-if_expression   = forward_decl()
-container_decl  = forward_decl()
-struct_decl     = forward_decl()
-enum_decl       = forward_decl()
-statement       = forward_decl()
+type_signature    = forward_decl()
+expression        = forward_decl()
+call_expression   = forward_decl()
+if_expression     = forward_decl()
+switch_expression = forward_decl()
+container_decl    = forward_decl()
+struct_decl       = forward_decl()
+enum_decl         = forward_decl()
+statement         = forward_decl()
 
 def make_identifier(token):
     return token.value
@@ -209,7 +210,9 @@ def make_prefixed_expression(args):
 primary = closure | identifier | constant | op_('(') + expression + op_(')')
 
 sfx_expr = (
-    call_expression | if_expression | select_expression | implicit_select_expression | primary)
+    call_expression | if_expression | switch_expression |
+    select_expression | implicit_select_expression |
+    primary)
 
 pfx_expr = (
     maybe(pfx_op) + sfx_expr
@@ -304,6 +307,27 @@ else_clause = (
 if_expression.define(
     kw_('if') + pattern + block + maybe(else_clause)
     >> make_if_expression)
+
+def make_switch_case_clause(args):
+    return SwitchCaseClause(
+        pattern = args[0],
+        body    = args[1])
+
+switch_case_clause = (
+    kw_('case') + pattern + block
+    >> make_switch_case_clause)
+
+switch_case_clause_list = (
+    many(nl_opt + switch_case_clause) + nl_opt)
+
+def make_switch_expression(args):
+    return Switch(
+        expression = args[0],
+        clauses =    args[1])
+
+switch_expression.define(
+    kw_('switch') + expression + op_('{') + switch_case_clause_list + op_('}')
+    >> make_switch_expression)
 
 def make_assignment(args):
     return Assignment(
@@ -444,7 +468,7 @@ def make_struct_decl(args):
 
 struct_member = enum_decl | struct_decl | function_decl | container_decl
 
-struct_members = (
+struct_member_list = (
     maybe(struct_member) + many(nl_ + nl_opt + struct_member) + nl_opt
     >> make_statement_list)
 
@@ -452,7 +476,7 @@ struct_decl.define(
     kw_('struct') + identifier +
     maybe(kw_('import') + type_import_list) +
     maybe(op_(':') + type_conformance_list) +
-    op_('{') + struct_members + op_('}')
+    op_('{') + struct_member_list + op_('}')
     >> make_struct_decl)
 
 statement.define(
@@ -463,7 +487,8 @@ statement.define(
     assignment |
     return_statement |
     call_expression |
-    if_expression)
+    if_expression |
+    switch_expression)
 
 def make_module_decl(args):
     return ModuleDecl(

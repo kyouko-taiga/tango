@@ -259,6 +259,46 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.pattern.parameters[0].name, 'x')
         self.assertEqual(result.pattern.parameters[1].name, 'y')
 
+    def test_switch_case_clause(self):
+        parser = tango.switch_case_clause + skip(finished)
+
+        result = parser.parse(tango.tokenize('case a {}'))
+        self.assertIsInstance(result, ast.SwitchCaseClause)
+        self.assertEqual(result.pattern.expression.name, 'a')
+        self.assertFalse(result.body.statements)
+
+        result = parser.parse(tango.tokenize('case let cst x in a {}'))
+        self.assertIsInstance(result, ast.SwitchCaseClause)
+        self.assertEqual(result.pattern.parameters[0].name, 'x')
+        self.assertEqual(result.pattern.expression.name, 'a')
+        self.assertFalse(result.body.statements)
+
+        result = parser.parse(tango.tokenize('case let cst x, mut y in a {}'))
+        self.assertIsInstance(result, ast.SwitchCaseClause)
+        self.assertEqual(result.pattern.parameters[0].name, 'x')
+        self.assertEqual(result.pattern.parameters[1].name, 'y')
+
+    def test_switch_expression(self):
+        parser = tango.switch_expression + skip(finished)
+
+        result = parser.parse(tango.tokenize('switch a {}'))
+        self.assertIsInstance(result, ast.Switch)
+        self.assertEqual(result.expression.name, 'a')
+        self.assertFalse(result.clauses)
+
+        result = parser.parse(tango.tokenize('switch a { case b {} }'))
+        self.assertIsInstance(result, ast.Switch)
+        self.assertEqual(result.expression.name, 'a')
+        self.assertEqual(len(result.clauses), 1)
+        self.assertEqual(result.clauses[0].pattern.expression.name, 'b')
+
+        result = parser.parse(tango.tokenize('switch a { case b {} case c {} }'))
+        self.assertIsInstance(result, ast.Switch)
+        self.assertEqual(result.expression.name, 'a')
+        self.assertEqual(len(result.clauses), 2)
+        self.assertEqual(result.clauses[0].pattern.expression.name, 'b')
+        self.assertEqual(result.clauses[1].pattern.expression.name, 'c')
+
     def test_assignment(self):
         parser = tango.assignment + skip(finished)
 
