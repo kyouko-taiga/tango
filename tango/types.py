@@ -107,11 +107,12 @@ class StructuralType(BaseType):
 
 class FunctionType(StructuralType):
 
-    def __init__(self, domain=None, codomain=None, labels=None):
+    def __init__(self, domain=None, codomain=None, labels=None, attributes=None):
         super().__init__()
         self.domain = domain or []
         self.codomain = codomain or Nothing
         self.labels = labels or [None for _ in self.domain]
+        self.attributes = attributes or [set() for _ in self.domain]
 
     @property
     def is_generic(self):
@@ -122,9 +123,13 @@ class FunctionType(StructuralType):
                 and (len(self.domain) == len(other.domain))
                 and all(t == u for t, u in zip(self.domain, other.domain))
                 and (self.codomain == other.codomain)
-                and all(l == m for l, m in zip(self.labels, other.labels)))
+                and all(l == m for l, m in zip(self.labels, other.labels))
+                and all(a == b for a, b in zip(self.attributes, other.attributes)))
 
     def __str__(self):
-        return '(%s) -> %s' % (
-            ', '.join('%s: %s' % (self.labels[i] or '_', t) for i, t in enumerate(self.domain)),
-            self.codomain)
+        parameters = []
+        for i, t in enumerate(self.domain):
+            mutability = 'mut' if ('mutable' in self.attributes[i]) else 'cst'
+            parameters.append(mutability + ' ' + (self.labels[i] or '_') + ': ' + str(t))
+
+        return '(%s) -> %s' % (', '.join(parameters), self.codomain)

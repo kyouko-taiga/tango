@@ -101,12 +101,12 @@ class FunctionParameter(Node):
 
     _fields = ('name', 'label', 'type_annotation', 'attributes', 'default_value',)
 
-    def __init__(self, name, label, type_annotation, attributes, default_value=None):
+    def __init__(self, name, label, type_annotation, attributes=None, default_value=None):
         super().__init__()
         self.name = name
         self.label = label
         self.type_annotation = type_annotation
-        self.attributes = attributes
+        self.attributes = attributes or set()
         self.default_value = default_value
 
     def __str__(self):
@@ -334,7 +334,7 @@ class CallArgument(Node):
         super().__init__()
         self.value = value
         self.name = name
-        self.attributes = attributes or []
+        self.attributes = attributes or set()
 
     def __str__(self):
         if self.name:

@@ -190,9 +190,10 @@ class Substitution(object):
 
         if isinstance(t, FunctionType):
             return FunctionType(
-                domain   = [self.deepwalk(p) for p in t.domain],
-                codomain = self.deepwalk(t.codomain),
-                labels   = t.labels)
+                domain     = [self.deepwalk(p) for p in t.domain],
+                codomain   = self.deepwalk(t.codomain),
+                labels     = t.labels,
+                attributes = t.attributes)
 
         if not isinstance(t, TypeVariable):
             return t
@@ -349,9 +350,10 @@ class TypeSolver(Visitor):
         # Once we've computed the function signature, we can create a type
         # for the function itself.
         function_type = FunctionType(
-            domain   = parameter_types,
-            codomain = return_type,
-            labels   = [parameter.label for parameter in node.signature.parameters])
+            domain     = parameter_types,
+            codomain   = return_type,
+            labels     = [parameter.label for parameter in node.signature.parameters],
+            attributes = [parameter.attributes for parameter in node.signature.parameters])
 
         # As functions may be overloaded, we can't unify the function type
         # we've created with the function's name directly. Instead, we should
@@ -555,9 +557,10 @@ class TypeSolver(Visitor):
                         # function type to apply automatic self binding.
                         if as_instance_member and isinstance(member, FunctionType):
                             candidates.append(FunctionType(
-                                domain   = member.domain[1:],
-                                codomain = member.codomain,
-                                labels   = member.labels[1:]))
+                                domain     = member.domain[1:],
+                                codomain   = member.codomain,
+                                labels     = member.labels[1:],
+                                attributes = member.attributes[1:]))
                         else:
                             candidates.append(member)
 
@@ -607,9 +610,10 @@ class TypeSolver(Visitor):
             codomain = self.read_type_reference(node.return_type)
 
             function_type = FunctionType(
-                domain   = domain,
-                codomain = codomain,
-                labels   = [p.label for p in node.parameters])
+                domain     = domain,
+                codomain   = codomain,
+                labels     = [parameter.label for parameter in node.parameters],
+                attributes = [parameter.attributes for parameter in node.parameters])
 
             node.__info__['type'] = function_type
             return function_type
@@ -710,9 +714,10 @@ class TypeSolver(Visitor):
                         # self binding), and we'll list it as a candidate.
                         assert isinstance(constructor, FunctionType)
                         candidates.append(FunctionType(
-                            domain   = constructor.domain[1:],
-                            codomain = constructor.codomain,
-                            labels   = constructor.labels[1:]))
+                            domain     = constructor.domain[1:],
+                            codomain   = constructor.codomain,
+                            labels     = constructor.labels[1:],
+                            attributes = constructor.attributes[1:]))
 
             # If we can't find any candidate, we return the type codomains we
             # already selected (if any).
@@ -992,9 +997,10 @@ def specialize(unspecialized, specializer, call_node, specializations=None):
         # cartesian product will always be a singleton.
         for specialized in product(*chain(specialized_domain, (specialized_codomain,))):
             yield FunctionType(
-                domain   = specialized[0:-1],
-                codomain = specialized[-1],
-                labels   = unspecialized.labels)
+                domain     = specialized[0:-1],
+                codomain   = specialized[-1],
+                labels     = unspecialized.labels,
+                attributes = unspecialized.attributes)
 
         return
 

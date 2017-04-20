@@ -65,8 +65,7 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('cst x: @attr1 @attr2 Int'))
         self.assertIsInstance(result, ast.FunctionParameter)
-        self.assertEqual(result.attributes[0], 'attr1')
-        self.assertEqual(result.attributes[1], 'attr2')
+        self.assertEqual(result.attributes, {'attr1', 'attr2'})
         self.assertEqual(result.type_annotation.name, 'Int')
 
     def test_function_signature(self):
@@ -465,8 +464,7 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('@attr1 @attr2 0'))
         self.assertIsInstance(result, ast.CallArgument)
-        self.assertEqual(result.attributes[0], 'attr1')
-        self.assertEqual(result.attributes[1], 'attr2')
+        self.assertEqual(result.attributes, {'attr1', 'attr2'})
 
         result = parser.parse(tango.tokenize('x: 0'))
         self.assertIsInstance(result, ast.CallArgument)
@@ -476,8 +474,7 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('x: @attr1 @attr2 0'))
         self.assertIsInstance(result, ast.CallArgument)
-        self.assertEqual(result.attributes[0], 'attr1')
-        self.assertEqual(result.attributes[1], 'attr2')
+        self.assertEqual(result.attributes, {'attr1', 'attr2'})
 
     def test_call_expression(self):
         parser = tango.call_expression + skip(finished)
@@ -526,8 +523,7 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(result, ast.FunctionParameter)
         self.assertEqual(result.label, 'a')
         self.assertEqual(result.name, 'x')
-        self.assertEqual(result.attributes[0], 'attr1')
-        self.assertEqual(result.attributes[1], 'attr2')
+        self.assertEqual(result.attributes, {'attr1', 'attr2'})
         self.assertEqual(result.type_annotation.name, 'Int')
 
     def test_function_decl_parameter_default_value(self):

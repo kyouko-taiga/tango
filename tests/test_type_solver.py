@@ -72,6 +72,7 @@ class TestTypeSolver(unittest.TestCase):
         self.assertFalse(f_type.is_generic)
         self.assertFalse(f_type.domain)
         self.assertFalse(f_type.labels)
+        self.assertFalse(f_type.attributes)
         self.assertEqual(f_type.codomain, Nothing)
 
         module = self.prepare('fun f(cst x: Int, cst _ y: String) -> Double {}')
@@ -81,6 +82,17 @@ class TestTypeSolver(unittest.TestCase):
         self.assertFalse(f_type.is_generic)
         self.assertEqual(f_type.domain, [Int, String])
         self.assertEqual(f_type.labels, ['x', None])
+        self.assertEqual(f_type.attributes, [set(), set()])
+        self.assertEqual(f_type.codomain, Double)
+
+        module = self.prepare('fun f(mut x: Int, mut _ y: String) -> Double {}')
+        (module, environment) = infer_types(module)
+        f_type = self.type_of(find('FunctionDecl:first', module)[0], environment)
+        self.assertIsInstance(f_type, FunctionType)
+        self.assertFalse(f_type.is_generic)
+        self.assertEqual(f_type.domain, [Int, String])
+        self.assertEqual(f_type.labels, ['x', None])
+        self.assertEqual(f_type.attributes, [{'mutable'}, {'mutable'}])
         self.assertEqual(f_type.codomain, Double)
 
         module = self.prepare('fun f<T, U>(cst x: T, cst _ y: U) -> T {}')
@@ -96,6 +108,7 @@ class TestTypeSolver(unittest.TestCase):
         self.assertEqual(len(f_type.labels), 2)
         self.assertEqual(f_type.labels[0], 'x')
         self.assertIsNone(f_type.labels[1])
+        self.assertEqual(f_type.attributes, [set(), set()])
         self.assertIsInstance(f_type.codomain, GenericType)
         self.assertEqual(f_type.codomain.signature, 'T')
 
@@ -106,6 +119,7 @@ class TestTypeSolver(unittest.TestCase):
         self.assertFalse(f_type.is_generic)
         self.assertEqual(f_type.domain, [Int])
         self.assertEqual(f_type.labels, ['x'])
+        self.assertEqual(f_type.attributes, [set()])
         self.assertEqual(f_type.codomain, Nothing)
 
         module = self.prepare('fun f(cst x: Int = 1.0) {}')
@@ -125,8 +139,10 @@ class TestTypeSolver(unittest.TestCase):
         self.assertIsInstance(f_type.domain[0], FunctionType)
         self.assertEqual(f_type.domain[0].domain, [Int])
         self.assertEqual(f_type.domain[0].labels, ['y'])
+        self.assertEqual(f_type.domain[0].attributes, [set()])
         self.assertEqual(f_type.domain[0].codomain, Int)
         self.assertEqual(f_type.labels, ['x'])
+        self.assertEqual(f_type.attributes, [set()])
         self.assertEqual(f_type.codomain, Nothing)
 
         module = self.prepare('fun f() -> (cst y: Int) -> Int {}')
@@ -139,6 +155,7 @@ class TestTypeSolver(unittest.TestCase):
         self.assertIsInstance(f_type.codomain, FunctionType)
         self.assertEqual(f_type.codomain.domain, [Int])
         self.assertEqual(f_type.codomain.labels, ['y'])
+        self.assertEqual(f_type.codomain.attributes, [set()])
         self.assertEqual(f_type.codomain.codomain, Int)
 
     def test_function_return_type_unification(self):
@@ -239,6 +256,29 @@ class TestTypeSolver(unittest.TestCase):
         f1 = f_types.types[0] if len(f_types.types[0].domain) == 2 else f_types.types[1]
         self.assertEqual(f1.domain, [Int, Int])
         self.assertEqual(f1.codomain, Nothing)
+
+        # TODO Declaring multiple functions with the same signature should
+        # raise an error.
+
+    def test_parameter_mutability_overloading(self):
+        module = self.prepare(
+        '''
+        fun f(cst x: Int) {}
+        fun f(mut x: Int) {}
+        ''')
+        (module, environment) = infer_types(module)
+        f_types = self.type_of(find('FunctionDecl:first', module)[0], environment)
+        self.assertIsInstance(f_types, TypeUnion)
+        self.assertEqual(len(f_types), 2)
+        self.assertTrue(
+            ('mutable' in f_types.types[0].attributes[0]) !=
+            ('mutable' in f_types.types[1].attributes[0]))
+
+        self.assertEqual(f_types.types[0].domain, [Int])
+        self.assertEqual(f_types.types[0].codomain, Nothing)
+
+        self.assertEqual(f_types.types[1].domain, [Int])
+        self.assertEqual(f_types.types[1].codomain, Nothing)
 
         # TODO Declaring multiple functions with the same signature should
         # raise an error.

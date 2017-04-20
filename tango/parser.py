@@ -115,9 +115,9 @@ nested_type_identifier = (
     >> make_nested_type_identifier)
 
 def make_function_parameter(args):
-    attributes = args[2] or []
+    attributes = set(args[2])
     if args[0].value == 'mut':
-        attributes.append('mutable')
+        attributes.add('mutable')
 
     return FunctionParameter(
         name = args[1],
@@ -284,7 +284,7 @@ expression.define(bin_expr)
 
 def make_call_positional_argument(args):
     return CallArgument(
-        attributes = args[0],
+        attributes = set(args[0]),
         value = args[1])
 
 call_position_argument = (
@@ -294,7 +294,7 @@ call_position_argument = (
 def make_call_named_argument(args):
     return CallArgument(
         name = args[0],
-        attributes = args[1],
+        attributes = set(args[1]),
         value = args[2])
 
 call_named_argument = (
@@ -432,9 +432,9 @@ container_decl.define(
     >> make_container_decl)
 
 def make_function_decl_parameter(args):
-    attributes = args[3] or []
+    attributes = set(args[3])
     if args[0].value == 'mut':
-        attributes.append('mutable')
+        attributes.add('mutable')
 
     name = args[2] or args[1]
     if name == '_':
