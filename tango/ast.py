@@ -1,5 +1,7 @@
 class Node(object):
 
+    _fields = tuple()
+
     def __init__(self):
         self.__info__ = {}
 
@@ -36,6 +38,8 @@ class Node(object):
 
 class Identifier(Node):
 
+    _fields = ('name',)
+
     def __init__(self, name):
         super().__init__()
         self.name = name
@@ -52,6 +56,8 @@ class Identifier(Node):
 
 class Block(Node):
 
+    _fields = ('statements',)
+
     def __init__(self, statements=None):
         super().__init__()
         self.statements = statements or []
@@ -61,6 +67,8 @@ class Block(Node):
 
 
 class SpecializationParameter(Node):
+
+    _fields = ('name', 'type_annotation',)
 
     def __init__(self, name, type_annotation):
         super().__init__()
@@ -72,6 +80,8 @@ class SpecializationParameter(Node):
 
 
 class TypeIdentifier(Node):
+
+    _fields = ('name', 'specialization_parameters',)
 
     def __init__(self, name, specialization_parameters=None):
         super().__init__()
@@ -89,9 +99,9 @@ class TypeIdentifier(Node):
 
 class FunctionParameter(Node):
 
-    def __init__(
-            self, name, label, type_annotation, attributes, default_value=None):
+    _fields = ('name', 'label', 'type_annotation', 'attributes', 'default_value',)
 
+    def __init__(self, name, label, type_annotation, attributes, default_value=None):
         super().__init__()
         self.name = name
         self.label = label
@@ -121,6 +131,8 @@ class FunctionParameter(Node):
 
 class FunctionSignature(Node):
 
+    _fields = ('parameters', 'return_type',)
+
     def __init__(self, parameters, return_type):
         super().__init__()
         self.parameters = parameters
@@ -132,6 +144,8 @@ class FunctionSignature(Node):
 
 class Literal(Node):
 
+    _fields = ('value',)
+
     def __init__(self, value):
         super().__init__()
         self.value = value
@@ -141,6 +155,8 @@ class Literal(Node):
 
 
 class ArrayLiteral(Node):
+
+    _fields = ('items',)
 
     def __init__(self, items=None):
         super().__init__()
@@ -152,6 +168,8 @@ class ArrayLiteral(Node):
 
 class DictionaryLiteralItem(Node):
 
+    _fields = ('key', 'value',)
+
     def __init__(self, key, value):
         super().__init__()
         self.key = key
@@ -162,6 +180,8 @@ class DictionaryLiteralItem(Node):
 
 
 class DictionaryLiteral(Node):
+
+    _fields = ('items',)
 
     def __init__(self, items=None):
         super().__init__()
@@ -175,6 +195,8 @@ class DictionaryLiteral(Node):
 
 class Select(Node):
 
+    _fields = ('owner', 'member',)
+
     def __init__(self, owner, member):
         super().__init__()
         self.owner = owner
@@ -186,6 +208,8 @@ class Select(Node):
 
 class ImplicitSelect(Node):
 
+    _fields = ('member',)
+
     def __init__(self, member):
         super().__init__()
         self.member = member
@@ -195,6 +219,8 @@ class ImplicitSelect(Node):
 
 
 class PrefixedExpression(Node):
+
+    _fields = ('operator', 'operand',)
 
     def __init__(self, operator, operand):
         super().__init__()
@@ -207,6 +233,8 @@ class PrefixedExpression(Node):
 
 class BinaryExpression(Node):
 
+    _fields = ('operator', 'left', 'right',)
+
     def __init__(self, operator, left, right):
         super().__init__()
         self.operator = operator
@@ -218,6 +246,8 @@ class BinaryExpression(Node):
 
 
 class Closure(Node):
+
+    _fields = ('statements', 'parameters',)
 
     def __init__(self, statements, parameters=None):
         super().__init__()
@@ -239,6 +269,8 @@ class Wildcard(Node):
 
 class Pattern(Node):
 
+    _fields = ('expression', 'parameters',)
+
     def __init__(self, expression, parameters=None):
         super().__init__()
         self.expression = expression
@@ -251,6 +283,8 @@ class Pattern(Node):
 
 
 class If(Node):
+
+    _fields = ('pattern', 'body', 'else_clause',)
 
     def __init__(self, pattern, body, else_clause=None):
         super().__init__()
@@ -266,6 +300,8 @@ class If(Node):
 
 class SwitchCaseClause(Node):
 
+    _fields = ('pattern', 'body',)
+
     def __init__(self, pattern, body):
         super().__init__()
         self.pattern = pattern
@@ -276,6 +312,8 @@ class SwitchCaseClause(Node):
 
 
 class Switch(Node):
+
+    _fields = ('expression', 'clauses',)
 
     def __init__(self, expression, clauses=None):
         super().__init__()
@@ -289,6 +327,8 @@ class Switch(Node):
 
 
 class CallArgument(Node):
+
+    _fields = ('value', 'name', 'attributes',)
 
     def __init__(self, value, name=None, attributes=None):
         super().__init__()
@@ -304,6 +344,8 @@ class CallArgument(Node):
 
 class Call(Node):
 
+    _fields = ('callee', 'arguments',)
+
     def __init__(self, callee, arguments=None):
         super().__init__()
         self.callee = callee
@@ -314,6 +356,8 @@ class Call(Node):
 
 
 class Assignment(Node):
+
+    _fields = ('lvalue', 'rvalue',)
 
     def __init__(self, lvalue, rvalue):
         super().__init__()
@@ -326,6 +370,8 @@ class Assignment(Node):
 
 class Return(Node):
 
+    _fields = ('value',)
+
     def __init__(self, value):
         super().__init__()
         self.value = value
@@ -335,6 +381,8 @@ class Return(Node):
 
 
 class Break(Node):
+
+    _fields = ('label',)
 
     def __init__(self, label=None):
         super().__init__()
@@ -348,6 +396,8 @@ class Break(Node):
 
 class Continue(Node):
 
+    _fields = ('label',)
+
     def __init__(self, label=None):
         super().__init__()
         self.label = label
@@ -359,6 +409,8 @@ class Continue(Node):
 
 
 class For(Node):
+
+    _fields = ('iterator', 'sequence', 'body', 'label',)
 
     def __init__(self, iterator, sequence, body, label=None):
         self.iterator = iterator
@@ -375,6 +427,8 @@ class For(Node):
 
 class While(Node):
 
+    _fields = ('pattern', 'body', 'label',)
+
     def __init__(self, pattern, body, label=None):
         self.pattern = pattern
         self.body = body
@@ -388,6 +442,8 @@ class While(Node):
 
 
 class ContainerDecl(Node):
+
+    _fields = ('name', 'is_constant', 'type_annotation', 'initial_value',)
 
     def __init__(self, name, is_constant, type_annotation, initial_value):
         super().__init__()
@@ -407,6 +463,8 @@ class ContainerDecl(Node):
 
 class FunctionDecl(Node):
 
+    _fields = ('name', 'signature', 'body', 'generic_parameters',)
+
     def __init__(self, name, signature, body, generic_parameters=None):
         super().__init__()
         self.name = name
@@ -424,6 +482,8 @@ class FunctionDecl(Node):
 
 class EnumCaseParameter(Node):
 
+    _fields = ('label', 'type_annotation',)
+
     def __init__(self, label, type_annotation):
         super().__init__()
         self.label = label
@@ -434,6 +494,8 @@ class EnumCaseParameter(Node):
 
 
 class EnumCaseDecl(Node):
+
+    _fields = ('name', 'parameters',)
 
     def __init__(self, name, parameters=None):
         super().__init__()
@@ -449,9 +511,9 @@ class EnumCaseDecl(Node):
 
 class EnumDecl(Node):
 
-    def __init__(
-            self, name, body, import_list=None, conformance_list=None):
+    _fields = ('name', 'body', 'import_list', 'conformance_list',)
 
+    def __init__(self, name, body, import_list=None, conformance_list=None):
         super().__init__()
         self.name = name
         self.body = body
@@ -463,6 +525,8 @@ class EnumDecl(Node):
 
 
 class StructDecl(Node):
+
+    _fields = ('name', 'body', 'import_list', 'conformance_list',)
 
     def __init__(self, name, body, import_list=None, conformance_list=None):
         super().__init__()
@@ -476,6 +540,8 @@ class StructDecl(Node):
 
 
 class ModuleDecl(Node):
+
+    _fields = ('name', 'body',)
 
     def __init__(self, name, body):
         super().__init__()
@@ -493,7 +559,8 @@ class Visitor(object):
         return getattr(self, method_name, self.generic_visit)(node)
 
     def generic_visit(self, node):
-        for attr, value in node.__dict__.items():
+        for attr in node._fields:
+            value = getattr(node, attr)
             if isinstance(value, list):
                 for item in value:
                     if isinstance(item, Node):
@@ -505,7 +572,8 @@ class Visitor(object):
 class Transformer(Visitor):
 
     def generic_visit(self, node):
-        for attr, value in node.__dict__.items():
+        for attr in node._fields:
+            value = getattr(node, attr)
             if isinstance(value, list):
                 new_values = []
                 for item in value:
