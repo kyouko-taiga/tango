@@ -2,7 +2,8 @@ import sys
 
 from tango.parser import parse
 from tango.scope_binder import SymbolsExtractor, ScopeBinder, SelectScopeBinder
-from tango.type_checker import infer_types
+from tango.type_solver import infer_types
+from tango.type_disambiguator import disambiguate_types
 
 from tango.ast import Node
 from tango.scope import Scope
@@ -51,8 +52,9 @@ if __name__ == '__main__':
     # print(dumps(module.to_dict(), indent=2, sort_keys=True, cls=SetEncoder))
     # exit(0)
 
-    # Infer the types of the parsed expressions.
-    types = infer_types(module)
+    # Infer the types of all expressions.
+    (module, environment) = infer_types(module)
+    types = environment.storage
 
     for (symbol, inferred_type) in types.items():
         if isinstance(symbol.id, tuple) and isinstance(symbol.id[0], Scope):
@@ -60,6 +62,14 @@ if __name__ == '__main__':
             if scope.id == 0:
                 continue
             print('{:20}{:}'.format(scope.uri + '.' + name, inferred_type))
-        # else:
-        #     print(symbol, inferred_type)
-        # print('%s.%s: %s' % (scope.uri, name, ', '.join(map(str, inferred_type))))
+
+    # Disambiguate the types of each expression.
+    (module, ambiguous_nodes) = disambiguate_types(module)
+    # print(dumps(module.to_dict(), indent=2, sort_keys=True, cls=SetEncoder))
+    # exit(0)
+
+    for node in ambiguous_nodes:
+        message = (
+            'the type of %s is ambiguous; the following candidates were found: %s' %
+            (node, node.__info__['type']))
+        print(message + '\n', file=sys.stderr)

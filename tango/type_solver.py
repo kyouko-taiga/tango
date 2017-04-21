@@ -1,9 +1,8 @@
-from collections import OrderedDict
 from itertools import chain, product
 
 from .ast import *
 from .builtin import Bool, Type, builtin_scope
-from .errors import UndefinedSymbol, InferenceError
+from .errors import InferenceError
 from .scope import Scope
 from .types import BaseType, EnumType, FunctionType, GenericType, StructType, TypeUnion
 
