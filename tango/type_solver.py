@@ -213,11 +213,11 @@ class Substitution(object):
         for (symbol, inferred_type) in self.storage.items():
             if isinstance(symbol.id, tuple) and isinstance(symbol.id[0], Scope):
                 scope, name = symbol.id
-                if scope.id == 0:
+                if scope.name == 'Tango':
                     continue
                 print('{:25}{:15}{:}'.format(
                     str(symbol),
-                    scope.uri + '.' + name,
+                    scope.name + '.' + name,
                     hex(id(inferred_type)) + ' ' + str(inferred_type)))
             else:
                 print('{:25}{:15}{:}'.format(

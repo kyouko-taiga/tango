@@ -47,7 +47,7 @@ class Identifier(Node):
     @property
     def qualname(self):
         if 'scope' in self.__info__:
-            return '%s.%s' % (self.__info__['scope'].uri, self.name)
+            return '%s.%s' % (self.__info__['scope'].name, self.name)
         return self.name
 
     def __str__(self):

@@ -49,6 +49,8 @@ class ScopeBinder(Visitor):
         # Array[Scope]
         self.scopes = [builtin_scope]
 
+        self.next_scope_id = 0
+
         # This mapping will help us keep track of what the identifier being
         # declared when visiting its declaration, which is necessary to
         # properly map the scopes of declaration expressions that refer to the
@@ -67,9 +69,16 @@ class ScopeBinder(Visitor):
     def current_scope(self):
         return self.scopes[-1]
 
-    def push_scope(self):
+    def push_scope(self, name=None):
+        if name is None:
+            name = str(self.next_scope_id)
+            self.next_scope_id += 1
+
+        if self.current_scope is not builtin_scope:
+            name = self.current_scope.name + '.' + name
+
         # Push a new scope on the stack.
-        self.current_scope.children.append(Scope(parent=self.scopes[-1]))
+        self.current_scope.children.append(Scope(name=name, parent=self.scopes[-1]))
         self.scopes.append(self.current_scope.children[-1])
 
         # Initialize the set that keeps track of what identifier is being
@@ -126,7 +135,7 @@ class ScopeBinder(Visitor):
     def visit_ModuleDecl(self, node):
         # Push a new scope on the stack before visiting the node's block, pre-
         # filled with the symbols declared within the latter.
-        self.push_scope()
+        self.push_scope(name=node.name)
         for symbol in node.body.__info__['symbols']:
             self.current_scope[symbol] = []
         node.body.__info__['scope'] = self.current_scope

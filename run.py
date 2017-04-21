@@ -18,7 +18,7 @@ class SetEncoder(JSONEncoder):
         if isinstance(obj, Node):
             return repr(obj)
         if isinstance(obj, Scope):
-            return obj.uri
+            return obj.name
         if isinstance(obj, BaseType):
             return str(obj)
         return JSONEncoder.default(self, obj)
@@ -59,9 +59,9 @@ if __name__ == '__main__':
     for (symbol, inferred_type) in types.items():
         if isinstance(symbol.id, tuple) and isinstance(symbol.id[0], Scope):
             scope, name = symbol.id
-            if scope.id == 0:
+            if scope.name == 'Tango':
                 continue
-            print('{:20}{:}'.format(scope.uri + '.' + name, inferred_type))
+            print('{:20}{:}'.format(scope.name + '.' + name, inferred_type))
 
     # Disambiguate the types of each expression.
     (module, ambiguous_nodes) = disambiguate_types(module)

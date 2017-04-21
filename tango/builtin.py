@@ -69,7 +69,7 @@ Bool.members = {
     'or' : FunctionType(domain=[Bool, Bool], codomain=Bool),
 }
 
-builtin_scope = Scope()
+builtin_scope = Scope(name='Tango')
 builtin_scope.members = {
     'Type'    : Type,
     'Nothing' : Nothing,

@@ -2,9 +2,11 @@ class Scope(object):
 
     next_id = 0
 
-    def __init__(self, parent=None):
+    def __init__(self, name, parent=None):
         self.id = Scope.next_id
         Scope.next_id += 1
+
+        self.name = name
         self.parent = parent
         self.children = []
 
@@ -19,12 +21,6 @@ class Scope(object):
         # a result, we've to know what symbols refer to a type name in a given
         # scope, so that we can decide what semantics give those identifiers.
         self.typenames = set()
-
-    @property
-    def uri(self):
-        if self.parent is None:
-            return str(self.id)
-        return '%s.%s' % (self.parent.uri, self.id)
 
     def defining_scope(self, name):
         if name in self.members:
