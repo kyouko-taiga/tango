@@ -4,7 +4,7 @@ from tango.builtin import Bool, Double, Int, Nothing, String, Type
 from tango.errors import InferenceError
 from tango.parser import parse
 from tango.scope_binder import bind_scopes
-from tango.type_checker import TypeVariable, infer_types
+from tango.type_solver import TypeVariable, infer_types
 from tango.types import EnumType, FunctionType, GenericType, StructType, TypeUnion
 from tango.utils import find
 

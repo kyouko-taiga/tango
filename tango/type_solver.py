@@ -39,7 +39,9 @@ class TypesFinder(Visitor):
         if 'type' in node.__info__:
             # NOTE If we give the type solver the ability to transform the
             # AST, we might have to find another way to "hash" the nodes.
-            self.types[id(node)] = self.environment.deepwalk(node.__info__['type'])
+            walked = self.environment.deepwalk(node.__info__['type'])
+            node.__info__['type'] = walked
+            self.types[id(node)] = walked
 
         self.generic_visit(node)
 
@@ -313,6 +315,8 @@ class TypeSolver(Visitor):
         # corresponding to the symbol under declaration.
         self.environment.unify(TypeVariable(node), inferred)
 
+        node.__info__['type'] = inferred
+
     def visit_FunctionDecl(self, node):
         # First, we should create (unless we already did) a generic type for
         # each of the function's generic parameters (if any), to populate the
@@ -387,6 +391,8 @@ class TypeSolver(Visitor):
             return_value_type = statement.value.__info__['type']
             self.environment.unify(return_value_type, function_type.codomain)
 
+        node.__info__['type'] = function_type
+
     def visit_nominal_type(self, node, type_class):
         # First, we should create a new type for the nominal, using fresh type
         # variables for each of the symbols it defines.
@@ -415,6 +421,8 @@ class TypeSolver(Visitor):
         self.current_self_type.append(type_instance)
         self.visit(node.body)
         self.current_self_type.pop()
+
+        node.__info__['type'] = type_instance
 
     def visit_StructDecl(self, node):
         self.visit_nominal_type(node, StructType)

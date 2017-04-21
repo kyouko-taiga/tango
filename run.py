@@ -1,9 +1,12 @@
+import os
 import sys
 
 from tango.parser import parse
 from tango.scope_binder import SymbolsExtractor, ScopeBinder, SelectScopeBinder
 from tango.type_solver import infer_types
 from tango.type_disambiguator import disambiguate_types
+
+from tango.transpilers.cpp import transpile
 
 from tango.ast import Node
 from tango.scope import Scope
@@ -73,3 +76,10 @@ if __name__ == '__main__':
             'the type of %s is ambiguous; the following candidates were found: %s' %
             (node, node.__info__['type']))
         print(message + '\n', file=sys.stderr)
+
+    # Transpile the module into c++.
+    if not os.path.exists('build'):
+        os.makedirs('build')
+    with open('build/main.hh', 'w') as header_stream:
+        with open('build/main.cc', 'w') as source_stream:
+            transpile(module, header_stream, source_stream)

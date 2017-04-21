@@ -158,7 +158,7 @@ def make_number_literal(token):
 number_literal = token_of_type('number') >> make_number_literal
 
 def make_string_literal(token):
-    result = Literal(value = token.value)
+    result = Literal(value = token.value[1:-1])
     result.__info__['type'] = String
     return result
 
