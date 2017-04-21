@@ -464,6 +464,11 @@ class TypeSolver(Visitor):
         # Note that for now, only identifiers are valid lvalues.
         assert False, '%s is not a valid lvalue' % node.target.__class__.__name__
 
+    def visit_Call(self, node):
+        # While we don't need to unify the return type of the function, we
+        # still need to do it for its arguments.
+        self.analyse(node)
+
     def visit_If(self, node):
         # First, we visit the node's pattern.
         self.visit(node.pattern)
@@ -513,7 +518,7 @@ class TypeSolver(Visitor):
 
         if isinstance(node, (Identifier, TypeIdentifier)):
             # If the identifier's name is the special `Self` keyword, we
-            # should the tag of the type under declaration.
+            # should type it with the type under declaration.
             if node.name == 'Self':
                 try:
                     result = self.current_self_type[-1]
@@ -525,6 +530,14 @@ class TypeSolver(Visitor):
                 result = self.environment[TypeVariable(node)]
 
             node.__info__['type'] = result
+
+            # We also have to determine the identifier's mutability.
+            if not 'mutable' in node.__info__:
+                decl = node.__info__['scope'][node.name]
+                if isinstance(decl, list):
+                    decl = decl[0]
+                node.__info__['mutable'] = isinstance(decl, ContainerDecl) and not decl.is_constant
+
             return result
 
         if isinstance(node, Select):
@@ -756,15 +769,23 @@ class TypeSolver(Visitor):
                 if len(signature.domain) != len(node.arguments):
                     continue
 
-                # We check if the labels match.
                 valid = True
-                for expected_label, argument in zip(signature.labels, node.arguments):
+                for i, argument in zip(range(len(node.arguments)), node.arguments):
+                    # We check if the argument label match.
+                    expected_label = signature.labels[i]
                     if (expected_label == '_') and (argument.name is not None):
                         valid = False
                         break
                     elif expected_label != argument.name:
                         valid = False
                         break
+
+                    # We check if the argument mutability match.
+                    expected_mutability = 'mutable' in signature.attributes[i]
+                    if expected_mutability and not argument.value.__info__.get('mutable', False):
+                        valid = False
+                        break
+
                 if not valid:
                     continue
 

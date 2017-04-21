@@ -790,6 +790,36 @@ class TestTypeSolver(unittest.TestCase):
         self.assertIn(Int, x_type)
         self.assertIn(String, x_type)
 
+        module = self.prepare(
+        '''
+        mut x = 9
+        cst y = f(x)
+
+        fun f(mut _ a: Int) -> Int {}
+        fun f(cst _ a: Int) -> String {}
+        '''
+        )
+        (module, environment) = infer_types(module)
+        declaration_nodes = find('ContainerDecl', module)
+        y_type = self.type_of(declaration_nodes[1], environment)
+        self.assertIsInstance(y_type, TypeUnion)
+        self.assertIn(Int, y_type)
+        self.assertIn(String, y_type)
+
+        module = self.prepare(
+        '''
+        cst x = 9
+        cst y = f(x)
+
+        fun f(mut _ a: Int) -> Int {}
+        fun f(cst _ a: Int) -> String {}
+        '''
+        )
+        (module, environment) = infer_types(module)
+        declaration_nodes = find('ContainerDecl', module)
+        y_type = self.type_of(declaration_nodes[1], environment)
+        self.assertEqual(y_type, String)
+
     def test_call_with_generic_parameters(self):
         module = self.prepare(
         '''
