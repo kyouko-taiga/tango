@@ -77,13 +77,15 @@ class TypeUnion(BaseType):
 
 class NominalType(BaseType):
 
-    def __init__(self, name, members=None):
+    def __init__(self, name, scope, members=None):
         super().__init__(members)
         self.name = name
+        self.scope = scope
 
     def __eq__(self, other):
         return (type(self) == type(other)
                 and (self.name == other.name)
+                and (self.scope == other.scope)
                 and (self.members == other.members))
 
     def __str__(self):

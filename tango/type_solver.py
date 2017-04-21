@@ -162,6 +162,7 @@ class Substitution(object):
 
         if isinstance(t, StructType) and isinstance(u, StructType):
             return ((t.name == u.name)
+                    and (t.scope == u.scope)
                     and not (t.members.keys() ^ u.members.keys())
                     and all(self.matches(t.members[it], u.members[it]) for it in t.members))
 
@@ -397,6 +398,7 @@ class TypeSolver(Visitor):
         if isinstance(walked, TypeVariable):
             type_instance = type_class(
                 name    = node.name,
+                scope   = node.__info__['scope'],
                 members = {
                     name: self.environment[TypeVariable((member_scope, name))]
                     for name in node.body.__info__['symbols']

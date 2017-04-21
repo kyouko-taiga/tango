@@ -2,15 +2,17 @@ from .scope import Scope
 from .types import FunctionType, NominalType, TypeUnion
 
 
-Type     = NominalType('Type')
-Nothing  = NominalType('Nothing')
-Anything = NominalType('Anything')
-Self     = NominalType('Self')
+builtin_scope = Scope(name='Tango')
 
-Int      = NominalType('Int')
-Double   = NominalType('Double')
-String   = NominalType('String')
-Bool     = NominalType('Bool')
+Type     = NominalType('Type',     builtin_scope)
+Nothing  = NominalType('Nothing',  builtin_scope)
+Anything = NominalType('Anything', builtin_scope)
+Self     = NominalType('Self',     builtin_scope)
+
+Int      = NominalType('Int',      builtin_scope)
+Double   = NominalType('Double',   builtin_scope)
+String   = NominalType('String',   builtin_scope)
+Bool     = NominalType('Bool',     builtin_scope)
 
 Int.members = {
     'new': TypeUnion((
@@ -69,7 +71,6 @@ Bool.members = {
     'or' : FunctionType(domain=[Bool, Bool], codomain=Bool),
 }
 
-builtin_scope = Scope(name='Tango')
 builtin_scope.members = {
     'Type'    : Type,
     'Nothing' : Nothing,
