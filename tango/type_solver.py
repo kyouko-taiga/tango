@@ -877,8 +877,10 @@ class TypeSolver(Visitor):
             # Avoid creating singletons when there's only one candidate.
             if len(result) == 1:
                 result = result.first()
+                selected_candidates = selected_candidates[0]
 
             node.__info__['type'] = result
+            node.callee.__info__['specialized_type'] = selected_candidates
             return result
 
             # TODO Handle variadic arguments

@@ -71,6 +71,10 @@ class TypeUnion(BaseType):
                 and (len(self.types) == len(other.types))
                 and all(t in other.types for t in self.types))
 
+    def __hash__(self):
+        # We can't hash a type union without a total order on all types.
+        return 0
+
     def __str__(self):
         return '[' + ' | '.join(map(str, self.types)) + ']'
 
@@ -87,6 +91,14 @@ class NominalType(BaseType):
                 and (self.name == other.name)
                 and (self.scope == other.scope)
                 and (self.members == other.members))
+
+    def __hash__(self):
+        h = 3
+        h = (31 ^ h) ^ hash(self.name)
+        h = (31 ^ h) ^ hash(self.scope)
+        for member in self.members:
+            h = (31 ^ h) ^ hash(member)
+        return h
 
     def __str__(self):
         return str(self.name)
@@ -127,6 +139,15 @@ class FunctionType(StructuralType):
                 and (self.codomain == other.codomain)
                 and all(l == m for l, m in zip(self.labels, other.labels))
                 and all(a == b for a, b in zip(self.attributes, other.attributes)))
+
+    def __hash__(self):
+        h = 3
+        h = (31 ^ h) ^ hash(self.codomain)
+        for i in range(len(self.domain)):
+            h = (31 ^ h) ^ hash(self.domain[i])
+            h = (31 ^ h) ^ hash(self.labels[i]) if self.labels[i] is not None else 0
+            h = (31 ^ h) ^ hash(tuple(sorted(self.attributes[i])))
+        return h
 
     def __str__(self):
         parameters = []
