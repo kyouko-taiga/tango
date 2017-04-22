@@ -32,6 +32,9 @@ class Scope(object):
     def add(self, name, value):
         self.members[name] = self.members.get(name, []) + [value]
 
+    def __iter__(self):
+        return iter(self.members)
+
     def __contains__(self, name):
         return name in self.members
 

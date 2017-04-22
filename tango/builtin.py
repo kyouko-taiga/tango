@@ -72,16 +72,16 @@ Bool.members = {
 }
 
 builtin_scope.members = {
-    'Type'    : Type,
-    'Nothing' : Nothing,
-    'Anything': Anything,
-    'Self'    : Self,
-    'Int'     : Int,
-    'Double'  : Double,
-    'String'  : String,
-    'Bool'    : Bool,
-    'true'    : Bool,
-    'false'   : Bool,
+    'Type'    : [Type],
+    'Nothing' : [Nothing],
+    'Anything': [Anything],
+    'Self'    : [Self],
+    'Int'     : [Int],
+    'Double'  : [Double],
+    'String'  : [String],
+    'Bool'    : [Bool],
+    'true'    : [Bool],
+    'false'   : [Bool],
 }
 builtin_scope.typenames = {
     'Type',

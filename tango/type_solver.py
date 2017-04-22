@@ -243,8 +243,8 @@ class TypeSolver(Visitor):
     def __init__(self):
         # A simple substitution map: (TypeVariable) -> Type.
         self.environment = Substitution({
-            TypeVariable(id=(builtin_scope, symbol)): obj
-            for symbol, obj in builtin_scope.members.items()
+            TypeVariable(id=(builtin_scope, symbol)): types[0]
+            for symbol, types in builtin_scope.members.items()
         })
 
         # Methods, properties and enum cases may use `Self` as a placeholder
@@ -542,9 +542,7 @@ class TypeSolver(Visitor):
 
             # We also have to determine the identifier's mutability.
             if not 'mutable' in node.__info__:
-                decl = node.__info__['scope'][node.name]
-                if isinstance(decl, list):
-                    decl = decl[0]
+                decl = node.__info__['scope'][node.name][0]
                 node.__info__['mutable'] = isinstance(decl, ContainerDecl) and not decl.is_constant
 
             return result
