@@ -302,6 +302,34 @@ class TypeSolver(Visitor):
             # also try to infer specialization arguments of abstract types.
             if node.type_annotation:
                 type_annotation = self.read_type_reference(node.type_annotation)
+
+                # If the type of initializing value is generic, we have to
+                # first specialize it with the type annotation.
+                if initial_value_type.is_generic:
+                    # Only function types can specialize a generic type.
+                    if not isinstance(type_annotation, FunctionType):
+                        raise InferenceError(
+                            "type %s does not match %s" % (type_annotation, initial_value_type))
+
+                    # Filter out functions types that aren't compatible with
+                    # the given type annotation.
+                    if not isinstance(initial_value_type, TypeUnion):
+                        initial_value_type = (initial_value_type,)
+                    candidates = filter(
+                        lambda t: t.is_compatible_with(type_annotation), initial_value_type)
+                    specialized = list(flatten(
+                        specialize(self.environment.deepwalk(candidate), type_annotation, node)
+                        for candidate in candidates))
+
+                    if len(specialized) == 0:
+                        raise InferenceError(
+                            "no candidate in '%s' is compatible with type annotation '%s'" %
+                            (','.join(map(str, initial_value_type)), type_annotation))
+                    initial_value_type = TypeUnion(specialized)
+
+                # TODO Improve the error message when unifying the
+                # computed specialization fails.
+
                 self.environment.unify(type_annotation, initial_value_type)
 
             inferred = initial_value_type

@@ -132,6 +132,28 @@ class FunctionType(StructuralType):
     def is_generic(self):
         return any(t.is_generic for t in self.domain) or self.codomain.is_generic
 
+    def is_compatible_with(self, other):
+        # Check if the number of parameters match.
+        if len(self.domain) != len(other.domain):
+            return False
+
+        for i in range(len(self.domain)):
+            # Check if non-generic parameters match.
+            if not self.domain[i].is_generic and (self.domain[i] != other.domain[i]):
+                return False
+            # Check if parameter labels match.
+            if self.labels[i] != other.labels[i]:
+                return False
+            # Check if the parametter attributes match.
+            if self.attributes[i] != other.attributes[i]:
+                return False
+
+        # Check if the codomains match.
+        if not self.codomain.is_generic and (self.codomain != other.codomain):
+            return False
+
+        return True
+
     def __eq__(self, other):
         return (type(self) == type(other)
                 and (len(self.domain) == len(other.domain))
