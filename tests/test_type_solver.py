@@ -158,6 +158,32 @@ class TestTypeSolver(unittest.TestCase):
         self.assertEqual(f_type.codomain.attributes, [set()])
         self.assertEqual(f_type.codomain.codomain, Int)
 
+    def test_specialization_by_type_annotation(self):
+        module = self.prepare(
+        '''
+        fun f<T, U>(cst _ a: T) -> U {}
+        cst x: (cst _: Int) -> String = f
+        '''
+        )
+        (module, environment) = infer_types(module)
+        x_type = self.type_of(find('ContainerDecl:first', module)[0], environment)
+        self.assertIsInstance(x_type, FunctionType)
+        self.assertEqual(x_type.domain, [Int])
+        self.assertEqual(x_type.codomain, String)
+
+        module = self.prepare(
+        '''
+        fun f<T, U> (cst _ a: T) -> U {}
+        fun g(cst x: (cst _: Int) -> String = f) {}
+        '''
+        )
+        (module, environment) = infer_types(module)
+        g_type = self.type_of(find('FunctionDecl', module)[1], environment)
+        self.assertIsInstance(g_type, FunctionType)
+        self.assertIsInstance(g_type.domain[0], FunctionType)
+        self.assertEqual(g_type.domain[0].domain, [Int])
+        self.assertEqual(g_type.domain[0].codomain, String)
+
     def test_function_return_type_unification(self):
         module = self.prepare('fun f() -> Int { return 0 }')
         infer_types(module)

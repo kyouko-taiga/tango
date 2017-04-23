@@ -306,26 +306,8 @@ class TypeSolver(Visitor):
                 # If the type of initializing value is generic, we have to
                 # first specialize it with the type annotation.
                 if initial_value_type.is_generic:
-                    # Only function types can specialize a generic type.
-                    if not isinstance(type_annotation, FunctionType):
-                        raise InferenceError(
-                            "type %s does not match %s" % (type_annotation, initial_value_type))
-
-                    # Filter out functions types that aren't compatible with
-                    # the given type annotation.
-                    if not isinstance(initial_value_type, TypeUnion):
-                        initial_value_type = (initial_value_type,)
-                    candidates = filter(
-                        lambda t: t.is_compatible_with(type_annotation), initial_value_type)
-                    specialized = list(flatten(
-                        specialize(self.environment.deepwalk(candidate), type_annotation, node)
-                        for candidate in candidates))
-
-                    if len(specialized) == 0:
-                        raise InferenceError(
-                            "no candidate in '%s' is compatible with type annotation '%s'" %
-                            (','.join(map(str, initial_value_type)), type_annotation))
-                    initial_value_type = TypeUnion(specialized)
+                    initial_value_type = specialize_from_annotation(
+                        self.environment.deepwalk(initial_value_type), type_annotation)
 
                 # TODO Improve the error message when unifying the
                 # computed specialization fails.
@@ -374,6 +356,15 @@ class TypeSolver(Visitor):
             # expression and unify it with that of the parameter's annotation.
             if parameter.default_value:
                 default_value_type = self.read_type_instance(parameter.default_value)
+
+                # If the type of default value is generic, we have to first
+                # specialize it with the type annotation.
+                if default_value_type.is_generic:
+                    default_value_type = specialize_from_annotation(
+                        self.environment.deepwalk(default_value_type), type_annotation)
+
+                # TODO Improve the error message when unifying the
+                # computed specialization fails.
                 self.environment.unify(type_annotation, default_value_type)
 
         # The return type is simply a type signature we've to evaluate.
@@ -1063,6 +1054,33 @@ def specialize(unspecialized, specializer, call_node, specializations=None):
         return
 
     assert False, 'cannot specialize %s' % unspecialized.__class__.__name__
+
+
+def specialize_from_annotation(unspecialized, type_annotation):
+    # It shouldn't be able to express a generic type annotation, since generic
+    # parameters aren't allowed in the syntax of function signatures.
+    assert not type_annotation.is_generic
+
+    # Only function types can specialize a generic type.
+    if not isinstance(type_annotation, FunctionType):
+        raise InferenceError("type %s does not match %s" % (type_annotation, unspecialized))
+
+    # Filter out functions types that aren't compatible with the given type
+    # annotation.
+    if not isinstance(unspecialized, TypeUnion):
+        unspecialized = (unspecialized,)
+
+    candidates = filter(lambda t: t.is_compatible_with(type_annotation), unspecialized)
+    specialized = list(flatten(
+        specialize(candidate, type_annotation, None)
+        for candidate in candidates))
+
+    if len(specialized) == 0:
+        raise InferenceError(
+            "no candidate in '%s' is compatible with type annotation '%s'" %
+            (','.join(map(str, unspecialized)), type_annotation))
+
+    return TypeUnion(specialized)
 
 
 def flatten(iterable):
