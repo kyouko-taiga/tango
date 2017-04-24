@@ -589,6 +589,20 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.type_annotation.name, 'Int')
         self.assertIsNone(result.initial_value)
 
+        result = parser.parse(tango.tokenize('cst x = 0'))
+        self.assertIsInstance(result, ast.ContainerDecl)
+        self.assertFalse(result.is_mutable)
+        self.assertEqual(result.name, 'x')
+        self.assertIsNone(result.type_annotation)
+        self.assertEqual(result.initial_value.value, '0')
+
+        result = parser.parse(tango.tokenize('cst x: Int = 0'))
+        self.assertIsInstance(result, ast.ContainerDecl)
+        self.assertFalse(result.is_mutable)
+        self.assertEqual(result.name, 'x')
+        self.assertEqual(result.type_annotation.name, 'Int')
+        self.assertEqual(result.initial_value.value, '0')
+
     def test_enum_case_parameter(self):
         parser = tango.enum_case_parameter + skip(finished)
 
@@ -686,6 +700,89 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(result, ast.StructDecl)
         self.assertIsInstance(result.body.statements[0], ast.FunctionDecl)
 
+    def test_protocol_property_decl(self):
+        parser = tango.protocol_property_decl + skip(finished)
+
+        result = parser.parse(tango.tokenize('cst x'))
+        self.assertIsInstance(result, ast.ContainerDecl)
+        self.assertFalse(result.is_mutable)
+        self.assertEqual(result.name, 'x')
+        self.assertIsNone(result.type_annotation)
+        self.assertIsNone(result.initial_value)
+
+        result = parser.parse(tango.tokenize('cst x: Int'))
+        self.assertIsInstance(result, ast.ContainerDecl)
+        self.assertFalse(result.is_mutable)
+        self.assertEqual(result.name, 'x')
+        self.assertEqual(result.type_annotation.name, 'Int')
+        self.assertIsNone(result.initial_value)
+
+        result = parser.parse(tango.tokenize('mut x'))
+        self.assertIsInstance(result, ast.ContainerDecl)
+        self.assertTrue(result.is_mutable)
+        self.assertEqual(result.name, 'x')
+        self.assertIsNone(result.type_annotation)
+        self.assertIsNone(result.initial_value)
+
+        result = parser.parse(tango.tokenize('mut x: Int'))
+        self.assertIsInstance(result, ast.ContainerDecl)
+        self.assertTrue(result.is_mutable)
+        self.assertEqual(result.name, 'x')
+        self.assertEqual(result.type_annotation.name, 'Int')
+        self.assertIsNone(result.initial_value)
+
+    def test_protocol_function_decl(self):
+        parser = tango.protocol_function_decl + skip(finished)
+
+        result = parser.parse(tango.tokenize('fun f()'))
+        self.assertIsInstance(result, ast.FunctionDecl)
+        self.assertEqual(result.name, 'f')
+        self.assertFalse(result.generic_parameters)
+        self.assertFalse(result.signature.parameters)
+        self.assertEqual(result.signature.return_type.name, 'Nothing')
+
+        result = parser.parse(tango.tokenize('fun f(cst x: Int, cst y: String) -> Int'))
+        self.assertIsInstance(result, ast.FunctionDecl)
+        self.assertEqual(result.name, 'f')
+        self.assertFalse(result.generic_parameters)
+        self.assertEqual(result.signature.parameters[0].name, 'x')
+        self.assertEqual(result.signature.parameters[1].name, 'y')
+        self.assertEqual(result.signature.return_type.name, 'Int')
+
+        result = parser.parse(tango.tokenize('fun f<T>(cst x: T)'))
+        self.assertIsInstance(result, ast.FunctionDecl)
+        self.assertEqual(result.name, 'f')
+        self.assertEqual(result.generic_parameters[0], 'T')
+        self.assertEqual(result.signature.parameters[0].name, 'x')
+        self.assertEqual(result.signature.return_type.name, 'Nothing')
+
+    def test_struct_decl(self):
+        parser = tango.protocol_decl + skip(finished)
+
+        result = parser.parse(tango.tokenize('protocol P {}'))
+        self.assertIsInstance(result, ast.ProtocolDecl)
+        self.assertEqual(result.name, 'P')
+        self.assertFalse(result.conformance_list)
+        self.assertFalse(result.body.statements)
+
+        result = parser.parse(tango.tokenize('protocol P : Q & R {}'))
+        self.assertEqual(result.conformance_list[0].name, 'Q')
+        self.assertEqual(result.conformance_list[1].name, 'R')
+
+        result = parser.parse(tango.tokenize(
+            '''protocol P {
+                mut x: Int
+            }'''))
+        self.assertIsInstance(result, ast.ProtocolDecl)
+        self.assertEqual(result.body.statements[0].name, 'x')
+        self.assertEqual(result.body.statements[0].type_annotation.name, 'Int')
+
+        result = parser.parse(tango.tokenize(
+            '''protocol P {
+                fun f(cst self: Self)
+            }'''))
+        self.assertIsInstance(result, ast.ProtocolDecl)
+        self.assertIsInstance(result.body.statements[0], ast.FunctionDecl)
 
 if __name__ == '__main__':
     unittest.main()

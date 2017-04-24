@@ -445,7 +445,7 @@ class ContainerDecl(Node):
 
     _fields = ('name', 'is_mutable', 'type_annotation', 'initial_value',)
 
-    def __init__(self, name, is_mutable, type_annotation, initial_value):
+    def __init__(self, name, is_mutable, type_annotation=None, initial_value=None):
         super().__init__()
         self.name = name
         self.is_mutable = is_mutable
@@ -465,7 +465,7 @@ class FunctionDecl(Node):
 
     _fields = ('name', 'signature', 'body', 'generic_parameters',)
 
-    def __init__(self, name, signature, body, generic_parameters=None):
+    def __init__(self, name, signature, body=None, generic_parameters=None):
         super().__init__()
         self.name = name
         self.signature = signature
@@ -476,7 +476,9 @@ class FunctionDecl(Node):
         result = 'fun %s' % self.name
         if self.generic_parameters:
             result += '<%s>' % ', '.join(map(str, self.generic_parameters))
-        result += '%s %s' % (self.signature, self.body)
+        result += str(self.signature)
+        if self.body:
+            result += ' ' + str(self.body)
         return result
 
 
@@ -538,6 +540,19 @@ class StructDecl(Node):
     def __str__(self):
         return 'struct %s %s' % (self.name, self.body)
 
+
+class ProtocolDecl(Node):
+
+    _fields = ('name', 'body', 'conformance_list')
+
+    def __init__(self, name, body, conformance_list=None):
+        super().__init__()
+        self.name = name
+        self.body = body
+        self.conformance_list = conformance_list or []
+
+    def __str__(self):
+        return 'protocol %s %s' % (self.name, self.body)
 
 class ModuleDecl(Node):
 

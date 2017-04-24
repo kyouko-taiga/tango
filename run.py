@@ -2,7 +2,7 @@ import os
 import sys
 
 from tango.parser import parse
-from tango.scope_binder import SymbolsExtractor, ScopeBinder, SelectScopeBinder
+from tango.scope_binder import SymbolsExtractor, ScopeBinder
 from tango.type_solver import infer_types
 from tango.type_disambiguator import disambiguate_types
 

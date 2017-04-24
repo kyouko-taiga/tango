@@ -43,6 +43,7 @@ switch_expression = forward_decl()
 container_decl    = forward_decl()
 struct_decl       = forward_decl()
 enum_decl         = forward_decl()
+protocol_decl     = forward_decl()
 statement         = forward_decl()
 
 wildcard = kw_('_') >> (lambda _: Wildcard())
@@ -517,7 +518,7 @@ def make_enum_decl(args):
         conformance_list = args[2],
         body = Block(args[3]))
 
-enum_member = enum_decl | struct_decl | enum_case_decl | function_decl
+enum_member = enum_decl | struct_decl | protocol_decl | enum_case_decl | function_decl
 
 enum_member_list = (
     maybe(enum_member) + many(nl_ + nl_opt + enum_member) + nl_opt
@@ -537,7 +538,7 @@ def make_struct_decl(args):
         conformance_list = args[2],
         body = Block(args[3]))
 
-struct_member = enum_decl | struct_decl | function_decl | container_decl
+struct_member = enum_decl | struct_decl | protocol_decl | function_decl | container_decl
 
 struct_member_list = (
     maybe(struct_member) + many(nl_ + nl_opt + struct_member) + nl_opt
@@ -550,11 +551,57 @@ struct_decl.define(
     op_('{') + struct_member_list + op_('}')
     >> make_struct_decl)
 
+def make_protocol_property_decl(args):
+    return ContainerDecl(
+        is_mutable = args[0].value == 'mut',
+        name = args[1],
+        type_annotation = args[2])
+
+protocol_property_decl = (
+    (kw('cst') | kw('mut')) + identifier +
+    maybe(op_(':') + type_signature)
+    >> make_protocol_property_decl)
+
+def make_protocol_function_decl(args):
+    return FunctionDecl(
+        name = args[0],
+        generic_parameters = args[1],
+        signature = FunctionSignature(
+            parameters = args[2] or [],
+            return_type = args[3] or Nothing),
+        body = None)
+
+protocol_function_decl = (
+    kw_('fun') + (identifier | operator_identifier) +
+    maybe(op_('<') + generic_parameters + op_('>')) +
+    op_('(') + maybe(function_decl_parameter_list) + op_(')') +
+    maybe(op_('->') + type_signature)
+    >> make_protocol_function_decl)
+
+def make_protocol_decl(args):
+    return ProtocolDecl(
+        name = args[0],
+        conformance_list = args[1],
+        body = Block(args[2]))
+
+protocol_member = protocol_function_decl | protocol_property_decl
+
+protocol_member_list = (
+    maybe(protocol_member) + many(nl_ + nl_opt + protocol_member) + nl_opt
+    >> make_statement_list)
+
+protocol_decl.define(
+    kw_('protocol') + identifier +
+    maybe(op_(':') + type_conformance_list) +
+    op_('{') + protocol_member_list + op_('}')
+    >> make_protocol_decl)
+
 statement.define(
     container_decl |
     function_decl |
     enum_decl |
     struct_decl |
+    protocol_decl |
     assignment |
     for_loop |
     while_loop |
