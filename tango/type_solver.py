@@ -676,6 +676,7 @@ class TypeSolver(Visitor):
             result = self.analyse(call_node)
 
             node.__info__['type'] = result
+            node.__info__['function_call_type'] = call_node.__info__['function_call_type']
             return result
 
         if isinstance(node, BinaryExpression):
@@ -697,6 +698,7 @@ class TypeSolver(Visitor):
             result = self.analyse(call_node)
 
             node.__info__['type'] = result
+            node.__info__['function_call_type'] = call_node.__info__['function_call_type']
             return result
 
         if isinstance(node, Call):
@@ -771,7 +773,10 @@ class TypeSolver(Visitor):
                     result = selected_codomains[0]
                 else:
                     result = TypeUnion(selected_codomains)
+                    selected_candidates = selected_candidates[0]
+
                 node.__info__['type'] = result
+                node.__info__['function_call_type'] = callee_type
                 return result
 
             # Then, we have to infer the type of each argument.
@@ -899,7 +904,7 @@ class TypeSolver(Visitor):
                 selected_candidates = selected_candidates[0]
 
             node.__info__['type'] = result
-            node.callee.__info__['specialized_type'] = selected_candidates
+            node.__info__['function_call_type'] = selected_candidates
             return result
 
             # TODO Handle variadic arguments
