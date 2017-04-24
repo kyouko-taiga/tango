@@ -1,18 +1,25 @@
-from .scope import Scope
+from .scope import Scope, Symbol
 from .types import FunctionType, NominalType, TypeUnion
 
 
 builtin_scope = Scope(name='Tango')
 
-Type     = NominalType('Type',     builtin_scope)
-Nothing  = NominalType('Nothing',  builtin_scope)
-Anything = NominalType('Anything', builtin_scope)
-Self     = NominalType('Self',     builtin_scope)
+def make_builtin_type(name):
+    return NominalType(
+        name        = name,
+        scope       = builtin_scope,
+        inner_scope = Scope(name=name, parent=builtin_scope))
 
-Int      = NominalType('Int',      builtin_scope)
-Double   = NominalType('Double',   builtin_scope)
-String   = NominalType('String',   builtin_scope)
-Bool     = NominalType('Bool',     builtin_scope)
+
+Type     = make_builtin_type('Type')
+Nothing  = make_builtin_type('Nothing')
+Anything = make_builtin_type('Anything')
+Self     = make_builtin_type('Self')
+
+Int      = make_builtin_type('Int')
+Double   = make_builtin_type('Double')
+String   = make_builtin_type('String')
+Bool     = make_builtin_type('Bool')
 
 Int.members = {
     'new': TypeUnion((
@@ -71,18 +78,17 @@ Bool.members = {
     'or' : FunctionType(domain=[Bool, Bool], codomain=Bool),
 }
 
-builtin_scope.members = {
-    'Type'    : [Type],
-    'Nothing' : [Nothing],
-    'Anything': [Anything],
-    'Self'    : [Self],
-    'Int'     : [Int],
-    'Double'  : [Double],
-    'String'  : [String],
-    'Bool'    : [Bool],
-    'true'    : [Bool],
-    'false'   : [Bool],
-}
+builtin_scope.add(Symbol(name='Type',     type=Type))
+builtin_scope.add(Symbol(name='Nothing',  type=Nothing))
+builtin_scope.add(Symbol(name='Anything', type=Anything))
+builtin_scope.add(Symbol(name='Self',     type=Self))
+builtin_scope.add(Symbol(name='Int',      type=Int))
+builtin_scope.add(Symbol(name='Double',   type=Double))
+builtin_scope.add(Symbol(name='String',   type=String))
+builtin_scope.add(Symbol(name='Bool',     type=Bool))
+builtin_scope.add(Symbol(name='true',     type=Bool))
+builtin_scope.add(Symbol(name='false',    type=Bool))
+
 builtin_scope.typenames = {
     'Type',
     'Nothing',

@@ -420,7 +420,7 @@ while_loop = (
 
 def make_container_decl(args):
     return ContainerDecl(
-        is_constant = args[0].value == 'cst',
+        is_mutable = args[0].value == 'mut',
         name = args[1],
         type_annotation = args[2],
         initial_value = args[3])

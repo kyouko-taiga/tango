@@ -1,3 +1,12 @@
+class Symbol(object):
+
+    def __init__(self, name, is_mutable=False, decl=None, type=None):
+        self.name = name
+        self.is_mutable = is_mutable
+        self.decl = decl
+        self.type = type
+
+
 class Scope(object):
 
     next_id = 0
@@ -10,8 +19,8 @@ class Scope(object):
         self.parent = parent
         self.children = []
 
-        # (String) -> [Node]
-        self.members = {}
+        # (String) -> Symbol
+        self.symbols = {}
 
         # Types are first-class citizen (typed with `Type`), but there're many
         # instances where we need the type name to refer to the type's itself
@@ -22,27 +31,36 @@ class Scope(object):
         # scope, so that we can decide what semantics give those identifiers.
         self.typenames = set()
 
+    @property
+    def qualified_name(self):
+        if self.parent is None:
+            return self.name
+        return self.parent.qualified_name + '.' + self.name
+
     def defining_scope(self, name):
-        if name in self.members:
+        if name in self.symbols:
             return self
         if self.parent:
             return self.parent.defining_scope(name)
         return None
 
-    def add(self, name, value):
-        self.members[name] = self.members.get(name, []) + [value]
+    def add(self, symbol):
+        self.symbols[symbol.name] = symbol
+
+    def get(self, name, default=None):
+        return self.symbols.get(name, default)
 
     def __iter__(self):
-        return iter(self.members)
+        return iter(self.symbols)
 
     def __contains__(self, name):
-        return name in self.members
+        return name in self.symbols
 
     def __getitem__(self, name):
-        return self.members[name]
+        return self.symbols[name]
 
     def __setitem__(self, name, value):
-        self.members[name] = value
+        self.symbols[name] = value
 
     def __hash__(self):
         return hash(self.id)

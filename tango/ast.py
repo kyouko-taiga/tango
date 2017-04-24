@@ -443,17 +443,17 @@ class While(Node):
 
 class ContainerDecl(Node):
 
-    _fields = ('name', 'is_constant', 'type_annotation', 'initial_value',)
+    _fields = ('name', 'is_mutable', 'type_annotation', 'initial_value',)
 
-    def __init__(self, name, is_constant, type_annotation, initial_value):
+    def __init__(self, name, is_mutable, type_annotation, initial_value):
         super().__init__()
         self.name = name
-        self.is_constant = is_constant
+        self.is_mutable = is_mutable
         self.type_annotation = type_annotation
         self.initial_value = initial_value
 
     def __str__(self):
-        result = ('cst ' if self.is_constant else 'mut ') + self.name
+        result = ('mut ' if self.is_mutable else 'cst ') + self.name
         if self.type_annotation is not None:
             result += ': %s' % self.type_annotation
         if self.initial_value is not None:

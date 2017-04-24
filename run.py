@@ -50,11 +50,6 @@ if __name__ == '__main__':
     # print(dumps(module.to_dict(), indent=2, sort_keys=True, cls=SetEncoder))
     # exit(0)
 
-    select_scope_binder = SelectScopeBinder()
-    select_scope_binder.visit(module)
-    # print(dumps(module.to_dict(), indent=2, sort_keys=True, cls=SetEncoder))
-    # exit(0)
-
     # Infer the types of all expressions.
     (module, environment) = infer_types(module)
     types = environment.storage

@@ -243,8 +243,8 @@ class TypeSolver(Visitor):
     def __init__(self):
         # A simple substitution map: (TypeVariable) -> Type.
         self.environment = Substitution({
-            TypeVariable(id=(builtin_scope, symbol)): types[0]
-            for symbol, types in builtin_scope.members.items()
+            TypeVariable(id=(builtin_scope, symbol.name)): symbol.type
+            for symbol in builtin_scope.symbols.values()
         })
 
         # Methods, properties and enum cases may use `Self` as a placeholder
@@ -331,12 +331,12 @@ class TypeSolver(Visitor):
         # First, we should create (unless we already did) a generic type for
         # each of the function's generic parameters (if any), to populate the
         # environment.
-        member_scope = node.body.__info__['scope']
+        inner_scope = node.body.__info__['scope']
         for symbol in node.generic_parameters:
-            var = TypeVariable(id=(member_scope, symbol))
+            var = TypeVariable(id=(inner_scope, symbol))
             if var not in self.environment:
                 self.environment.unify(var, GenericType(symbol))
-                member_scope.typenames.add(symbol)
+                inner_scope.typenames.add(symbol)
 
         # Unlike container declarations, function parameters always have a
         # type annotation, so we can type them directly.
@@ -366,6 +366,8 @@ class TypeSolver(Visitor):
                 # TODO Improve the error message when unifying the
                 # computed specialization fails.
                 self.environment.unify(type_annotation, default_value_type)
+
+            parameter.__info__['type'] = type_annotation
 
         # The return type is simply a type signature we've to evaluate.
         return_type = self.read_type_reference(node.signature.return_type)
@@ -413,19 +415,18 @@ class TypeSolver(Visitor):
         node.__info__['type'] = function_type
 
     def visit_nominal_type(self, node, type_class):
-        # First, we should create a new type for the nominal, using fresh type
-        # variables for each of the symbols it defines.
-        member_scope = node.body.__info__['scope']
-
-        # Then, we create a new type (unless we already did) that we enclose
-        # within a type tag we unify with the struct's name.
+        # First, we create a new nominal type (unless we already did).
         walked = self.environment[TypeVariable(node)]
         if isinstance(walked, TypeVariable):
+            inner_scope = node.body.__info__['scope']
             type_instance = type_class(
-                name    = node.name,
-                scope   = node.__info__['scope'],
-                members = {
-                    name: self.environment[TypeVariable((member_scope, name))]
+                name        = node.name,
+                scope       = node.__info__['scope'],
+                inner_scope = inner_scope,
+                members     = {
+                    # We create new using fresh type variables for each of the
+                    # symbols the nominal type defines.
+                    name: self.environment[TypeVariable((inner_scope, name))]
                     for name in node.body.__info__['symbols']
                 })
 
@@ -560,9 +561,7 @@ class TypeSolver(Visitor):
             node.__info__['type'] = result
 
             # We also have to determine the identifier's mutability.
-            if not 'mutable' in node.__info__:
-                decl = node.__info__['scope'][node.name][0]
-                node.__info__['mutable'] = isinstance(decl, ContainerDecl) and not decl.is_constant
+            node.__info__['mutable'] = node.__info__['scope'][node.name].is_mutable
 
             return result
 
@@ -993,9 +992,10 @@ class TypeSolver(Visitor):
 
 def find_overload_decls(name, scope):
     if scope.parent and (name in scope.parent):
-        if any(not isinstance(decl, FunctionDecl) for decl in scope.parent[name]):
+        decl = scope.parent[name].decl
+        if not isinstance(decl, list) or not isinstance(decl[0], FunctionDecl):
             return []
-        return scope.parent[name] + find_overload_decls(name, scope.parent.parent)
+        return decl + find_overload_decls(name, scope.parent.parent)
     return []
 
 
