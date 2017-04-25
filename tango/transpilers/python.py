@@ -56,72 +56,74 @@ class Preparator(Transformer):
         operand_type = node.operand.__info__['type']
         assert isinstance(operand_type, NominalType)
 
-        callee = Select(
-            owner  = Preparator.TypeNode(type=operand_type),
-            member = Identifier(name=node.operator))
-
-        callee.__info__['type'] = node.__info__['type']
-        callee.member.__info__['scope'] = operand_type.inner_scope
-        print(operand_type.inner_scope.name)
-        exit()
+        operator_type = operand_type.members[node.operator]
+        assert isinstance(operator_type, (FunctionType, TypeUnion))
 
         # Replace the current node with a call to the operator's function.
-        call = Call(
-            callee    = Identifier(name=str(operand_type) + operator_translations[node.operator]),
-            arguments = [CallArgument(node.operand)])
+        callee = Select(
+            owner  = Identifier(name=operand_type.name),
+            member = Identifier(name=node.operator))
+        callee.__info__['type'] = node.__info__['type']
+        callee.owner.__info__['type'] = operand_type
+        callee.owner.__info__['scope'] = operand_type.scope
+        callee.member.__info__['type'] = operator_type
+        callee.member.__info__['scope'] = operand_type.inner_scope
 
-        call.callee.__info__['type'] = operand_type.members[node.operator]
-        call.callee.__info__['scope'] = self.scope
-
+        call = Call(callee=callee, arguments=[CallArgument(node.operand)])
         call.__info__['type'] = node.__info__['type']
-        call.__info__['function_type'] = node.__info__['function_type']
+        call.__info__['function_call_type'] = node.__info__['function_call_type']
 
         return self.visit(call)
 
     def visit_BinaryExpression(self, node):
         # Look for the method that should be applied.
-        left_type = node.left.__info__['type']
+        operand_type = node.left.__info__['type']
+        assert isinstance(operand_type, NominalType)
+
+        operator_type = operand_type.members[node.operator]
+        assert isinstance(operator_type, (FunctionType, TypeUnion))
 
         # Replace the current node with a call to the operator's function.
-        call = Call(
-            callee    = Identifier(name=str(left_type) + operator_translations[node.operator]),
-            arguments = [CallArgument(node.left), CallArgument(node.right)])
+        callee = Select(
+            owner  = Identifier(name=operand_type.name),
+            member = Identifier(name=node.operator))
+        callee.__info__['type'] = node.__info__['type']
+        callee.owner.__info__['type'] = operand_type
+        callee.owner.__info__['scope'] = operand_type.scope
+        callee.member.__info__['type'] = operator_type
+        callee.member.__info__['scope'] = operand_type.inner_scope
 
-        call.callee.__info__['type'] = left_type.members[node.operator]
-        call.callee.__info__['scope'] = self.scope
-
+        call = Call(callee=callee, arguments=[CallArgument(node.left), CallArgument(node.right)])
         call.__info__['type'] = node.__info__['type']
-        call.__info__['function_type'] = node.__info__['function_type']
+        call.__info__['function_call_type'] = node.__info__['function_call_type']
 
         return self.visit(call)
 
+    def visit_ContainerDecl(self, node):
+        if isinstance(node.__info__['type'], FunctionType):
+            node.__info__['discriminator'] = signature_hash(node.__info__['type'])
+        return self.generic_visit(node)
+
+    def visit_FunctionDecl(self, node):
+        node.__info__['discriminator'] = signature_hash(node.__info__['type'])
+        return self.generic_visit(node)
+
     def visit_Call(self, node):
-        # We choose the most specialized function among the overloads of the
-        # operand's type.
-        specialized_function_type = node.__info__['function_type']
-        actual_function_type = None
-        if not isinstance(node.callee.__info__['type'], TypeUnion):
-            actual_function_type = node.callee.__info__['type']
-        else:
-            for candidate in node.callee.__info__['type']:
-                if candidate == specialized_function_type:
-                    actual_function_type = candidate
-                    break
-                if candidate.is_compatible_with(specialized_function_type):
-                    actual_function_type = candidate
+        discriminator = signature_hash(node.__info__['function_call_type'])
+        if isinstance(node.callee, Identifier):
+            node.callee.__info__['discriminator'] = discriminator
+        elif isinstance(node.callee, Select):
+            node.callee.member.__info__['discriminator'] = discriminator
+        return self.generic_visit(node)
 
-        # We can expect the type solver to heve detected if there wasn't any
-        # compatible candidate.
-        assert actual_function_type is not None
-        # node.__info__['function_type'] = actual_function_type
-
-        # Visit the node's arguments.
-        node = self.generic_visit(node)
-        return node
+    def visit_Identifier(self, node):
+        if isinstance(node.__info__['type'], FunctionType):
+            node.__info__['discriminator'] = signature_hash(node.__info__['type'])
+        return self.generic_visit(node)
 
 
 def compatibilize(name):
-    result = 'v' + str(str(name.encode())[2:-1]).replace('\\', '')
+    result = name
     for punct in '. ()[]<>-:':
         result = result.replace(punct, '')
     return result
@@ -131,18 +133,60 @@ def signature_hash(signature):
     # FIXME There's a risk of collision using string representations. Because
     # the `__str__` implementation of types doesn't use full names, different
     # signatures may have the same representations.
+    assert isinstance(signature, FunctionType)
     return hashlib.sha1(str(signature).encode()).hexdigest()[-8:]
 
 
 def identifier_name(node):
-    name = node.__info__['scope'].name + node.name
+    symbol = node.__info__['scope'][node.name]
+    result = compatibilize(symbol.scope.qualified_name + '.' + symbol.name)
+    if 'discriminator' in node.__info__:
+        result += node.__info__['discriminator']
+    return result
 
-    # We have to add a discriminator suffix to identifiers that represent
-    # functions, as they might be overloaded.
-    if isinstance(node.__info__['type'], FunctionType):
-        name += signature_hash(node.__info__['type'])
 
-    return compatibilize(name)
+def translate_expr(node, function_call_type=None):
+    if isinstance(node, Literal):
+        if node.__info__['type'] == String:
+            return '"' + node.value + '"'
+        return node.value
+
+    if isinstance(node, Identifier):
+        # If the identifier is the keyword `true` or `false`, we return
+        # its python's equivalent.
+        if node.name == 'true':
+            return 'True'
+        elif node.name == 'false':
+            return 'False'
+
+        return identifier_name(node)
+
+    if isinstance(node, Select):
+        result = translate_expr(node.owner)
+        result += operator_translations.get(node.member.name, compatibilize(node.member.name))
+        if 'discriminator' in node.member.__info__:
+            result += node.member.__info__['discriminator']
+        return result
+
+    if isinstance(node, Call):
+        # Function name.
+        function_call_type = node.__info__['function_call_type']
+        result = translate_expr(node.callee, function_call_type)
+
+        # Function arguments.
+        result += '('
+        for i, argument in enumerate(node.arguments):
+            if not 'mutable' in function_call_type.attributes[i]:
+                result += 'deepcopy({})'.format(translate_expr(argument))
+            else:
+                result += translate_expr(argument)
+            result += ', '
+        return result.rstrip(', ') + ')'
+
+    if isinstance(node, CallArgument):
+        return translate_expr(node.value)
+
+    assert False, 'cannot translate {}'.format(node)
 
 
 class Translator(Visitor):
@@ -162,7 +206,8 @@ class Translator(Visitor):
         print(indent * self.level + data, file=self.source_stream, end=end)
 
     def visit_ModuleDecl(self, node):
-        self.write('import tango.py')
+        self.write('import tango')
+        self.write('from copy import deepcopy')
         self.write('')
         self.generic_visit(node)
 
@@ -172,7 +217,7 @@ class Translator(Visitor):
 
         # If the container's has an initial value, write it as well.
         if node.initial_value:
-            declaration += ' = ' + self.translate_expr(node.initial_value)
+            declaration += ' = ' + translate_expr(node.initial_value)
 
         self.write(declaration)
 
@@ -185,7 +230,7 @@ class Translator(Visitor):
         for parameter in node.signature.parameters:
             parameter_string = identifier_name(parameter)
             if parameter.default_value:
-                parameter_string += '=' + self.translate_expr(parameter.default_value)
+                parameter_string += '=' + translate_expr(parameter.default_value)
             parameters.append(parameter_string)
 
         self.write('def {}({}):'.format(name, ', '.join(parameters)))
@@ -195,91 +240,24 @@ class Translator(Visitor):
         self.write('', level=0)
 
     def visit_Return(self, node):
-        self.write('return {}'.format(self.translate_expr(node.value)))
+        self.write('return {}'.format(translate_expr(node.value)))
 
-    # def visit_Call(self, node):
-    #     self.write_source(self.translate_expr(node) + ';')
-    #
-    # def visit_If(self, node):
-    #     assert not node.pattern.parameters, 'TODO pattern matching in if expressions'
-    #     condition = self.translate_expr(node.pattern.expression)
-    #     self.write_source('if (' + condition + ') {')
-    #     self.indent += 4
-    #     self.visit(node.body)
-    #     self.indent -= 4
-    #     self.write_source('}')
-    #
-    #     if isinstance(node.else_clause, Block):
-    #         self.write_source('else {')
-    #         self.indent += 4
-    #         self.visit(node.else_clause)
-    #         self.indent -= 4
-    #         self.write_source('}')
-    #
-    #     elif isinstance(node.else_clause, If):
-    #         self.write_source('else')
-    #         self.visit(node.else_clause)
+    def visit_Call(self, node):
+        self.write(translate_expr(node))
 
-    def translate_expr(self, node):
-        if isinstance(node, Literal):
-            if node.__info__['type'] == String:
-                return '"' + node.value + '"'
-            return node.value
+    def visit_If(self, node):
+        assert not node.pattern.parameters, 'TODO pattern matching in if expressions'
+        condition = translate_expr(node.pattern.expression)
+        self.write('if ' + condition + ':')
+        self.level += 1
+        self.visit(node.body)
+        self.level -= 1
 
-        if isinstance(node, Identifier):
-            # If the identifier is `true` or `false`, we write it as is.
-            if node.name == 'true':
-                return 'True'
-            elif node.name == 'false':
-                return 'False'
-
-            # If the identifier isn't a keyword, first, we retrive the entity
-            # the identifier is denoting.
-            decls = node.__info__['scope'][node.name]
-
-            # If the identifier denotes a simple container, we return its full
-            # name (i.e. scope + name).
-            if isinstance(decls[0], (ContainerDecl, FunctionParameter)):
-                return compatibilize(node.__info__['scope'].name + '_' + node.name)
-
-            # If the identifier denotes a function declaration, we have to
-            # know which overload and/or specialization it refers to, so as to
-            # create a different full name for each case.
-            if isinstance(decls[0], FunctionDecl):
-                # If the identifier has a single type non generic type, we can
-                # use it as is to discriminate the identifier.
-                node_type = node.__info__['type']
-                if not isinstance(node_type, TypeUnion) and not node_type.is_generic:
-                    discriminating_type = node_type
-
-                # If the identifier was used as the callee of a function call,
-                # we can expect the type solver to add a `specialized_type`
-                # key in the node's metadata.
-                elif 'specialized_type' in node.__info__:
-                    discriminating_type = node.__info__['specialized_type']
-
-                # It should be illegal to use an overloaded or generic
-                # identifier outside of a function call.
-                else:
-                    assert False, (
-                        "ambiguous use of '{}' wasn't handled by the type disambiguator"
-                        .format(node))
-
-                # FIXME This discriminator isn't good enough, as different
-                # signatures may have the same string representation, since
-                # their `__str__` implementation doesn't use full names.
-                discriminator = hashlib.sha1(str(discriminating_type).encode()).hexdigest()[-8:]
-                return compatibilize(node.__info__['scope'].name + '_' + node.name + discriminator)
-
-        if isinstance(node, Call):
-            return '{}({})'.format(
-                self.translate_expr(node.callee),
-                ', '.join(map(self.translate_expr, node.arguments)))
-
-        if isinstance(node, CallArgument):
-            return self.translate_expr(node.value)
-
-        assert False, 'cannot translate {}'.format(node)
+        if node.else_clause:
+            self.write('else:')
+            self.level += 1
+            self.visit(node.else_clause)
+            self.level -= 1
 
 
 def find_function_implementation(node):
