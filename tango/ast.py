@@ -513,32 +513,44 @@ class EnumCaseDecl(Node):
 
 class EnumDecl(Node):
 
-    _fields = ('name', 'body', 'import_list', 'conformance_list',)
+    _fields = ('name', 'body', 'generic_parameters', 'import_list', 'conformance_list',)
 
-    def __init__(self, name, body, import_list=None, conformance_list=None):
+    def __init__(
+        self, name, body, generic_parameters=None, import_list=None, conformance_list=None):
+
         super().__init__()
         self.name = name
         self.body = body
+        self.generic_parameters = generic_parameters or []
         self.import_list = import_list or []
         self.conformance_list = conformance_list or []
 
     def __str__(self):
-        return 'enum %s %s' % (self.name, self.body)
+        result = 'enum {} '.format(self.name)
+        if self.generic_parameters:
+            result += '<{}> '.format(', '.join(map(str, self.generic_parameters)))
+        return result + str(self.body)
 
 
 class StructDecl(Node):
 
-    _fields = ('name', 'body', 'import_list', 'conformance_list',)
+    _fields = ('name', 'body', 'generic_parameters', 'import_list', 'conformance_list',)
 
-    def __init__(self, name, body, import_list=None, conformance_list=None):
+    def __init__(
+            self, name, body, generic_parameters=None, import_list=None, conformance_list=None):
+
         super().__init__()
         self.name = name
         self.body = body
+        self.generic_parameters = generic_parameters or []
         self.import_list = import_list or []
         self.conformance_list = conformance_list or []
 
     def __str__(self):
-        return 'struct %s %s' % (self.name, self.body)
+        result = 'struct {} '.format(self.name)
+        if self.generic_parameters:
+            result += '<{}> '.format(', '.join(map(str, self.generic_parameters)))
+        return result + str(self.body)
 
 
 class ProtocolDecl(Node):

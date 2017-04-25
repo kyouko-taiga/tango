@@ -36,13 +36,13 @@ class TestParser(unittest.TestCase):
         self.assertEqual(result.name, 'Int')
         self.assertFalse(result.specialization_parameters)
 
-        result = parser.parse(tango.tokenize('Array[T: Int]'))
+        result = parser.parse(tango.tokenize('Array<T: Int>'))
         self.assertIsInstance(result, ast.TypeIdentifier)
         self.assertEqual(result.name, 'Array')
         self.assertEqual(result.specialization_parameters[0].name, 'T')
         self.assertEqual(result.specialization_parameters[0].type_annotation.name, 'Int')
 
-        result = parser.parse(tango.tokenize('Dictionary[Key: Int, Value: String]'))
+        result = parser.parse(tango.tokenize('Dictionary<Key: Int, Value: String>'))
         self.assertIsInstance(result, ast.TypeIdentifier)
         self.assertEqual(result.name, 'Dictionary')
         self.assertEqual(result.specialization_parameters[0].name, 'Key')
@@ -638,9 +638,14 @@ class TestParser(unittest.TestCase):
         result = parser.parse(tango.tokenize('enum E {}'))
         self.assertIsInstance(result, ast.EnumDecl)
         self.assertEqual(result.name, 'E')
+        self.assertFalse(result.generic_parameters)
         self.assertFalse(result.import_list)
         self.assertFalse(result.conformance_list)
         self.assertFalse(result.body.statements)
+
+        result = parser.parse(tango.tokenize('enum E<T, U> {}'))
+        self.assertEqual(result.generic_parameters[0], 'T')
+        self.assertEqual(result.generic_parameters[1], 'U')
 
         result = parser.parse(tango.tokenize('enum E import F, G {}'))
         self.assertEqual(result.import_list[0].name, 'F')
@@ -674,9 +679,14 @@ class TestParser(unittest.TestCase):
         result = parser.parse(tango.tokenize('struct S {}'))
         self.assertIsInstance(result, ast.StructDecl)
         self.assertEqual(result.name, 'S')
+        self.assertFalse(result.generic_parameters)
         self.assertFalse(result.import_list)
         self.assertFalse(result.conformance_list)
         self.assertFalse(result.body.statements)
+
+        result = parser.parse(tango.tokenize('struct S<T, U> {}'))
+        self.assertEqual(result.generic_parameters[0], 'T')
+        self.assertEqual(result.generic_parameters[1], 'U')
 
         result = parser.parse(tango.tokenize('struct S import T {}'))
         self.assertEqual(result.import_list[0].name, 'T')

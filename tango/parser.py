@@ -101,7 +101,7 @@ def make_type_identifier(args):
         specialization_parameters = args[1])
 
 type_identifier = (
-    identifier + maybe(op_('[') + specialization_parameter_list + op_(']'))
+    identifier + maybe(op_('<') + specialization_parameter_list + op_('>'))
     >> make_type_identifier)
 
 def make_nested_type_identifier(args):
@@ -514,9 +514,10 @@ enum_case_decl = (
 def make_enum_decl(args):
     return EnumDecl(
         name = args[0],
-        import_list = args[1],
-        conformance_list = args[2],
-        body = Block(args[3]))
+        generic_parameters = args[1],
+        import_list = args[2],
+        conformance_list = args[3],
+        body = Block(args[4]))
 
 enum_member = enum_decl | struct_decl | protocol_decl | enum_case_decl | function_decl
 
@@ -526,6 +527,7 @@ enum_member_list = (
 
 enum_decl.define(
     kw_('enum') + identifier +
+    maybe(op_('<') + generic_parameters + op_('>')) +
     maybe(kw_('import') + type_import_list) +
     maybe(op_(':') + type_conformance_list) +
     op_('{') + enum_member_list + op_('}')
@@ -534,9 +536,10 @@ enum_decl.define(
 def make_struct_decl(args):
     return StructDecl(
         name = args[0],
-        import_list = args[1],
-        conformance_list = args[2],
-        body = Block(args[3]))
+        generic_parameters = args[1],
+        import_list = args[2],
+        conformance_list = args[3],
+        body = Block(args[4]))
 
 struct_member = enum_decl | struct_decl | protocol_decl | function_decl | container_decl
 
@@ -546,6 +549,7 @@ struct_member_list = (
 
 struct_decl.define(
     kw_('struct') + identifier +
+    maybe(op_('<') + generic_parameters + op_('>')) +
     maybe(kw_('import') + type_import_list) +
     maybe(op_(':') + type_conformance_list) +
     op_('{') + struct_member_list + op_('}')
