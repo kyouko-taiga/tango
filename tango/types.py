@@ -1,6 +1,3 @@
-from collections import OrderedDict
-
-
 class BaseType(object):
 
     def __init__(self, members=None):
@@ -81,18 +78,20 @@ class TypeUnion(BaseType):
 
 class NominalType(BaseType):
 
-    def __init__(self, name, scope, inner_scope=None, members=None):
+    def __init__(self, name, scope, inner_scope=None, members=None, specializations=None):
         super().__init__(members)
         self.name = name
         self.scope = scope
         self.inner_scope = inner_scope
+        self.specializations = specializations
 
     def __eq__(self, other):
         return (type(self) == type(other)
                 and (self.name == other.name)
                 and (self.scope == other.scope)
                 and (self.inner_scope == other.inner_scope)
-                and (self.members == other.members))
+                and (self.members == other.members)
+                and (self.specializations == other.specializations))
 
     def __hash__(self):
         h = 3
@@ -103,10 +102,14 @@ class NominalType(BaseType):
         return h
 
     def __str__(self):
+        if self.specializations:
+            specializations = ', '.join(
+                '{}: {}'.format(name, value) for name, value in self.specializations.items())
+            return '{}<{}> '.format(self.name, specializations)
         return str(self.name)
 
     def __repr__(self):
-        return '<NominalType %s>' % self.name
+        return '<NominalType {}>'.format(str(self))
 
 
 class StructType(NominalType):

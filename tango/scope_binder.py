@@ -225,32 +225,6 @@ class ScopeBinder(Visitor):
         self.visit(node.body)
         self.scopes.pop()
 
-    def visit_EnumDecl(self, node):
-        # Make sure the function's identifier wasn't already declared within
-        # the current scope.
-        symbol = self.current_scope[node.name]
-        if symbol.decl is not None:
-            raise DuplicateDeclaration(node.name)
-
-        # Set the symbol declaration, so that we can properly refer to it in
-        # nested scopes.
-        symbol.decl            = node
-        node.__info__['scope'] = self.current_scope
-
-        # Insert the enum's name in the typenames of the current scope.
-        self.current_scope.typenames.add(node.name)
-
-        # Push a new scope on the stack before visiting the enum's body, pre-
-        # filled with the symbols it declares.
-        self.push_scope(name=node.name)
-        for symbol in node.body.__info__['symbols']:
-            self.current_scope.add(Symbol(name=symbol))
-        node.body.__info__['scope'] = self.current_scope
-
-        # Finally, visit the enum's body.
-        self.visit(node.body)
-        self.scopes.pop()
-
     def visit_EnumCaseDecl(self, node):
         # Make sure the case's identifier wasn't already declared within the
         # current scope.
@@ -266,8 +240,40 @@ class ScopeBinder(Visitor):
         symbol.decl            = node
         node.__info__['scope'] = self.current_scope
 
+    def visit_nominal_type(self, node):
+        # Make sure the type's identifier wasn't already declared within the
+        # current scope.
+        symbol = self.current_scope[node.name]
+        if symbol.decl is not None:
+            raise DuplicateDeclaration(node.name)
+
+        # Set the symbol declaration, so that we can properly refer to it in
+        # nested scopes.
+        symbol.decl            = node
+        node.__info__['scope'] = self.current_scope
+
+        # Insert the type's name in the typenames of the current scope.
+        self.current_scope.typenames.add(node.name)
+
+        # Push a new scope on the stack before visiting the type's body, pre-
+        # filled with the symbols it declares, as well as those declared as
+        # its generic parameters.
+        self.push_scope(name=node.name)
+        for symbol in node.body.__info__['symbols']:
+            self.current_scope.add(Symbol(name=symbol))
+        for symbol in node.generic_parameters:
+            self.current_scope.add(Symbol(name=symbol, decl=Identifier(name=symbol)))
+        node.body.__info__['scope'] = self.current_scope
+
+        # Finally, visit the type's body.
+        self.visit(node.body)
+        self.scopes.pop()
+
+    def visit_EnumDecl(self, node):
+        self.visit_nominal_type(node)
+
     def visit_StructDecl(self, node):
-        self.visit_EnumDecl(node)
+        self.visit_nominal_type(node)
 
     def visit_Identifier(self, node):
         # If we're currently visiting the declaration of the identifier, we

@@ -82,26 +82,26 @@ block = (
     op_('{') + statement_list + nl_opt + op_('}')
     >> make_block)
 
-def make_specialization_parameter(args):
-    return SpecializationParameter(
+def make_specialization_argument(args):
+    return SpecializationArgument(
         name = args[0],
         type_annotation = args[1])
 
-specialization_parameter = (
+specialization_argument = (
     identifier + op_(':') + type_signature
-    >> make_specialization_parameter)
+    >> make_specialization_argument)
 
-specialization_parameter_list = (
-    specialization_parameter + many(op_(',') + specialization_parameter)
+specialization_argument_list = (
+    specialization_argument + many(op_(',') + specialization_argument)
     >> flatten)
 
 def make_type_identifier(args):
     return TypeIdentifier(
         name = args[0],
-        specialization_parameters = args[1])
+        specialization_arguments = args[1])
 
 type_identifier = (
-    identifier + maybe(op_('<') + specialization_parameter_list + op_('>'))
+    identifier + maybe(op_('<') + specialization_argument_list + op_('>'))
     >> make_type_identifier)
 
 type_expression = type_identifier + op_('.') + kw_('self')

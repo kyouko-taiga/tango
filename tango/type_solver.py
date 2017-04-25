@@ -547,19 +547,32 @@ class TypeSolver(Visitor):
         if isinstance(node, Literal):
             return node.__info__['type']
 
-        if isinstance(node, (Identifier, TypeIdentifier)):
+        if isinstance(node, TypeIdentifier):
             # If the identifier's name is the special `Self` keyword, we
-            # should type it with the type under declaration.
+            # return the type under declaration, otherwise we seach in the
+            # environment.
             if node.name == 'Self':
                 try:
                     result = self.current_self_type[-1]
                 except IndexError:
                     raise InferenceError("invalid use of 'Self' outside of a type declaration")
-
-            # Otherwise we should get its type from the environment.
             else:
                 result = self.environment[TypeVariable(node)]
 
+            # Handle the optional specialization arguments.
+            if node.specialization_arguments and not isinstance(result, TypeVariable):
+                # FIXME
+                result.specializations = {
+                    argument.name: self.read_type_reference(argument.type_annotation)
+                    for argument in node.specialization_arguments
+                }
+
+            node.__info__['type'] = result
+            return result
+
+        if isinstance(node, Identifier):
+            # We get the identifier's type from the environment.
+            result = self.environment[TypeVariable(node)]
             node.__info__['type'] = result
 
             # We also have to determine the identifier's mutability.

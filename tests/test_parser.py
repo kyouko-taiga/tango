@@ -20,11 +20,11 @@ class TestParser(unittest.TestCase):
         result = parser.parse(tango.tokenize('+'))
         self.assertEqual(result, '+')
 
-    def test_specialization_parameter(self):
-        parser = tango.specialization_parameter + skip(finished)
+    def test_specialization_argument(self):
+        parser = tango.specialization_argument + skip(finished)
 
         result = parser.parse(tango.tokenize('T: Int'))
-        self.assertIsInstance(result, ast.SpecializationParameter)
+        self.assertIsInstance(result, ast.SpecializationArgument)
         self.assertEqual(result.name, 'T')
         self.assertEqual(result.type_annotation.name, 'Int')
 
@@ -34,21 +34,21 @@ class TestParser(unittest.TestCase):
         result = parser.parse(tango.tokenize('Int'))
         self.assertIsInstance(result, ast.TypeIdentifier)
         self.assertEqual(result.name, 'Int')
-        self.assertFalse(result.specialization_parameters)
+        self.assertFalse(result.specialization_arguments)
 
         result = parser.parse(tango.tokenize('Array<T: Int>'))
         self.assertIsInstance(result, ast.TypeIdentifier)
         self.assertEqual(result.name, 'Array')
-        self.assertEqual(result.specialization_parameters[0].name, 'T')
-        self.assertEqual(result.specialization_parameters[0].type_annotation.name, 'Int')
+        self.assertEqual(result.specialization_arguments[0].name, 'T')
+        self.assertEqual(result.specialization_arguments[0].type_annotation.name, 'Int')
 
         result = parser.parse(tango.tokenize('Dictionary<Key: Int, Value: String>'))
         self.assertIsInstance(result, ast.TypeIdentifier)
         self.assertEqual(result.name, 'Dictionary')
-        self.assertEqual(result.specialization_parameters[0].name, 'Key')
-        self.assertEqual(result.specialization_parameters[0].type_annotation.name, 'Int')
-        self.assertEqual(result.specialization_parameters[1].name, 'Value')
-        self.assertEqual(result.specialization_parameters[1].type_annotation.name, 'String')
+        self.assertEqual(result.specialization_arguments[0].name, 'Key')
+        self.assertEqual(result.specialization_arguments[0].type_annotation.name, 'Int')
+        self.assertEqual(result.specialization_arguments[1].name, 'Value')
+        self.assertEqual(result.specialization_arguments[1].type_annotation.name, 'String')
 
     def test_function_parameter(self):
         parser = tango.function_parameter + skip(finished)

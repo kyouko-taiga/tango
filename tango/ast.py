@@ -66,7 +66,7 @@ class Block(Node):
         return '{%s\n}' % ''.join('\n%s' % statement for statement in self.statements)
 
 
-class SpecializationParameter(Node):
+class SpecializationArgument(Node):
 
     _fields = ('name', 'type_annotation',)
 
@@ -81,16 +81,16 @@ class SpecializationParameter(Node):
 
 class TypeIdentifier(Node):
 
-    _fields = ('name', 'specialization_parameters',)
+    _fields = ('name', 'specialization_arguments',)
 
-    def __init__(self, name, specialization_parameters=None):
+    def __init__(self, name, specialization_arguments=None):
         super().__init__()
         self.name = name
-        self.specialization_parameters = specialization_parameters or []
+        self.specialization_arguments = specialization_arguments or []
 
     def __str__(self):
-        if self.specialization_parameters:
-            return '%s [%s]' % (self.name, ', '.join(map(str, self.specialization_parameters)))
+        if self.specialization_arguments:
+            return '%s [%s]' % (self.name, ', '.join(map(str, self.specialization_arguments)))
         return str(self.name)
 
     def __repr__(self):
