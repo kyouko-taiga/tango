@@ -71,9 +71,6 @@ class ScopeBinder(Visitor):
             name = str(self.next_scope_id)
             self.next_scope_id += 1
 
-        if self.current_scope is not builtin_scope:
-            name = self.current_scope.name + '.' + name
-
         # Push a new scope on the stack.
         self.current_scope.children.append(Scope(name=name, parent=self.scopes[-1]))
         self.scopes.append(self.current_scope.children[-1])
