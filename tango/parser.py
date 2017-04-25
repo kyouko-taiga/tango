@@ -288,7 +288,7 @@ def make_call_positional_argument(args):
         attributes = set(args[0]),
         value = args[1])
 
-call_position_argument = (
+call_positional_argument = (
     many(op_('@') + identifier) + expression
     >> make_call_positional_argument)
 
@@ -302,7 +302,7 @@ call_named_argument = (
     identifier + op_(':') + many(op_('@') + identifier) + expression
     >> make_call_named_argument)
 
-call_argument = call_named_argument | call_position_argument
+call_argument = call_named_argument | call_positional_argument
 
 call_argument_list = (
     call_argument + many(op_(',') + call_argument)

@@ -6,6 +6,8 @@ class Symbol(object):
         self.decl = decl
         self.type = type
 
+        self.scope = None
+
 
 class Scope(object):
 
@@ -46,6 +48,7 @@ class Scope(object):
 
     def add(self, symbol):
         self.symbols[symbol.name] = symbol
+        symbol.scope = self
 
     def get(self, name, default=None):
         return self.symbols.get(name, default)
@@ -58,9 +61,6 @@ class Scope(object):
 
     def __getitem__(self, name):
         return self.symbols[name]
-
-    def __setitem__(self, name, value):
-        self.symbols[name] = value
 
     def __hash__(self):
         return hash(self.id)

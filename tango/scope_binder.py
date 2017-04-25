@@ -71,9 +71,6 @@ class ScopeBinder(Visitor):
             name = str(self.next_scope_id)
             self.next_scope_id += 1
 
-        if self.current_scope is not builtin_scope:
-            name = self.current_scope.name + '.' + name
-
         # Push a new scope on the stack.
         self.current_scope.children.append(Scope(name=name, parent=self.scopes[-1]))
         self.scopes.append(self.current_scope.children[-1])
@@ -209,7 +206,7 @@ class ScopeBinder(Visitor):
             if parameter.name in self.current_scope:
                 raise DuplicateDeclaration(parameter.name)
 
-            self.current_scope[parameter.name] = [parameter]
+            self.current_scope.add(Symbol(name=parameter.name, decl=parameter))
             parameter.__info__['scope'] = self.current_scope
 
         # Insert the symbols declared within the function's block into the
