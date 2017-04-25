@@ -209,7 +209,7 @@ class ScopeBinder(Visitor):
             if parameter.name in self.current_scope:
                 raise DuplicateDeclaration(parameter.name)
 
-            self.current_scope[parameter.name] = [parameter]
+            self.current_scope.add(Symbol(name=parameter.name, decl=parameter))
             parameter.__info__['scope'] = self.current_scope
 
         # Insert the symbols declared within the function's block into the
