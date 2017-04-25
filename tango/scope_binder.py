@@ -291,6 +291,8 @@ class ScopeBinder(Visitor):
 
     def visit_TypeIdentifier(self, node):
         self.visit_Identifier(node)
+        for argument in node.specialization_arguments:
+            self.visit(argument)
 
     def visit_Select(self, node):
         # Bind the scopes of the symbols in the owning expression.

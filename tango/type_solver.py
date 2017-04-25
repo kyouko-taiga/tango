@@ -561,11 +561,15 @@ class TypeSolver(Visitor):
 
             # Handle the optional specialization arguments.
             if node.specialization_arguments and not isinstance(result, TypeVariable):
-                # FIXME
-                result.specializations = {
-                    argument.name: self.read_type_reference(argument.type_annotation)
-                    for argument in node.specialization_arguments
-                }
+                result = result.__class__(
+                    name            = result.name,
+                    scope           = result.scope,
+                    inner_scope     = result.inner_scope,
+                    members         = result.members,
+                    specializations = {
+                        argument.name: self.read_type_reference(argument.type_annotation)
+                        for argument in node.specialization_arguments
+                    })
 
             node.__info__['type'] = result
             return result
