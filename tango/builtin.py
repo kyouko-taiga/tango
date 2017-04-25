@@ -44,6 +44,9 @@ Int.members = {
     '>=' : FunctionType(domain=[Int, Int], codomain=Bool),
     '>'  : FunctionType(domain=[Int, Int], codomain=Bool),
 }
+list(map(
+    Int.inner_scope.add,
+    (Symbol(name=name, type=type) for name, type in Int.members.items())))
 
 Double.members = {
     'new': TypeUnion((
@@ -66,17 +69,26 @@ Double.members = {
     '>=' : FunctionType(domain=[Double, Double], codomain=Bool),
     '>'  : FunctionType(domain=[Double, Double], codomain=Bool),
 }
+list(map(
+    Double.inner_scope.add,
+    (Symbol(name=name, type=type) for name, type in Double.members.items())))
 
 String.members = {
     'new': FunctionType(domain=[String],         codomain=String),
     '+'  : FunctionType(domain=[String, String], codomain=String),
 }
+list(map(
+    String.inner_scope.add,
+    (Symbol(name=name, type=type) for name, type in String.members.items())))
 
 Bool.members = {
     'new': FunctionType(domain=[Bool],       codomain=Bool),
     'and': FunctionType(domain=[Bool, Bool], codomain=Bool),
     'or' : FunctionType(domain=[Bool, Bool], codomain=Bool),
 }
+list(map(
+    Bool.inner_scope.add,
+    (Symbol(name=name, type=type) for name, type in Bool.members.items())))
 
 builtin_scope.add(Symbol(name='Type',     type=Type))
 builtin_scope.add(Symbol(name='Nothing',  type=Nothing))
