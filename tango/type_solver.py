@@ -412,6 +412,7 @@ class TypeSolver(Visitor):
             return_value_type = statement.value.__info__['type']
             self.environment.unify(return_value_type, function_type.codomain)
 
+        node.__info__['scope'][node.name].type = function_type
         node.__info__['type'] = function_type
 
     def visit_nominal_type(self, node, type_class):
@@ -430,6 +431,7 @@ class TypeSolver(Visitor):
                     for name in node.body.__info__['symbols']
                 })
 
+            node.__info__['scope'][node.name].type = type_instance
             self.environment.unify(TypeVariable(node), type_instance)
 
         else:
