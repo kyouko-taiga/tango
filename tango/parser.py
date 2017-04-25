@@ -104,6 +104,8 @@ type_identifier = (
     identifier + maybe(op_('<') + specialization_parameter_list + op_('>'))
     >> make_type_identifier)
 
+type_expression = type_identifier + op_('.') + kw_('self')
+
 def make_nested_type_identifier(args):
     if args[1]:
         return Select(
@@ -246,7 +248,7 @@ primary = closure | literal | identifier | op_('(') + expression + op_(')')
 
 sfx_expr = (
     call_expression | if_expression | switch_expression |
-    select_expression | implicit_select_expression |
+    type_expression | select_expression | implicit_select_expression |
     primary)
 
 pfx_expr = (

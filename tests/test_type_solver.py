@@ -636,16 +636,20 @@ class TestTypeSolver(unittest.TestCase):
         f_type = self.type_of(find('FunctionDecl:first', module)[0], environment)
         self.assertEqual(x_type, f_type)
 
-    def test_nominal_types_as_first_class(self):
-        module = self.prepare('cst x = Int')
+    def test_type_as_first_class(self):
+        module = self.prepare('cst x = Int.self')
         (module, environment) = infer_types(module)
         x_type = self.type_of(find('ContainerDecl:first', module)[0], environment)
         self.assertEqual(x_type, Type)
 
+        module = self.prepare('cst x = Int')
+        with self.assertRaises(SyntaxError):
+            infer_types(module)
+
         module = self.prepare(
         '''
         struct S {}
-        cst x = S
+        cst x = S.self
         '''
         )
         (module, environment) = infer_types(module)
@@ -654,7 +658,7 @@ class TestTypeSolver(unittest.TestCase):
 
         module = self.prepare(
         '''
-        cst x = S
+        cst x = S.self
         struct S {}
         '''
         )
@@ -665,7 +669,7 @@ class TestTypeSolver(unittest.TestCase):
         module = self.prepare(
         '''
         enum E {}
-        cst x = E
+        cst x = E.self
         '''
         )
         (module, environment) = infer_types(module)
@@ -674,7 +678,7 @@ class TestTypeSolver(unittest.TestCase):
 
         module = self.prepare(
         '''
-        cst x = E
+        cst x = E.self
         enum E {}
         '''
         )

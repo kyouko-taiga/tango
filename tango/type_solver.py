@@ -945,15 +945,19 @@ class TypeSolver(Visitor):
         assert False, "no type inference for node '%s'" % node.__class__.__name__
 
     def read_type_instance(self, node):
-        if self.is_typename(node):
+        if isinstance(node, TypeIdentifier):
             return Type
+        elif self.is_typename(node):
+            raise SyntaxError(
+                "cannot use type name as an rvalue; "
+                "use '.self' to reference the type object")
         return self.analyse(node)
 
     def read_type_reference(self, node):
         return self.analyse(node)
 
     def is_typename(self, node):
-        if isinstance(node, (Identifier, TypeIdentifier)):
+        if isinstance(node, Identifier):
             return ((node.name == 'Self')
                     or (('scope' in node.__info__)
                         and (node.name in node.__info__['scope'].typenames)))
