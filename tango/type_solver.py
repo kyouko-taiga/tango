@@ -59,7 +59,8 @@ class TypeVariable(object):
         else:
             self.id = id
 
-        self.is_generic = False
+    def is_generic(self, memo=None):
+        return False
 
     def __hash__(self):
         return hash(self.id)
@@ -305,7 +306,7 @@ class TypeSolver(Visitor):
 
                 # If the type of initializing value is generic, we have to
                 # first specialize it with the type annotation.
-                if initial_value_type.is_generic:
+                if initial_value_type.is_generic():
                     initial_value_type = specialize_from_annotation(
                         self.environment.deepwalk(initial_value_type), type_annotation)
 
@@ -359,7 +360,7 @@ class TypeSolver(Visitor):
 
                 # If the type of default value is generic, we have to first
                 # specialize it with the type annotation.
-                if default_value_type.is_generic:
+                if default_value_type.is_generic():
                     default_value_type = specialize_from_annotation(
                         self.environment.deepwalk(default_value_type), type_annotation)
 
@@ -896,7 +897,7 @@ class TypeSolver(Visitor):
                     if isinstance(arg, FunctionType):
                         # We don't unify generic specializations neither, as
                         # it would pollute the type of generic name otherwise.
-                        if not argument_type.is_generic:
+                        if not argument_type.is_generic():
                             overloads.append(arg)
                     else:
                         candidate_domains.add(arg)
@@ -1023,7 +1024,7 @@ def find_overload_decls(name, scope):
 
 
 def specialize(unspecialized, specializer, call_node, specializations=None):
-    if not unspecialized.is_generic:
+    if not unspecialized.is_generic():
         yield unspecialized
         return
 
@@ -1038,8 +1039,8 @@ def specialize(unspecialized, specializer, call_node, specializations=None):
     if isinstance(unspecialized, GenericType):
         if isinstance(specializer, TypeUnion):
             for t in specializer:
-                yield t if not t.is_generic else TypeVariable(id=(id(t), id(call_node)))
-        if specializer.is_generic:
+                yield t if not t.is_generic() else TypeVariable(id=(id(t), id(call_node)))
+        if specializer.is_generic():
             yield TypeVariable(id=(id(specializer), id(call_node)))
         else:
             yield specializer
@@ -1054,14 +1055,14 @@ def specialize(unspecialized, specializer, call_node, specializations=None):
         specialized_domain = []
 
         for original, replacement in zip(unspecialized.domain, specializer.domain):
-            if original.is_generic:
+            if original.is_generic():
                 specialized = list(specialize(original, replacement, call_node, specializations))
                 specializations[id(original)] = specialized
                 specialized_domain.append(specialized)
             else:
                 specialized_domain.append((original,))
 
-        if unspecialized.codomain.is_generic:
+        if unspecialized.codomain.is_generic():
             specialized = list(specialize(
                 unspecialized.codomain, specializer.codomain, call_node, specializations))
             specializations[id(unspecialized.codomain)] = specialized
@@ -1087,7 +1088,7 @@ def specialize(unspecialized, specializer, call_node, specializations=None):
 def specialize_from_annotation(unspecialized, type_annotation):
     # It shouldn't be able to express a generic type annotation, since generic
     # parameters aren't allowed in the syntax of function signatures.
-    assert not type_annotation.is_generic
+    assert not type_annotation.is_generic()
 
     # Only function types can specialize a generic type.
     if not isinstance(type_annotation, FunctionType):

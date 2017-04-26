@@ -3,8 +3,7 @@ class BaseType(object):
     def __init__(self, members=None):
         self.members = members or {}
 
-    @property
-    def is_generic(self):
+    def is_generic(self, memo=None):
         return False
 
     def __eq__(self, other):
@@ -17,8 +16,7 @@ class GenericType(BaseType):
         super().__init__()
         self.signature = signature
 
-    @property
-    def is_generic(self):
+    def is_generic(self, memo=None):
         return True
 
     def __str__(self):
@@ -38,9 +36,8 @@ class TypeUnion(BaseType):
             for t in types:
                 self.add(t)
 
-    @property
-    def is_generic(self):
-        return any(t.is_generic for t in self.types)
+    def is_generic(self, memo=None):
+        return any(t.is_generic(memo) for t in self.types)
 
     def add(self, t):
         if t not in self.types:
@@ -83,7 +80,19 @@ class NominalType(BaseType):
         self.name = name
         self.scope = scope
         self.inner_scope = inner_scope
-        self.specializations = specializations
+
+    def is_generic(self, memo=None):
+        if memo is None:
+            memo = set()
+
+        for member in self.members.values():
+            if id(member) in memo:
+                continue
+            memo.add(id(member))
+            if member.is_generic(memo):
+                return True
+
+        return False
 
     def __eq__(self, other):
         return (type(self) == type(other)
@@ -133,9 +142,8 @@ class FunctionType(StructuralType):
         self.labels = labels or [None for _ in self.domain]
         self.attributes = attributes or [set() for _ in self.domain]
 
-    @property
-    def is_generic(self):
-        return any(t.is_generic for t in self.domain) or self.codomain.is_generic
+    def is_generic(self, memo=None):
+        return any(t.is_generic(memo) for t in self.domain) or self.codomain.is_generic(memo)
 
     def is_compatible_with(self, other):
         # Check if the number of parameters match.
@@ -144,7 +152,7 @@ class FunctionType(StructuralType):
 
         for i in range(len(self.domain)):
             # Check if non-generic parameters match.
-            if not self.domain[i].is_generic and (self.domain[i] != other.domain[i]):
+            if not self.domain[i].is_generic() and (self.domain[i] != other.domain[i]):
                 return False
             # Check if parameter labels match.
             if self.labels[i] != other.labels[i]:
@@ -154,7 +162,7 @@ class FunctionType(StructuralType):
                 return False
 
         # Check if the codomains match.
-        if not self.codomain.is_generic and (self.codomain != other.codomain):
+        if not self.codomain.is_generic() and (self.codomain != other.codomain):
             return False
 
         return True
