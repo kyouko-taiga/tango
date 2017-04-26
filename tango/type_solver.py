@@ -4,7 +4,8 @@ from .ast import *
 from .builtin import Bool, Type, builtin_scope
 from .errors import InferenceError
 from .scope import Scope
-from .types import BaseType, EnumType, FunctionType, GenericType, StructType, TypeUnion
+from .types import (
+    BaseType, EnumType, FunctionType, GenericType, NominalType, StructType, TypeUnion)
 
 
 def infer_types(node, max_iter=100):
@@ -60,6 +61,16 @@ class TypeVariable(object):
             self.id = id
 
     def is_generic(self, memo=None):
+
+        # NOTE We chose to always consider type variables non-generic. The
+        # consequence of this choice is that whenever we visit a generic type
+        # that has yet to be specialized, we have to type the expression that
+        # uses it with another fresh variable.
+        # Another approach would be to allow type variables to hold a
+        # specialization list as well. That way we could express "some type
+        # specialized with this". This would reduce the number of variables we
+        # have to create, but would also make matching and unification harder.
+
         return False
 
     def __hash__(self):
@@ -90,14 +101,21 @@ class Substitution(object):
     def __contains__(self, variable):
         return variable in self.storage
 
-    def unify(self, t, u):
+    def unify(self, t, u, memo=None):
+        if memo is None:
+            memo = set()
+        key = (id(t), id(u))
+        if key in memo:
+            return
+        memo.add(key)
+
         a = self[t]
         b = self[u]
 
         if a == b:
-            pass
+            return
 
-        elif isinstance(a, TypeVariable):
+        if isinstance(a, TypeVariable):
             self.storage[a] = b
         elif isinstance(b, TypeVariable):
             self.storage[b] = a
@@ -106,7 +124,7 @@ class Substitution(object):
             results = []
             for ita, itb in product(a, b):
                 if self.matches(ita, itb):
-                    self.unify(ita, itb)
+                    self.unify(ita, itb, memo)
                     results.append(ita)
 
             if not results:
@@ -117,7 +135,7 @@ class Substitution(object):
         elif isinstance(a, TypeUnion) and isinstance(b, BaseType):
             for it in a:
                 if self.matches(it, b):
-                    self.unify(it, b)
+                    self.unify(it, b, memo)
                     a.replace_content((it,))
                     break
             else:
@@ -128,19 +146,23 @@ class Substitution(object):
             # first type that matches in the union.
 
         elif isinstance(b, TypeUnion) and isinstance(a, BaseType):
-            self.unify(b, a)
+            self.unify(b, a, memo)
 
-        elif isinstance(a, StructType) and isinstance(b, StructType):
+        elif isinstance(a, NominalType) and isinstance(b, NominalType):
             if (a.name != b.name) or (a.members.keys() ^ b.members.keys()):
                 raise InferenceError("type '%s' does not match '%s'" % (a, b))
             for it in a.members:
-                self.unify(a.members[it], b.members[it])
+                self.unify(a.members[it], b.members[it], memo)
+
+        elif isinstance(a, FunctionType) and isinstance(b, FunctionType):
+            for ita, itb in zip(a.domain, b.domain):
+                self.unify(ita, itb, memo)
+            self.unify(a.codomain, b.codomain, memo)
 
         elif isinstance(a, BaseType) and isinstance(b, BaseType):
             if a != b:
                 raise InferenceError("type '%s' does not match '%s'" % (a, b))
 
-        # TODO unify abstract types and generic functions
         # TODO take conformance into account
 
         else:
@@ -163,7 +185,7 @@ class Substitution(object):
         if isinstance(u, TypeUnion):
             return self.matches(u, t)
 
-        if isinstance(t, StructType) and isinstance(u, StructType):
+        if isinstance(t, NominalType) and isinstance(u, NominalType):
             return ((t.name == u.name)
                     and (t.scope == u.scope)
                     and not (t.members.keys() ^ u.members.keys())
@@ -183,26 +205,52 @@ class Substitution(object):
 
         return t == u
 
-    def deepwalk(self, t):
+    def deepwalk(self, t, memo=None):
+        if memo is None:
+            memo = {}
+        if id(t) in memo:
+            return memo[id(t)]
+
         if isinstance(t, TypeUnion):
-            result = TypeUnion(self.deepwalk(it) for it in t)
+            result = TypeUnion()
+            memo[id(t)] = result
+            result.types = TypeUnion(self.deepwalk(it, memo) for it in t).types
+
             # Avoid creating singletons when there's only one candidate.
             if len(result) == 1:
-                return result.first()
+                result = result.first()
+            return result
+
+        if isinstance(t, NominalType):
+            result = t.__class__(
+                name               = t.name,
+                scope              = t.scope,
+                inner_scope        = t.inner_scope,
+                generic_parameters = t.generic_parameters,
+                specializations    = t.specializations)
+            memo[id(t)] = result
+
+            result.members = {
+                name: self.deepwalk(member, memo)
+                for name, member in t.members.items()
+            }
             return result
 
         if isinstance(t, FunctionType):
-            return FunctionType(
-                domain     = [self.deepwalk(p) for p in t.domain],
-                codomain   = self.deepwalk(t.codomain),
+            result = FunctionType(
                 labels     = t.labels,
                 attributes = t.attributes)
+            memo[id(t)] = result
+
+            result.domain = [self.deepwalk(p, memo) for p in t.domain]
+            result.codomain = self.deepwalk(t.codomain, memo)
+            return result
 
         if not isinstance(t, TypeVariable):
             return t
 
         if t in self.storage:
-            return self.deepwalk(self.storage[t])
+            return self.deepwalk(self.storage[t], memo)
 
         return t
 
@@ -328,9 +376,8 @@ class TypeSolver(Visitor):
         node.__info__['type'] = inferred
 
     def visit_FunctionDecl(self, node):
-        # First, we should create (unless we already did) a generic type for
-        # each of the function's generic parameters (if any), to populate the
-        # environment.
+        # First, we create (unless we already did) a generic type object for
+        # each of the function's generic parameters (if any).
         inner_scope = node.body.__info__['scope']
         for symbol in node.generic_parameters:
             var = TypeVariable(id=(inner_scope, symbol))
@@ -375,10 +422,11 @@ class TypeSolver(Visitor):
         # Once we've computed the function signature, we can create a type
         # for the function itself.
         function_type = FunctionType(
-            domain     = parameter_types,
-            codomain   = return_type,
-            labels     = [parameter.label for parameter in node.signature.parameters],
-            attributes = [parameter.attributes for parameter in node.signature.parameters])
+            domain             = parameter_types,
+            codomain           = return_type,
+            labels             = [param.label for param in node.signature.parameters],
+            attributes         = [param.attributes for param in node.signature.parameters],
+            generic_parameters = node.generic_parameters)
 
         # As functions may be overloaded, we can't unify the function type
         # we've created with the function's name directly. Instead, we should
@@ -399,8 +447,6 @@ class TypeSolver(Visitor):
         for overload in find_overload_decls(node.name, node.__info__['scope']):
             overload_set.add(TypeVariable(overload))
 
-        # FIXME Avoid adding duplicates to the set of overloads.
-
         # We continue the type inference in the function body.
         self.visit(node.body)
 
@@ -416,18 +462,31 @@ class TypeSolver(Visitor):
         node.__info__['type'] = function_type
 
     def visit_nominal_type(self, node, type_class):
-        # First, we create a new nominal type (unless we already did).
+        # First, we create (unless we already did) a generic type object for
+        # each of the type's generic parameters (if any).
+        inner_scope = node.body.__info__['scope']
+        for symbol in node.generic_parameters:
+            var = TypeVariable(id=(inner_scope, symbol))
+            if var not in self.environment:
+                self.environment.unify(var, GenericType(symbol))
+                inner_scope.typenames.add(symbol)
+
+        # Then, we create a new nominal type (unless we already did).
         walked = self.environment[TypeVariable(node)]
         if isinstance(walked, TypeVariable):
-            inner_scope = node.body.__info__['scope']
             type_instance = type_class(
                 name               = node.name,
                 scope              = node.__info__['scope'],
                 inner_scope        = inner_scope,
-                generic_parameters = node.generic_parameters,
+                generic_parameters = {
+                    # We retrieve and store the generic type object we created
+                    # for each of the type's generic parameters (if any).
+                    symbol: self.environment[TypeVariable((inner_scope, symbol))]
+                    for symbol in node.generic_parameters
+                },
                 members            = {
-                    # We create new using fresh type variables for each of the
-                    # symbols the nominal type defines.
+                    # We create new type variables for each of the symbols the
+                    # nominal type defines.
                     name: self.environment[TypeVariable((inner_scope, name))]
                     for name in node.body.__info__['symbols']
                 })
@@ -556,27 +615,32 @@ class TypeSolver(Visitor):
                 # If the result we got isn't a type variable, we return its
                 # specialization.
                 if not isinstance(result, TypeVariable):
-                    result = result.__class__(
-                        name               = result.name,
-                        scope              = result.scope,
-                        inner_scope        = result.inner_scope,
-                        members            = result.members,
-                        generic_parameters = result.generic_parameters,
-                        specializations    = {
-                            argument.name: self.read_type_reference(argument.type_annotation)
-                            for argument in node.specialization_arguments
-                        })
+                    # First, we have to create the substitution map for each
+                    # type parameter.
+                    specializations = {}
+                    for argument in node.specialization_arguments:
+                        try:
+                            generic_type = result.generic_parameters[argument.name]
+                        except KeyError:
+                            raise InferenceError(
+                                "type {} does not have a type parameter named {}".format(
+                                    result, argument.name))
+
+                        specializations[id(generic_type)] = self.read_type_reference(
+                            argument.type_annotation)
+
+                    # Make sure we got a specialization for all parameters.
+                    if len(specializations) < len(result.generic_parameters):
+                        raise InferenceError("missing specialization arguments")
+
+                    # Finally, we can specialize the generic type.
+                    result = self.environment.deepwalk(result)
+                    result = specialize(result, specializations)
 
                 # Otherwise, we have to return a fresh variable, as we don't
                 # know what generic type we'll have to specialize yet.
                 else:
                     result = TypeVariable()
-
-                # NOTE Another approach would be to allow type variables to
-                # hold a specialization list as well. That way we could
-                # express the idea of "some type specialized with this". This
-                # would reduce the number of variables we have to create, but
-                # would also make matching and unification harder.
 
             node.__info__['type'] = result
             return result
@@ -780,10 +844,11 @@ class TypeSolver(Visitor):
                         # self binding), and we'll list it as a candidate.
                         assert isinstance(constructor, FunctionType)
                         candidates.append(FunctionType(
-                            domain     = constructor.domain[1:],
-                            codomain   = constructor.codomain,
-                            labels     = constructor.labels[1:],
-                            attributes = constructor.attributes[1:]))
+                            domain             = constructor.domain[1:],
+                            codomain           = constructor.codomain,
+                            labels             = constructor.labels[1:],
+                            attributes         = constructor.attributes[1:],
+                            generic_parameters = constructor.generic_parameters))
 
             # If we can't find any candidate, we return the type codomains we
             # already selected (if any).
@@ -862,7 +927,8 @@ class TypeSolver(Visitor):
             for types in product(*choices):
                 specializer = FunctionType(domain=types[0:-1], codomain=types[-1])
                 specialized_candidates.extend(flatten(
-                    specialize(self.environment.deepwalk(candidate), specializer, node)
+                    specialize_with_pattern(
+                        self.environment.deepwalk(candidate), specializer, node)
                     for candidate in compatible_candidates))
 
             # Then we filter out the specialized candidates whose signature
@@ -1028,7 +1094,48 @@ def find_overload_decls(name, scope):
     return []
 
 
-def specialize(unspecialized, specializer, call_node, specializations=None):
+def specialize(signature, specializations):
+    if not signature.is_generic():
+        return signature
+
+    if isinstance(signature, NominalType):
+        result = signature.__class__(
+            name               = signature.name,
+            scope              = signature.scope,
+            inner_scope        = signature.inner_scope,
+            generic_parameters = signature.generic_parameters)
+
+        for generic_id, specialization in specializations.items():
+            try:
+                parameter_name = next(
+                    name for name, param in signature.generic_parameters.items()
+                    if id(param) == generic_id)
+            except StopIteration:
+                continue
+            result.specializations[parameter_name] = specialization
+
+        for name, member in signature.members.items():
+            result.members[name] = specialize(member, specializations)
+
+        return result
+
+    if isinstance(signature, FunctionType):
+        return FunctionType(
+            domain     = [
+                specialize(original, specializations)
+                for original in signature.domain
+            ],
+            codomain   = specialize(original, specializations),
+            labels     = unspecialized.labels,
+            attributes = unspecialized.attributes)
+
+    if isinstance(signature, GenericType):
+        return specializations.get(id(signature), signature)
+
+    assert False
+
+
+def specialize_with_pattern(unspecialized, specializer, call_node, specializations=None):
     if not unspecialized.is_generic():
         yield unspecialized
         return
@@ -1061,14 +1168,15 @@ def specialize(unspecialized, specializer, call_node, specializations=None):
 
         for original, replacement in zip(unspecialized.domain, specializer.domain):
             if original.is_generic():
-                specialized = list(specialize(original, replacement, call_node, specializations))
+                specialized = list(specialize_with_pattern(
+                    original, replacement, call_node, specializations))
                 specializations[id(original)] = specialized
                 specialized_domain.append(specialized)
             else:
                 specialized_domain.append((original,))
 
         if unspecialized.codomain.is_generic():
-            specialized = list(specialize(
+            specialized = list(specialize_with_pattern(
                 unspecialized.codomain, specializer.codomain, call_node, specializations))
             specializations[id(unspecialized.codomain)] = specialized
             specialized_codomain = specialized
@@ -1106,7 +1214,7 @@ def specialize_from_annotation(unspecialized, type_annotation):
 
     candidates = filter(lambda t: t.is_compatible_with(type_annotation), unspecialized)
     specialized = list(flatten(
-        specialize(candidate, type_annotation, None)
+        specialize_with_pattern(candidate, type_annotation, None)
         for candidate in candidates))
 
     if len(specialized) == 0:

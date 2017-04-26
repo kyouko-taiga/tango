@@ -1,3 +1,6 @@
+import tango.builtin
+
+
 class BaseType(object):
 
     def __init__(self, members=None):
@@ -83,8 +86,14 @@ class NominalType(BaseType):
         self.name = name
         self.scope = scope
         self.inner_scope = inner_scope
-        self.generic_parameters = generic_parameters or []
-        self.specializations = specializations or {name: None for name in self.generic_parameters}
+
+        # (String) -> GenericType
+        self.generic_parameters = generic_parameters or {}
+
+        # (String) -> Optional<Type>
+        self.specializations = specializations or {
+            param: None for param in self.generic_parameters
+        }
 
     def is_generic(self, memo=None):
         if memo is None:
@@ -100,13 +109,26 @@ class NominalType(BaseType):
         return False
 
     def __eq__(self, other):
-        return (type(self) == type(other)
-                and (self.name == other.name)
-                and (self.scope == other.scope)
-                and (self.inner_scope == other.inner_scope)
-                and (self.members == other.members)
-                and (self.generic_parameters == other.generic_parameters)
-                and (self.specializations == other.specializations))
+        if (type(self) != type(other)
+            or (self.name != other.name)
+            or (self.scope != other.scope)
+            or (self.inner_scope != other.inner_scope)):
+            return False
+
+        for name in self.members:
+            if ((name not in other.members)
+                or not _equals(self.members[name], other.members[name])):
+                return False
+        for name in self.generic_parameters:
+            if ((name not in other.generic_parameters)
+                or not _equals(self.generic_parameters[name], other.generic_parameters[name])):
+                return False
+        for name in self.specializations:
+            if ((name not in other.specializations)
+                or not _equals(self.generic_parameters[name], other.generic_parameters[name])):
+                return False
+
+        return True
 
     def __hash__(self):
         h = 3
@@ -119,8 +141,8 @@ class NominalType(BaseType):
     def __str__(self):
         if self.generic_parameters:
             specializations = ', '.join(
-                '{}: {}'.format(name, self.specializations[name] or '_')
-                for name in self.generic_parameters)
+                '{}: {}'.format(tp, self.specializations[tp] or '_')
+                for tp in self.generic_parameters)
             return '{}<{}> '.format(self.name, specializations)
 
         return str(self.name)
@@ -143,12 +165,19 @@ class StructuralType(BaseType):
 
 class FunctionType(StructuralType):
 
-    def __init__(self, domain=None, codomain=None, labels=None, attributes=None):
+    def __init__(
+            self, domain=None, codomain=None, labels=None, attributes=None,
+            generic_parameters=None, specializations=None):
+
         super().__init__()
         self.domain = domain or []
-        self.codomain = codomain or Nothing
+        self.codomain = codomain or tango.builtin.Nothing
         self.labels = labels or [None for _ in self.domain]
         self.attributes = attributes or [set() for _ in self.domain]
+        self.generic_parameters = generic_parameters or []
+        self.specializations = specializations or {
+            param: None for param in self.generic_parameters
+        }
 
     def is_generic(self, memo=None):
         return any(t.is_generic(memo) for t in self.domain) or self.codomain.is_generic(memo)
@@ -199,3 +228,18 @@ class FunctionType(StructuralType):
             parameters.append(mutability + ' ' + (self.labels[i] or '_') + ': ' + str(t))
 
         return '(%s) -> %s' % (', '.join(parameters), self.codomain)
+
+
+_equality_memo = {}
+
+def _equals(a, b):
+    global _equality_memo
+
+    key = (id(a), id(b))
+    if key in _equality_memo:
+        return _equality_memo[key]
+
+    _equality_memo[key] = True
+    result = a == b
+    _equality_memo[key] = result
+    return result

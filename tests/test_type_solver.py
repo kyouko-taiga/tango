@@ -1245,7 +1245,20 @@ class TestTypeSolver(unittest.TestCase):
         with self.assertRaises(InferenceError):
             infer_types(module)
 
-    def test_if_with_pattern(self):
+    def test_switch_as_statement(self):
+        module = self.prepare(
+        '''
+        mut x = 1
+        switch x {
+            case 1 { x = 2 }
+            case 2 { x = 'foo' }
+        }
+        '''
+        )
+        with self.assertRaises(InferenceError):
+            infer_types(module)
+
+    def test_switch_with_pattern(self):
         module = self.prepare(
         '''
         cst e: E = .bar(x: 0, y: .foo)
@@ -1268,19 +1281,6 @@ class TestTypeSolver(unittest.TestCase):
         b_type = self.type_of(declaration_nodes[2], environment)
         self.assertIsInstance(b_type, EnumType)
         self.assertEqual(b_type.name, 'E')
-
-    def test_switch_as_statement(self):
-        module = self.prepare(
-        '''
-        mut x = 1
-        switch x {
-            case 1 { x = 2 }
-            case 2 { x = 'foo' }
-        }
-        '''
-        )
-        with self.assertRaises(InferenceError):
-            infer_types(module)
 
     def test_switch_as_expression(self):
         module = self.prepare(
