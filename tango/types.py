@@ -75,11 +75,16 @@ class TypeUnion(BaseType):
 
 class NominalType(BaseType):
 
-    def __init__(self, name, scope, inner_scope=None, members=None, specializations=None):
+    def __init__(
+            self, name, scope, inner_scope=None, members=None,
+            generic_parameters=None, specializations=None):
+
         super().__init__(members)
         self.name = name
         self.scope = scope
         self.inner_scope = inner_scope
+        self.generic_parameters = generic_parameters or []
+        self.specializations = specializations or {name: None for name in self.generic_parameters}
 
     def is_generic(self, memo=None):
         if memo is None:
@@ -100,6 +105,7 @@ class NominalType(BaseType):
                 and (self.scope == other.scope)
                 and (self.inner_scope == other.inner_scope)
                 and (self.members == other.members)
+                and (self.generic_parameters == other.generic_parameters)
                 and (self.specializations == other.specializations))
 
     def __hash__(self):
@@ -111,10 +117,12 @@ class NominalType(BaseType):
         return h
 
     def __str__(self):
-        if self.specializations:
+        if self.generic_parameters:
             specializations = ', '.join(
-                '{}: {}'.format(name, value) for name, value in self.specializations.items())
+                '{}: {}'.format(name, self.specializations[name] or '_')
+                for name in self.generic_parameters)
             return '{}<{}> '.format(self.name, specializations)
+
         return str(self.name)
 
     def __repr__(self):

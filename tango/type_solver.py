@@ -421,10 +421,11 @@ class TypeSolver(Visitor):
         if isinstance(walked, TypeVariable):
             inner_scope = node.body.__info__['scope']
             type_instance = type_class(
-                name        = node.name,
-                scope       = node.__info__['scope'],
-                inner_scope = inner_scope,
-                members     = {
+                name               = node.name,
+                scope              = node.__info__['scope'],
+                inner_scope        = inner_scope,
+                generic_parameters = node.generic_parameters,
+                members            = {
                     # We create new using fresh type variables for each of the
                     # symbols the nominal type defines.
                     name: self.environment[TypeVariable((inner_scope, name))]
@@ -551,16 +552,31 @@ class TypeSolver(Visitor):
             result = self.environment[TypeVariable(node)]
 
             # Then, we handle the optional specialization arguments.
-            if node.specialization_arguments and not isinstance(result, TypeVariable):
-                result = result.__class__(
-                    name            = result.name,
-                    scope           = result.scope,
-                    inner_scope     = result.inner_scope,
-                    members         = result.members,
-                    specializations = {
-                        argument.name: self.read_type_reference(argument.type_annotation)
-                        for argument in node.specialization_arguments
-                    })
+            if node.specialization_arguments:
+                # If the result we got isn't a type variable, we return its
+                # specialization.
+                if not isinstance(result, TypeVariable):
+                    result = result.__class__(
+                        name               = result.name,
+                        scope              = result.scope,
+                        inner_scope        = result.inner_scope,
+                        members            = result.members,
+                        generic_parameters = result.generic_parameters,
+                        specializations    = {
+                            argument.name: self.read_type_reference(argument.type_annotation)
+                            for argument in node.specialization_arguments
+                        })
+
+                # Otherwise, we have to return a fresh variable, as we don't
+                # know what generic type we'll have to specialize yet.
+                else:
+                    result = TypeVariable()
+
+                # NOTE Another approach would be to allow type variables to
+                # hold a specialization list as well. That way we could
+                # express the idea of "some type specialized with this". This
+                # would reduce the number of variables we have to create, but
+                # would also make matching and unification harder.
 
             node.__info__['type'] = result
             return result
