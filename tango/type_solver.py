@@ -248,10 +248,9 @@ class TypeSolver(Visitor):
             for symbol in builtin_scope.symbols.values()
         })
 
-        # Methods, properties and enum cases may use `Self` as a placeholder
-        # to denote the "final" type they're defined in. This stack will serve
-        # us to keep track of the actual type `Self` represents, depending on
-        # the context we'll be evaluation typing informations.
+        # Enum case declarations typically don't explicitly specify their
+        # "return" type, so we need a way to keep track of their type as we
+        # visit them.
         self.current_self_type = []
 
     class ReturnFinder(Visitor):
@@ -438,9 +437,8 @@ class TypeSolver(Visitor):
         else:
             type_instance = walked
 
-        # The body of a type can be visited as a normal satement block, as
-        # long as we push a variable on the `current_self_type` stack before,
-        # to properly catch references to `Self`.
+        # Update `current_self_type` before visiting the type's members to
+        # to handle enum case declarations.
         self.current_self_type.append(type_instance)
         self.visit(node.body)
         self.current_self_type.pop()
@@ -549,18 +547,10 @@ class TypeSolver(Visitor):
             return node.__info__['type']
 
         if isinstance(node, TypeIdentifier):
-            # If the identifier's name is the special `Self` keyword, we
-            # return the type under declaration, otherwise we seach in the
-            # environment.
-            if node.name == 'Self':
-                try:
-                    result = self.current_self_type[-1]
-                except IndexError:
-                    raise InferenceError("invalid use of 'Self' outside of a type declaration")
-            else:
-                result = self.environment[TypeVariable(node)]
+            # First, we look for the type in the environment.
+            result = self.environment[TypeVariable(node)]
 
-            # Handle the optional specialization arguments.
+            # Then, we handle the optional specialization arguments.
             if node.specialization_arguments and not isinstance(result, TypeVariable):
                 result = result.__class__(
                     name            = result.name,
@@ -976,9 +966,8 @@ class TypeSolver(Visitor):
 
     def is_typename(self, node):
         if isinstance(node, Identifier):
-            return ((node.name == 'Self')
-                    or (('scope' in node.__info__)
-                        and (node.name in node.__info__['scope'].typenames)))
+            return (('scope' in node.__info__)
+                    and (node.name in node.__info__['scope'].typenames))
 
         if isinstance(node, Select):
             return self.is_typename(node.member)

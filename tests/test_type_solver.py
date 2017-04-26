@@ -4,6 +4,7 @@ from tango.builtin import Bool, Double, Int, Nothing, String, Type
 from tango.errors import InferenceError
 from tango.parser import parse
 from tango.scope_binder import bind_scopes
+from tango.type_builder import build_types
 from tango.type_solver import TypeVariable, infer_types
 from tango.types import EnumType, FunctionType, GenericType, StructType, TypeUnion
 from tango.utils import find
@@ -1320,4 +1321,7 @@ class TestTypeSolver(unittest.TestCase):
         return environment.storage[TypeVariable(node)]
 
     def prepare(self, source):
-        return bind_scopes(parse(source))
+        module = parse(source)
+        module = build_types(module)
+        module = bind_scopes(module)
+        return module

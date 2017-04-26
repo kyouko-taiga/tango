@@ -76,7 +76,7 @@ class SpecializationArgument(Node):
         self.type_annotation = type_annotation
 
     def __str__(self):
-        return '%s = %s' % (self.name, self.type_annotation)
+        return '%s: %s' % (self.name, self.type_annotation)
 
 
 class TypeIdentifier(Node):
@@ -90,7 +90,7 @@ class TypeIdentifier(Node):
 
     def __str__(self):
         if self.specialization_arguments:
-            return '%s [%s]' % (self.name, ', '.join(map(str, self.specialization_arguments)))
+            return '%s<%s>' % (self.name, ', '.join(map(str, self.specialization_arguments)))
         return str(self.name)
 
     def __repr__(self):

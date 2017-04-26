@@ -3,6 +3,7 @@ import sys
 
 from tango.parser import parse
 from tango.scope_binder import SymbolsExtractor, ScopeBinder
+from tango.type_builder import build_types
 from tango.type_solver import infer_types
 from tango.type_disambiguator import disambiguate_types
 
@@ -21,7 +22,7 @@ class SetEncoder(JSONEncoder):
         if isinstance(obj, Node):
             return repr(obj)
         if isinstance(obj, Scope):
-            return obj.name
+            return obj.qualified_name
         if isinstance(obj, BaseType):
             return str(obj)
         return JSONEncoder.default(self, obj)
@@ -35,6 +36,11 @@ if __name__ == '__main__':
     # Parse the given source file.
     module = parse(source)
     module.name = '__main__'
+    # print(module)
+    # exit(0)
+
+    # Build the types syntactic definitions.
+    module = build_types(module)
     # print(module)
     # exit(0)
 
@@ -59,7 +65,8 @@ if __name__ == '__main__':
             scope, name = symbol.id
             if scope.name == 'Tango':
                 continue
-            print('{:20}{:}'.format(scope.name + '.' + name, inferred_type))
+            name = '.'.join(scope.qualified_name.split('.')[2:]) + '.' + name
+            print('{:20}{:}'.format(name, inferred_type))
 
     # Disambiguate the types of each expression.
     (module, ambiguous_nodes) = disambiguate_types(module)

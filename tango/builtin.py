@@ -14,7 +14,6 @@ def make_builtin_type(name):
 Type     = make_builtin_type('Type')
 Nothing  = make_builtin_type('Nothing')
 Anything = make_builtin_type('Anything')
-Self     = make_builtin_type('Self')
 
 Int      = make_builtin_type('Int')
 Double   = make_builtin_type('Double')
@@ -93,7 +92,6 @@ list(map(
 builtin_scope.add(Symbol(name='Type',     type=Type))
 builtin_scope.add(Symbol(name='Nothing',  type=Nothing))
 builtin_scope.add(Symbol(name='Anything', type=Anything))
-builtin_scope.add(Symbol(name='Self',     type=Self))
 builtin_scope.add(Symbol(name='Int',      type=Int))
 builtin_scope.add(Symbol(name='Double',   type=Double))
 builtin_scope.add(Symbol(name='String',   type=String))
@@ -105,7 +103,6 @@ builtin_scope.typenames = {
     'Type',
     'Nothing',
     'Anything',
-    'Self',
     'Int',
     'Double',
     'String',
