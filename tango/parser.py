@@ -13,7 +13,7 @@ def tokenize(s):
         ('newline',    (r'[\r\n]+',)),
         ('space',      (r'[ \t\v]+',)),
         ('operator',   (r'\->|not|and|or|[><=!]=|[=\+\-\*\/%\.:,&@<>{}\[\]\(\)]',)),
-        ('identifier', (r'[^\W\d][\w]*',)),
+        ('name',       (r'[^\W\d][\w]*',)),
         ('number',     (r'[-+]?(0|([1-9][0-9]*))(\.[0-9]+)?([Ee][+-]?[0-9]+)?',)),
         ('string',     (r'\'[^\']*\'',)),
     ])
@@ -28,43 +28,25 @@ def flatten(args):
     return [args[0]] + args[1]
 
 op     = lambda value: a(Token('operator', value))
-kw     = lambda value: a(Token('identifier', value))
+kw     = lambda value: a(Token('name', value))
 
 op_    = lambda value: skip(a(Token('operator', value)))
-kw_    = lambda value: skip(a(Token('identifier', value)))
+kw_    = lambda value: skip(a(Token('name', value)))
 nl_    = skip(some(lambda token: token.type == 'newline'))
 nl_opt = skip(many(some(lambda token: token.type == 'newline')))
 
 type_signature    = forward_decl()
 expression        = forward_decl()
+select_expression = forward_decl()
 call_expression   = forward_decl()
 if_expression     = forward_decl()
 switch_expression = forward_decl()
+pattern           = forward_decl()
 container_decl    = forward_decl()
 struct_decl       = forward_decl()
 enum_decl         = forward_decl()
 protocol_decl     = forward_decl()
 statement         = forward_decl()
-
-wildcard = kw_('_') >> (lambda _: Wildcard())
-
-def make_identifier(token):
-    return token.value
-
-identifier = (
-    some(lambda token: token.type == 'identifier')
-    >> make_identifier)
-
-pfx_op = (op('+') | op('-') | op('not')) >> make_identifier
-
-mul_op = (op('*') | op('/') | op('%')) >> make_identifier
-add_op = (op('+') | op('-')) >> make_identifier
-cmp_op = (op('<') | op('<=') | op('>=') | op('>')) >> make_identifier
-eq_op  = (op('==') | op('!=')) >> make_identifier
-and_op = op('and') >> make_identifier
-or_op  = op('or') >> make_identifier
-
-operator_identifier = pfx_op | or_op | and_op | eq_op | cmp_op | mul_op | add_op
 
 def make_statement_list(args):
     if args[0] is None:
@@ -82,13 +64,31 @@ block = (
     op_('{') + statement_list + nl_opt + op_('}')
     >> make_block)
 
+def make_name(token):
+    return token.value
+
+name = (
+    some(lambda token: token.type == 'name')
+    >> make_name)
+
+pfx_op = (op('+') | op('-') | op('not')) >> make_name
+
+mul_op = (op('*') | op('/') | op('%')) >> make_name
+add_op = (op('+') | op('-')) >> make_name
+cmp_op = (op('<') | op('<=') | op('>=') | op('>')) >> make_name
+eq_op  = (op('==') | op('!=')) >> make_name
+and_op = op('and') >> make_name
+or_op  = op('or') >> make_name
+
+operator_name = pfx_op | or_op | and_op | eq_op | cmp_op | mul_op | add_op
+
 def make_specialization_argument(args):
     return SpecializationArgument(
-        name = args[0],
+        name            = args[0],
         type_annotation = args[1])
 
 specialization_argument = (
-    identifier + op_(':') + type_signature
+    name + op_('=') + type_signature
     >> make_specialization_argument)
 
 specialization_argument_list = (
@@ -97,11 +97,11 @@ specialization_argument_list = (
 
 def make_type_identifier(args):
     return TypeIdentifier(
-        name = args[0],
-        specialization_arguments = args[1])
+        name            = args[0],
+        specializations = args[1])
 
 type_identifier = (
-    identifier + maybe(op_('<') + specialization_argument_list + op_('>'))
+    name + maybe(op_('<') + specialization_argument_list + op_('>'))
     >> make_type_identifier)
 
 type_expression = type_identifier + op_('.') + kw_('self')
@@ -109,7 +109,7 @@ type_expression = type_identifier + op_('.') + kw_('self')
 def make_nested_type_identifier(args):
     if args[1]:
         return Select(
-            owner = make_select_expression((args[0], args[1][:-1])),
+            owner = make_explicit_select_expression((args[0], args[1][:-1])),
             member = args[1][-1])
     return args[0]
 
@@ -117,38 +117,108 @@ nested_type_identifier = (
     type_identifier + many(op_('.') + type_identifier)
     >> make_nested_type_identifier)
 
-def make_function_parameter(args):
+wildcard = kw_('_') >> (lambda _: Wildcard())
+
+def make_value_binding_pattern(args):
+    return ValueBindingPattern(
+        is_mutable      = args[0].value != 'cst',
+        is_shared       = args[0].value == 'shd',
+        name            = args[1],
+        type_annotation = args[2])
+
+value_binding_pattern = (
+    (kw('cst') | kw('mut') | kw('shd')) + name +
+    maybe(op_(':') + type_signature)
+    >> make_value_binding_pattern)
+
+def make_argument_pattern(args):
+    return ArgumentPattern(
+        label   = args[0],
+        pattern = args[1])
+
+argument_pattern = (
+    name + op_('=') + pattern
+    >> make_argument_pattern)
+
+argument_pattern_list = (
+    argument_pattern + many(op_(',') + argument_pattern)
+    >> flatten)
+
+def make_tuple_pattern(args):
+    return TuplePattern(elements = args)
+
+tuple_pattern = (
+    op_('(') + argument_pattern_list + op_(')')
+    >> make_tuple_pattern)
+
+def make_enum_case_pattern(args):
+    if args[0] is not None:
+        case = Select(
+            owner  = args[0],
+            member = args[1])
+    else:
+        case = args[1]
+
+    return EnumCasePattern(
+        case      = case,
+        arguments = args[1])
+
+enum_case_pattern = (
+    select_expression +
+    maybe(op_('(') + argument_pattern_list + op_(')'))
+    >> make_enum_case_pattern)
+
+def make_pattern(args):
+    return Pattern(
+        expression   = args[0],
+        where_clause = args[1])
+
+pattern.define(
+    (wildcard | value_binding_pattern | tuple_pattern | enum_case_pattern | expression) +
+    maybe(kw_('where') + expression)
+    >> make_pattern)
+
+def make_parameter(args):
     attributes = set(args[2])
     if args[0].value == 'mut':
         attributes.add('mutable')
+    if args[0].value == 'shd':
+        attributes.add('shared')
 
-    return FunctionParameter(
-        name = args[1],
-        label = args[1] if (args[1] != '_') else None,
-        attributes = attributes,
+    return Parameter(
+        name            = args[1],
+        label           = args[1] if (args[1] != '_') else None,
+        attributes      = attributes,
         type_annotation = args[3])
 
-function_parameter = (
-    (kw('cst') | kw('mut')) +
-    identifier + op_(':') +
-    many(op_('@') + identifier) + type_signature
-    >> make_function_parameter)
+parameter = (
+    (kw('cst') | kw('mut') | kw('shd')) +
+    name + op_(':') +
+    many(op_('@') + name) + type_signature
+    >> make_parameter)
 
-function_parameter_list = (
-    function_parameter + many(op_(',') + function_parameter)
+parameter_list = (
+    parameter + many(op_(',') + parameter)
     >> flatten)
+
+def make_tuple_signature(args):
+    return TupleSignature(parameters = args[0])
+
+tuple_signature = (
+    op_('(') + parameter_list + op_(')')
+    >> make_tuple_signature)
 
 def make_function_signature(args):
     return FunctionSignature(
-        parameters = args[0] or [],
+        parameters  = args[0],
         return_type = args[1])
 
 function_signature = (
-    op_('(') + maybe(function_parameter_list) + op_(')') +
+    op_('(') + maybe(parameter_list) + op_(')') +
     op_('->') + type_signature
     >> make_function_signature)
 
-type_signature.define(function_signature | nested_type_identifier)
+type_signature.define(function_signature | tuple_signature | nested_type_identifier)
 
 def make_number_literal(token):
     result = Literal(value = token.value)
@@ -168,60 +238,62 @@ def make_string_literal(token):
 string_literal = token_of_type('string') >> make_string_literal
 
 def make_array_literal(args):
-    return ArrayLiteral(items = args)
+    return ArrayLiteral(elements = args)
 
-array_literal_items = (
+array_literal_element_list = (
     expression + many(op_(',') + expression) + maybe(op_(','))
     >> flatten)
 
 array_literal = (
-    op_('[') + maybe(array_literal_items) + op_(']')
+    op_('[') + maybe(array_literal_element_list) + op_(']')
     >> make_array_literal)
 
-def make_dictionary_literal_item(args):
-    return DictionaryLiteralItem(
+def make_dictionary_literal_element(args):
+    return DictionaryLiteralElement(
         key   = args[0],
         value = args[1])
 
-dictionary_literal_item = (
+dictionary_literal_element = (
     expression + op_(':') + expression
-    >> make_dictionary_literal_item)
+    >> make_dictionary_literal_element)
 
-dictionary_literal_items = (
-    dictionary_literal_item + many(op_(',') + dictionary_literal_item) + maybe(op_(','))
+dictionary_literal_element_list = (
+    dictionary_literal_element + many(op_(',') + dictionary_literal_element) + maybe(op_(','))
     >> flatten)
 
 def make_dictionary_literal(args):
-    return DictionaryLiteral(items = args if isinstance(args, list) else None)
+    return DictionaryLiteral(elements = args if isinstance(args, list) else None)
 
 dictionary_literal = (
-    op_('[') + (dictionary_literal_items | op(':')) + op_(']')
+    op_('[') + (dictionary_literal_element_list | op(':')) + op_(']')
     >> make_dictionary_literal)
 
 def make_variable_identifier(name):
     return Identifier(name = name)
 
 variable_identifier = (
-    (identifier | operator_identifier)
+    (name | operator_name)
     >> make_variable_identifier)
-
-def make_select_expression(args):
-    if args[1]:
-        return Select(
-            owner = make_select_expression((args[0], args[1][:-1])),
-            member = args[1][-1])
-    return args[0]
-
-select_expression = (
-    variable_identifier + many(op_('.') + variable_identifier)
-    >> make_select_expression)
 
 def make_implicit_select_expression(args):
     return ImplicitSelect(member = args)
 
 implicit_select_expression = (
-    op_('.') + identifier
+    op_('.') + name
     >> make_implicit_select_expression)
+
+def make_explicit_select_expression(args):
+    if args[1]:
+        return Select(
+            owner  = make_explicit_select_expression((args[0], args[1][:-1])),
+            member = args[1][-1])
+    return args[0]
+
+explicit_select_expression = (
+    variable_identifier + many(op_('.') + variable_identifier)
+    >> make_explicit_select_expression)
+
+select_expression.define(explicit_select_expression | implicit_select_expression)
 
 def make_closure(args):
     return Closure(
@@ -229,7 +301,7 @@ def make_closure(args):
         statements = args[1])
 
 closure_parameter_list = (
-    kw_('let') + container_decl + many(op_(',') + container_decl) + kw_('in')
+    container_decl + many(op_(',') + container_decl) + kw_('in')
     >> flatten)
 
 closure = (
@@ -240,11 +312,11 @@ def make_prefixed_expression(args):
     if args[0]:
         return PrefixedExpression(
             operator = args[0],
-            operand = args[1])
+            operand  = args[1])
     return args[1]
 
 literal = dictionary_literal | array_literal | number_literal | string_literal
-primary = closure | literal | identifier | op_('(') + expression + op_(')')
+primary = closure | literal | variable_identifier | op_('(') + expression + op_(')')
 
 sfx_expr = (
     call_expression | if_expression | switch_expression |
@@ -264,9 +336,9 @@ def make_binary_expression(args):
 
     if args[1]:
         return BinaryExpression(
-            left = args[0],
+            left     = args[0],
             operator = args[1][0][0],
-            right = make_binary_expression((args[1][0][1], args[1][1:])))
+            right    = make_binary_expression((args[1][0][1], args[1][1:])))
 
     # Note that `make_binary_expression` will be called for the last operand,
     # even if there isn't any binary expression left to create. Hence we can
@@ -288,20 +360,20 @@ expression.define(bin_expr)
 def make_call_positional_argument(args):
     return CallArgument(
         attributes = set(args[0]),
-        value = args[1])
+        value      = args[1])
 
 call_positional_argument = (
-    many(op_('@') + identifier) + expression
+    many(op_('@') + name) + expression
     >> make_call_positional_argument)
 
 def make_call_named_argument(args):
     return CallArgument(
-        name = args[0],
+        name       = args[0],
         attributes = set(args[1]),
-        value = args[2])
+        value      = args[2])
 
 call_named_argument = (
-    identifier + op_(':') + many(op_('@') + identifier) + expression
+    name + op_('=') + many(op_('@') + name) + expression
     >> make_call_named_argument)
 
 call_argument = call_named_argument | call_positional_argument
@@ -318,19 +390,6 @@ function_identifier = select_expression | implicit_select_expression | variable_
 call_expression.define(
     function_identifier + op_('(') + maybe(call_argument_list) + op_(')')
     >> make_call)
-
-def make_pattern(args):
-    return Pattern(
-        parameters = args[0],
-        expression = args[1])
-
-pattern_parameter_list = (
-    kw_('let') + container_decl + many(op_(',') + container_decl) + kw_('in')
-    >> flatten)
-
-pattern = (
-    maybe(pattern_parameter_list) + (wildcard | expression)
-    >> make_pattern)
 
 def make_if_expression(args):
     return If(
@@ -360,7 +419,7 @@ switch_case_clause_list = (
 def make_switch_expression(args):
     return Switch(
         expression = args[0],
-        clauses =    args[1])
+        clauses    = args[1])
 
 switch_expression.define(
     kw_('switch') + expression + op_('{') + switch_case_clause_list + op_('}')
@@ -371,11 +430,10 @@ def make_assignment(args):
         lvalue = args[0],
         rvalue = args[1])
 
-lvalue = variable_identifier
-
 assignment = (
-    lvalue + op_('=') + expression
+    pattern + op_('=') + expression
     >> make_assignment)
+
 
 def make_return_statement(args):
     return Return(value = args)
@@ -388,26 +446,28 @@ def make_break_statement(args):
     return Break(label = args)
 
 break_statement = (
-    kw_('break') + maybe(identifier)
+    kw_('break') + maybe(name)
     >> make_break_statement)
 
 def make_continue_statement(args):
     return Continue(label = args)
 
 continue_statement = (
-    kw_('continue') + maybe(identifier)
+    kw_('continue') + maybe(name)
     >> make_continue_statement)
 
 def make_for_loop(args):
     return For(
         label    = args[0],
-        iterator = args[1] if isinstance(args[1], ContainerDecl) else None,
+        iterator = args[1],
         sequence = args[2],
         body     = args[3])
 
+    # TODO Reject invalid patterns
+
 for_loop = (
-    maybe(identifier + op_(':')) +
-    kw_('for') + (container_decl | kw('_')) + kw_('in') + expression + block
+    maybe(name + op_(':')) +
+    kw_('for') + pattern + kw_('in') + expression + block
     >> make_for_loop)
 
 def make_while_loop(args):
@@ -417,19 +477,20 @@ def make_while_loop(args):
         body    = args[2])
 
 while_loop = (
-    maybe(identifier + op_(':')) +
+    maybe(name + op_(':')) +
     kw_('while') + pattern + block
     >> make_while_loop)
 
 def make_container_decl(args):
     return ContainerDecl(
-        is_mutable = args[0].value == 'mut',
-        name = args[1],
+        is_mutable      = args[0].value != 'cst',
+        is_shared       = args[0].value == 'shd',
+        name            = args[1],
         type_annotation = args[2],
-        initial_value = args[3])
+        initial_value   = args[3])
 
 container_decl.define(
-    (kw('cst') | kw('mut')) + identifier +
+    (kw('cst') | kw('mut') | kw('shd')) + name +
     maybe(op_(':') + type_signature) +
     maybe(op_('=') + expression)
     >> make_container_decl)
@@ -438,6 +499,8 @@ def make_function_decl_parameter(args):
     attributes = set(args[3])
     if args[0].value == 'mut':
         attributes.add('mutable')
+    if args[0].value == 'shd':
+        attributes.add('shared')
 
     name = args[2] or args[1]
     if name == '_':
@@ -445,16 +508,16 @@ def make_function_decl_parameter(args):
     label = args[1] if (args[1] != '_') else None
 
     return FunctionParameter(
-        name = name,
-        label = label,
-        attributes = attributes,
+        name            = name,
+        label           = label,
+        attributes      = attributes,
         type_annotation = args[4],
-        default_value = args[5])
+        default_value   = args[5])
 
 function_decl_parameter = (
-    (kw('cst') | kw('mut')) +
-    identifier + maybe(identifier) + op_(':') +
-    many(op_('@') + identifier) + type_signature +
+    (kw('cst') | kw('mut') | kw('shd')) +
+    name + maybe(name) + op_(':') +
+    many(op_('@') + name) + type_signature +
     maybe(op_('=') + expression)
     >> make_function_decl_parameter)
 
@@ -464,21 +527,23 @@ function_decl_parameter_list = (
 
 def make_function_decl(args):
     return FunctionDecl(
-        name = args[0],
+        name               = args[0],
         generic_parameters = args[1],
-        signature = FunctionSignature(
-            parameters = args[2] or [],
+        signature          = FunctionSignature(
+            parameters  = args[2] or [],
             return_type = args[3] or Nothing),
-        body = args[4])
+        where_clause       = args[4],
+        body               = args[5])
 
 generic_parameters = (
-    identifier + many(op_(',') + identifier) >> flatten)
+    name + many(op_(',') + name) >> flatten)
 
 function_decl = (
-    kw_('fun') + (identifier | operator_identifier) +
+    kw_('fun') + (name | operator_name) +
     maybe(op_('<') + generic_parameters + op_('>')) +
     op_('(') + maybe(function_decl_parameter_list) + op_(')') +
     maybe(op_('->') + type_signature) +
+    maybe(kw_('where') + expression) +
     block
     >> make_function_decl)
 
@@ -487,16 +552,16 @@ type_import_list = (
     >> flatten)
 
 type_conformance_list = (
-    nested_type_identifier + many(op_('&') + nested_type_identifier)
+    nested_type_identifier + many(op_(',') + nested_type_identifier)
     >> flatten)
 
 def make_enum_case_parameter(args):
     return EnumCaseParameter(
-        label = args[0] if (args[0] != '_') else None,
+        label           = args[0] if (args[0] != '_') else None,
         type_annotation = args[1])
 
 enum_case_parameter = (
-    identifier + op_(':') + type_signature
+    name + op_(':') + type_signature
     >> make_enum_case_parameter)
 
 enum_case_parameter_list = (
@@ -505,21 +570,22 @@ enum_case_parameter_list = (
 
 def make_enum_case_decl(args):
     return EnumCaseDecl(
-        name = args[0],
+        name       = args[0],
         parameters = args[1])
 
 enum_case_decl = (
-    kw_('case') + identifier +
+    kw_('case') + name +
     maybe(op_('(') + enum_case_parameter_list + op_(')'))
     >> make_enum_case_decl)
 
 def make_enum_decl(args):
     return EnumDecl(
-        name = args[0],
+        name               = args[0],
         generic_parameters = args[1],
-        import_list = args[2],
-        conformance_list = args[3],
-        body = Block(args[4]))
+        conformance_list   = args[2],
+        import_list        = args[3],
+        where_clause       = args[4],
+        body               = Block(args[4]))
 
 enum_member = enum_decl | struct_decl | protocol_decl | enum_case_decl | function_decl
 
@@ -528,20 +594,22 @@ enum_member_list = (
     >> make_statement_list)
 
 enum_decl.define(
-    kw_('enum') + identifier +
+    kw_('enum') + name +
     maybe(op_('<') + generic_parameters + op_('>')) +
-    maybe(kw_('import') + type_import_list) +
     maybe(op_(':') + type_conformance_list) +
+    maybe(kw_('import') + type_import_list) +
+    maybe(kw_('where') + expression) +
     op_('{') + enum_member_list + op_('}')
     >> make_enum_decl)
 
 def make_struct_decl(args):
     return StructDecl(
-        name = args[0],
+        name               = args[0],
         generic_parameters = args[1],
-        import_list = args[2],
-        conformance_list = args[3],
-        body = Block(args[4]))
+        conformance_list   = args[2],
+        import_list        = args[3],
+        where_clause       = args[4],
+        body               = Block(args[5]))
 
 struct_member = enum_decl | struct_decl | protocol_decl | function_decl | container_decl
 
@@ -550,54 +618,68 @@ struct_member_list = (
     >> make_statement_list)
 
 struct_decl.define(
-    kw_('struct') + identifier +
+    kw_('struct') + name +
     maybe(op_('<') + generic_parameters + op_('>')) +
-    maybe(kw_('import') + type_import_list) +
     maybe(op_(':') + type_conformance_list) +
+    maybe(kw_('import') + type_import_list) +
+    maybe(kw_('where') + expression) +
     op_('{') + struct_member_list + op_('}')
     >> make_struct_decl)
 
 def make_protocol_property_decl(args):
     return ContainerDecl(
-        is_mutable = args[0].value == 'mut',
-        name = args[1],
+        is_mutable      = args[0].value != 'cst',
+        is_shared       = args[0].value == 'shd',
+        name            = args[1],
         type_annotation = args[2])
 
 protocol_property_decl = (
-    (kw('cst') | kw('mut')) + identifier +
+    (kw('cst') | kw('mut') | kw('shd')) + name +
     maybe(op_(':') + type_signature)
     >> make_protocol_property_decl)
 
 def make_protocol_function_decl(args):
     return FunctionDecl(
-        name = args[0],
+        name               = args[0],
         generic_parameters = args[1],
-        signature = FunctionSignature(
-            parameters = args[2] or [],
+        signature          = FunctionSignature(
+            parameters  = args[2] or [],
             return_type = args[3] or Nothing),
-        body = None)
+        where_clause       = args[4],
+        body               = None)
 
 protocol_function_decl = (
-    kw_('fun') + (identifier | operator_identifier) +
+    kw_('fun') + (name | operator_name) +
     maybe(op_('<') + generic_parameters + op_('>')) +
     op_('(') + maybe(function_decl_parameter_list) + op_(')') +
-    maybe(op_('->') + type_signature)
+    maybe(op_('->') + type_signature) +
+    maybe(kw_('where') + expression)
     >> make_protocol_function_decl)
+
+def make_abstract_type_decl(args):
+    return AbstractTypeDecl(
+        name             = args[0],
+        conformance_list = args[1])
+
+abstract_type_decl = (
+    kw_('abs') + name +
+    maybe(op_(':') + type_conformance_list)
+    >> make_abstract_type_decl)
 
 def make_protocol_decl(args):
     return ProtocolDecl(
-        name = args[0],
+        name             = args[0],
         conformance_list = args[1],
-        body = Block(args[2]))
+        body             = Block(args[2]))
 
-protocol_member = protocol_function_decl | protocol_property_decl
+protocol_member = protocol_function_decl | protocol_property_decl | abstract_type_decl
 
 protocol_member_list = (
     maybe(protocol_member) + many(nl_ + nl_opt + protocol_member) + nl_opt
     >> make_statement_list)
 
 protocol_decl.define(
-    kw_('protocol') + identifier +
+    kw_('protocol') + name +
     maybe(op_(':') + type_conformance_list) +
     op_('{') + protocol_member_list + op_('}')
     >> make_protocol_decl)

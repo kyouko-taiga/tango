@@ -36,24 +36,6 @@ class Node(object):
         return {self.__class__.__name__: data}
 
 
-class Identifier(Node):
-
-    _fields = ('name',)
-
-    def __init__(self, name):
-        super().__init__()
-        self.name = name
-
-    @property
-    def qualname(self):
-        if 'scope' in self.__info__:
-            return '%s.%s' % (self.__info__['scope'].name, self.name)
-        return self.name
-
-    def __str__(self):
-        return self.name
-
-
 class Block(Node):
 
     _fields = ('statements',)
@@ -63,7 +45,10 @@ class Block(Node):
         self.statements = statements or []
 
     def __str__(self):
-        return '{%s\n}' % ''.join('\n%s' % statement for statement in self.statements)
+        result = '{\n'
+        for statement in self.statements:
+            result += '  ' + str(statement) + '\n'
+        return result + '}'
 
 
 class SpecializationArgument(Node):
@@ -72,32 +57,119 @@ class SpecializationArgument(Node):
 
     def __init__(self, name, type_annotation):
         super().__init__()
-        self.name = name
+        self.name            = name
         self.type_annotation = type_annotation
 
     def __str__(self):
-        return '%s: %s' % (self.name, self.type_annotation)
+        return '{} = {}'.format(self.name, self.type_annotation)
 
 
 class TypeIdentifier(Node):
 
-    _fields = ('name', 'specialization_arguments',)
+    _fields = ('name', 'specializations',)
 
-    def __init__(self, name, specialization_arguments=None):
+    def __init__(self, name, specializations=None):
         super().__init__()
-        self.name = name
-        self.specialization_arguments = specialization_arguments or []
+        self.name            = name
+        self.specializations = specializations or []
 
     def __str__(self):
-        if self.specialization_arguments:
-            return '%s<%s>' % (self.name, ', '.join(map(str, self.specialization_arguments)))
-        return str(self.name)
+        if self.specializations:
+            return '{}<{}>'.format(self.name, ', '.join(map(str, self.specializations)))
+        return self.name
 
     def __repr__(self):
-        return 'TypeIdentifier(%s)' % str(self)
+        return 'TypeIdentifier({})'.format(self)
 
 
-class FunctionParameter(Node):
+class Wildcard(Node):
+
+    def __str__(self):
+        return '_'
+
+
+class ValueBindingPattern(Node):
+
+    _fields = ('name', 'is_mutable', 'is_shared', 'type_annotation',)
+
+    def __init__(self, name, is_mutable=False, is_shared=False, type_annotation=None):
+        super().__init__()
+        self.name            = name
+        self.is_mutable      = is_mutable
+        self.is_shared       = is_shared
+        self.type_annotation = type_annotation
+
+    def __str__(self):
+        if self.is_shared:
+            mutability_modifier = 'shd'
+        elif self.is_mutable:
+            mutability_modifier = 'mut'
+        else:
+            mutability_modifier = 'cst'
+
+        if self.type_annotation:
+            return '{} {}: {}'.format(mutability_modifier, self.name, self.type_annotation)
+        return '{} {}'.format(mutability_modifier, self.name)
+
+
+class ArgumentPattern(Node):
+
+    _fields = ('label', 'pattern',)
+
+    def __init__(self, pattern, label=None):
+        super().__init__()
+        self.label   = label
+        self.pattern = pattern
+
+    def __str__(self):
+        if self.label:
+            return '{} = {}'.format(self.label, self.pattern)
+        return str(self.pattern)
+
+
+class TuplePattern(Node):
+
+    _fields = ('elements',)
+
+    def __init__(self, elements=None):
+        super().__init__()
+        self.elements = elements or []
+
+    def __str__(self):
+        return '({})'.format(', '.join(map(str, self.elements)))
+
+
+class EnumCasePattern(Node):
+
+    _fields = ('case', 'arguments',)
+
+    def __init__(self, case, arguments=None):
+        super().__init__()
+        self.case      = case
+        self.arguments = arguments or []
+
+    def __str__(self):
+        if self.arguments:
+            return '{}({})'.format(self.case, ''.join(map(str, self.arguments)))
+        return str(self.case)
+
+
+class Pattern(Node):
+
+    _fields = ('expression', 'where_clause',)
+
+    def __init__(self, expression, where_clause=None):
+        super().__init__()
+        self.expression   = expression
+        self.where_clause = where_clause
+
+    def __str__(self):
+        if self.where_clause:
+            return '{} where {}'.format(self.expression, self.where_clause)
+        return str(self.expression)
+
+
+class Parameter(Node):
 
     _fields = ('name', 'label', 'type_annotation', 'attributes', 'default_value',)
 
@@ -110,36 +182,49 @@ class FunctionParameter(Node):
         self.default_value = default_value
 
     def __str__(self):
-        if 'mutable' in self.attributes:
-            mutability_modifier = 'mut'
-            attributes = list(filter(lambda attr: attr != 'mutable', self.attributes))
+        if 'shared' in self.attributes:
+            result = 'mut '
+            attributes = sorted(filter(lambda attr: attr != 'mutable', self.attributes))
+        elif 'mutable' in self.attributes:
+            result = 'mut '
+            attributes = sorted(filter(lambda attr: attr != 'mutable', self.attributes))
         else:
-            mutability_modifier = 'cst'
-            attributes = []
-
-        if attributes:
-            attributes = ' '.join('@%s' % attribute for attribute in self.attributes) + ' '
-        else:
-            attributes = ''
+            result = 'cst '
+            attributes = sorted(self.attributes)
 
         if self.name != self.label:
-            label = self.label or '_'
-            return '%s %s %s: %s%s' % (
-                mutability_modifier, label, self.name, attributes, self.type_annotation)
-        return '%s %s: %s%s' % (mutability_modifier, self.name, attributes, self.type_annotation)
+            result += str(self.label or '_') + ' '
+        result += self.name + ' '
+
+        if attributes:
+            result += ' '.join('@' + str(attribute) for attribute in self.attributes) + ' '
+
+        return result + str(self.type_annotation)
+
+
+class TupleSignature(Node):
+
+    _fields = ('parameters',)
+
+    def __init__(self, parameters):
+        super().__init__()
+        self.parameters = parameters
+
+    def __str__(self):
+        return '({})'.format(', '.join(map(str, self.parameters)))
 
 
 class FunctionSignature(Node):
 
     _fields = ('parameters', 'return_type',)
 
-    def __init__(self, parameters, return_type):
+    def __init__(self, return_type, parameters=None):
         super().__init__()
-        self.parameters = parameters
+        self.parameters  = parameters
         self.return_type = return_type
 
     def __str__(self):
-        return '(%s) -> %s' % (', '.join(map(str, self.parameters)), self.return_type)
+        return '({}) -> {}'.format(', '.join(map(str, self.parameters)), self.return_type)
 
 
 class Literal(Node):
@@ -156,41 +241,59 @@ class Literal(Node):
 
 class ArrayLiteral(Node):
 
-    _fields = ('items',)
+    _fields = ('elements',)
 
-    def __init__(self, items=None):
+    def __init__(self, elements=None):
         super().__init__()
-        self.items = items or []
+        self.elements = elements or []
 
     def __str__(self):
-        return '[%s]' % ', '.join(map(str, self.items))
+        return '[{}]'.format(', '.join(map(str, self.elements)))
 
 
-class DictionaryLiteralItem(Node):
+class DictionaryLiteralElement(Node):
 
     _fields = ('key', 'value',)
 
     def __init__(self, key, value):
         super().__init__()
-        self.key = key
+        self.key   = key
         self.value = value
 
     def __str__(self):
-        return '%s: %s' % (self.key, self.value)
+        return '{}: {}'.format(self.key, self.value)
 
 
 class DictionaryLiteral(Node):
 
-    _fields = ('items',)
+    _fields = ('elements',)
 
-    def __init__(self, items=None):
+    def __init__(self, elements=None):
         super().__init__()
-        self.items = items or []
+        self.items = elements or []
 
     def __str__(self):
-        if self.items:
-            return '[%s]' % ', '.join(map(str, self.items))
+        if self.elements:
+            return '[{}]'.format(', '.join(map(str, self.elements)))
         return '[:]'
+
+
+class Identifier(Node):
+
+    _fields = ('name',)
+
+    def __init__(self, name):
+        super().__init__()
+        self.name = name
+
+    @property
+    def qualname(self):
+        if 'scope' in self.__info__:
+            return '{}.{}'.format(self.__info__['scope'].name, self.name)
+        return self.name
+
+    def __str__(self):
+        return self.name
 
 
 class Select(Node):
@@ -199,11 +302,11 @@ class Select(Node):
 
     def __init__(self, owner, member):
         super().__init__()
-        self.owner = owner
+        self.owner  = owner
         self.member = member
 
     def __str__(self):
-        return '%s.%s' % (self.owner, self.member)
+        return '{}.{}'.format(self.owner, self.member)
 
 
 class ImplicitSelect(Node):
@@ -215,7 +318,7 @@ class ImplicitSelect(Node):
         self.member = member
 
     def __str__(self):
-        return '.%s' % self.member
+        return '.' + str(self.member)
 
 
 class PrefixedExpression(Node):
@@ -225,10 +328,10 @@ class PrefixedExpression(Node):
     def __init__(self, operator, operand):
         super().__init__()
         self.operator = operator
-        self.operand = operand
+        self.operand  = operand
 
     def __str__(self):
-        return '%s %s' % (self.operator, self.operand)
+        return '{} {}'.format(self.operator, self.operand)
 
 
 class BinaryExpression(Node):
@@ -238,11 +341,11 @@ class BinaryExpression(Node):
     def __init__(self, operator, left, right):
         super().__init__()
         self.operator = operator
-        self.left = left
-        self.right = right
+        self.left     = left
+        self.right    = right
 
     def __str__(self):
-        return '%s %s %s' % (self.left, self.operator, self.right)
+        return '{} {} {}'.format(self.left, self.operator, self.right)
 
 
 class Closure(Node):
@@ -255,31 +358,13 @@ class Closure(Node):
         self.parameters = parameters or []
 
     def __str__(self):
-        statements = ''.join('\n%s' % statement for statement in self.statements)
+        statements = ''
+        for statement in self.statements:
+            result += '  ' + str(statement) + '\n'
+
         if self.parameters:
-            return '{ let %s in %s }' % (', '.join(map(str, self.parameters)), statements)
-        return '{ %s }' % statements
-
-
-class Wildcard(Node):
-
-    def __str__(self):
-        return '_'
-
-
-class Pattern(Node):
-
-    _fields = ('expression', 'parameters',)
-
-    def __init__(self, expression, parameters=None):
-        super().__init__()
-        self.expression = expression
-        self.parameters = parameters or []
-
-    def __str__(self):
-        if self.parameters:
-            return 'let %s in %s' % (', '.join(map(str, self.parameters)), self.expression or '_')
-        return str(self.expression or '_')
+            return '{{ {} in\n{}}}'.format(', '.join(map(str, self.parameters)), statements)
+        return '{{\n{}}}'.format(statements)
 
 
 class If(Node):
@@ -288,14 +373,14 @@ class If(Node):
 
     def __init__(self, pattern, body, else_clause=None):
         super().__init__()
-        self.pattern = pattern
-        self.body = body
+        self.pattern     = pattern
+        self.body        = body
         self.else_clause = else_clause
 
     def __str__(self):
         if self.else_clause:
-            return 'if %s %s else %s' % (self.pattern, self.body, self.else_clause)
-        return 'if %s %s' % (self.pattern, self.body)
+            return 'if {} {} else {}'.format(self.pattern, self.body, self.else_clause)
+        return 'if {} {}'.format(self.pattern, self.body)
 
 
 class SwitchCaseClause(Node):
@@ -305,10 +390,10 @@ class SwitchCaseClause(Node):
     def __init__(self, pattern, body):
         super().__init__()
         self.pattern = pattern
-        self.body = body
+        self.body    = body
 
     def __str__(self):
-        return 'case %s %s' % (self.pattern, self.body)
+        return 'case {} {}'.format(self.pattern, self.body)
 
 
 class Switch(Node):
@@ -321,9 +406,11 @@ class Switch(Node):
         self.clauses = clauses or []
 
     def __str__(self):
-        return 'switch %s {%s}' % (
-            self.expression,
-            ''.join('\n%s' % clause for clause in self.clauses))
+        clauses = ''
+        for clause in self.clauses:
+            clauses += '  ' + str(clause) + '\n'
+
+        return 'switch {} {{\n{}}}'.format(self.expression, clauses)
 
 
 class CallArgument(Node):
@@ -332,14 +419,18 @@ class CallArgument(Node):
 
     def __init__(self, value, name=None, attributes=None):
         super().__init__()
-        self.value = value
-        self.name = name
+        self.value      = value
+        self.name       = name
         self.attributes = attributes or set()
 
     def __str__(self):
         if self.name:
-            return '%s: %s' % (self.name, self.value)
-        return str(self.value)
+            result = self.name + ' = '
+        else:
+            result = ''
+        if self.attributes:
+            result += ' '.join('@' + str(attribute) for attribute in self.attributes) + ' '
+        return result + str(self.value)
 
 
 class Call(Node):
@@ -348,11 +439,11 @@ class Call(Node):
 
     def __init__(self, callee, arguments=None):
         super().__init__()
-        self.callee = callee
+        self.callee    = callee
         self.arguments = arguments or []
 
     def __str__(self):
-        return '%s(%s)' % (self.callee, ', '.join(map(str, self.arguments)))
+        return '{}({})'.format(self.callee, ', '.join(map(str, self.arguments)))
 
 
 class Assignment(Node):
@@ -365,7 +456,7 @@ class Assignment(Node):
         self.rvalue = rvalue
 
     def __str__(self):
-        return '%s = %s' % (self.lvalue, self.rvalue)
+        return '{} = {}'.format(self.lvalue, self.rvalue)
 
 
 class Return(Node):
@@ -377,7 +468,7 @@ class Return(Node):
         self.value = value
 
     def __str__(self):
-        return 'return %s' % self.value
+        return 'return ' + str(self.value)
 
 
 class Break(Node):
@@ -390,7 +481,7 @@ class Break(Node):
 
     def __str__(self):
         if self.label:
-            return 'break %s' % self.label
+            return 'break ' + self.label
         return 'break'
 
 
@@ -404,7 +495,7 @@ class Continue(Node):
 
     def __str__(self):
         if self.label:
-            return 'continue %s' % self.label
+            return 'continue ' + self.label
         return 'continue'
 
 
@@ -415,13 +506,13 @@ class For(Node):
     def __init__(self, iterator, sequence, body, label=None):
         self.iterator = iterator
         self.sequence = sequence
-        self.body = body
-        self.label = label
+        self.body     = body
+        self.label    = label
 
     def __str__(self):
-        result = 'for %s in %s %s' % (self.iterator or '_', self.sequence, self.body)
+        result = 'for {} in {} {}'.format(self.iterator, self.sequence, self.body)
         if self.label:
-            return ('%s: ' % self.label) + result
+            return self.label + ': ' + result
         return result
 
 
@@ -431,52 +522,65 @@ class While(Node):
 
     def __init__(self, pattern, body, label=None):
         self.pattern = pattern
-        self.body = body
-        self.label = label
+        self.body    = body
+        self.label   = label
 
     def __str__(self):
-        result = 'while %s %s' % (self.pattern, self.body)
+        result = 'while {} {}'.format(self.pattern, self.body)
         if self.label:
-            return ('%s: ' % self.label) + result
+            return self.label + ': ' + result
         return result
 
 
 class ContainerDecl(Node):
 
-    _fields = ('name', 'is_mutable', 'type_annotation', 'initial_value',)
+    _fields = ('name', 'is_mutable', 'is_shared', 'type_annotation',)
 
-    def __init__(self, name, is_mutable, type_annotation=None, initial_value=None):
+    def __init__(self, name, is_mutable, is_shared, type_annotation=None, initial_value=None):
         super().__init__()
-        self.name = name
-        self.is_mutable = is_mutable
+        self.name            = name
+        self.is_mutable      = is_mutable
+        self.is_shared       = is_shared
         self.type_annotation = type_annotation
-        self.initial_value = initial_value
+        self.initial_value   = initial_value
 
     def __str__(self):
-        result = ('mut ' if self.is_mutable else 'cst ') + self.name
-        if self.type_annotation is not None:
-            result += ': %s' % self.type_annotation
-        if self.initial_value is not None:
-            result += ' = %s' % self.initial_value
+        if self.is_shared:
+            result = 'shd '
+        elif self.is_mutable:
+            result = 'mut '
+        else:
+            result = 'cst '
+
+        result += self.name
+
+        if self.type_annotation:
+            result += ': ' + str(self.type_annotation)
+        if self.initial_value:
+            result += ' = ' + str(self.initial_value)
+
         return result
 
 
 class FunctionDecl(Node):
 
-    _fields = ('name', 'signature', 'body', 'generic_parameters',)
+    _fields = ('name', 'signature', 'body', 'generic_parameters', 'where_clause',)
 
-    def __init__(self, name, signature, body=None, generic_parameters=None):
+    def __init__(self, name, signature, body=None, generic_parameters=None, where_clause=None):
         super().__init__()
-        self.name = name
-        self.signature = signature
-        self.body = body
+        self.name               = name
+        self.signature          = signature
+        self.body               = body
         self.generic_parameters = generic_parameters or []
+        self.where_clause       = where_clause
 
     def __str__(self):
-        result = 'fun %s' % self.name
+        result = 'fun {}'.format(self.name)
         if self.generic_parameters:
-            result += '<%s>' % ', '.join(map(str, self.generic_parameters))
+            result += '<{}>'.format(', '.join(map(str, self.generic_parameters)))
         result += str(self.signature)
+        if self.where_clause:
+            result += ' where ' + str(self.where_clause)
         if self.body:
             result += ' ' + str(self.body)
         return result
@@ -488,11 +592,11 @@ class EnumCaseParameter(Node):
 
     def __init__(self, label, type_annotation):
         super().__init__()
-        self.label = label
+        self.label           = label
         self.type_annotation = type_annotation
 
     def __str__(self):
-        return '%s: %s' % (self.label or '_', self.type_annotation)
+        return '{}: {}'.format(self.label or '_', self.type_annotation)
 
 
 class EnumCaseDecl(Node):
@@ -501,56 +605,93 @@ class EnumCaseDecl(Node):
 
     def __init__(self, name, parameters=None):
         super().__init__()
-        self.name = name
+        self.name       = name
         self.parameters = parameters or []
 
     def __str__(self):
         if self.parameters:
-            return 'case %s(%s)' % (self.name, ', '.join(map(str, self.parameters)))
+            return 'case {}({})'.format(self.name, ', '.join(map(str, self.parameters)))
         else:
-            return 'case %s' % self.name
+            return 'case ' + self.name
 
 
 class EnumDecl(Node):
 
-    _fields = ('name', 'body', 'generic_parameters', 'import_list', 'conformance_list',)
+    _fields = (
+        'name', 'body', 'generic_parameters', 'conformance_list', 'import_list', 'where_clause',)
 
     def __init__(
-        self, name, body, generic_parameters=None, import_list=None, conformance_list=None):
+            self, name, body, generic_parameters=None, conformance_list=None, import_list=None,
+            where_clause=None):
 
         super().__init__()
-        self.name = name
-        self.body = body
+        self.name               = name
+        self.body               = body
         self.generic_parameters = generic_parameters or []
-        self.import_list = import_list or []
-        self.conformance_list = conformance_list or []
+        self.conformance_list   = conformance_list or []
+        self.import_list        = import_list or []
+        self.where_clause       = where_clause
 
     def __str__(self):
-        result = 'enum {} '.format(self.name)
+        result = 'enum ' + self.name
         if self.generic_parameters:
             result += '<{}> '.format(', '.join(map(str, self.generic_parameters)))
-        return result + str(self.body)
+        if self.conformance_list:
+            result += ': ' + ', '.join(map(str(self.conformance_list)))
+        if self.import_list:
+            result += ' import ' + ', '.join(map(str(self.import_list)))
+        if self.where_clause:
+            result += ' where ' + str(self.where_clause)
+        return result + ' ' + str(self.body)
 
 
 class StructDecl(Node):
 
-    _fields = ('name', 'body', 'generic_parameters', 'import_list', 'conformance_list',)
+    _fields = (
+        'name', 'body', 'generic_parameters', 'conformance_list', 'import_list', 'where_clause',)
 
     def __init__(
-            self, name, body, generic_parameters=None, import_list=None, conformance_list=None):
+            self, name, body, generic_parameters=None, conformance_list=None, import_list=None,
+            where_clause=None):
 
         super().__init__()
-        self.name = name
-        self.body = body
+        self.name               = name
+        self.body               = body
         self.generic_parameters = generic_parameters or []
-        self.import_list = import_list or []
-        self.conformance_list = conformance_list or []
+        self.conformance_list   = conformance_list or []
+        self.import_list        = import_list or []
+        self.where_clause       = where_clause
 
     def __str__(self):
-        result = 'struct {} '.format(self.name)
+        result = 'struct ' + self.name
         if self.generic_parameters:
             result += '<{}> '.format(', '.join(map(str, self.generic_parameters)))
-        return result + str(self.body)
+        if self.conformance_list:
+            result += ': ' + ', '.join(map(str(self.conformance_list)))
+        if self.import_list:
+            result += ' import ' + ', '.join(map(str(self.import_list)))
+        if self.where_clause:
+            result += ' where ' + str(self.where_clause)
+        return result + ' ' + str(self.body)
+
+
+class AbstractTypeDecl(Node):
+
+    _fields = ('name', 'conformance_list', 'value',)
+
+    def __init__(self, name, conformance_list=None, value=None):
+        super().__init__()
+        self.name             = name
+        self.conformance_list = conformance_list or []
+        self.value            = value
+
+    def __str__(self):
+        result = 'abs ' + self.name
+        if self.conformance_list:
+            result += ': ' + ', '.join(map(str(self.conformance_list)))
+        if self.value:
+            result += ' = ' + str(self.value)
+        return result
 
 
 class ProtocolDecl(Node):
@@ -559,12 +700,15 @@ class ProtocolDecl(Node):
 
     def __init__(self, name, body, conformance_list=None):
         super().__init__()
-        self.name = name
-        self.body = body
+        self.name             = name
+        self.body             = body
         self.conformance_list = conformance_list or []
 
     def __str__(self):
-        return 'protocol %s %s' % (self.name, self.body)
+        result = 'protocol ' + self.name
+        if self.conformance_list:
+            result += ': ' + ', '.join(map(str(self.conformance_list)))
+        return result + ' ' + str(self.body)
 
 class ModuleDecl(Node):
 
