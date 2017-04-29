@@ -321,7 +321,7 @@ class ImplicitSelect(Node):
         return '.' + str(self.member)
 
 
-class PrefixedExpression(Node):
+class PrefixExpression(Node):
 
     _fields = ('operator', 'operand',)
 
@@ -332,6 +332,19 @@ class PrefixedExpression(Node):
 
     def __str__(self):
         return '{} {}'.format(self.operator, self.operand)
+
+
+class PostfixExpression(Node):
+
+    _fields = ('operator', 'operand',)
+
+    def __init__(self, operator, operand):
+        super().__init__()
+        self.operator = operator
+        self.operand  = operand
+
+    def __str__(self):
+        return '{} {}'.format(self.operand, self.operator)
 
 
 class BinaryExpression(Node):
@@ -446,6 +459,19 @@ class Call(Node):
         return '{}({})'.format(self.callee, ', '.join(map(str, self.arguments)))
 
 
+class Subscript(Node):
+
+    _fields = ('callee', 'arguments',)
+
+    def __init__(self, callee, arguments=None):
+        super().__init__()
+        self.callee    = callee
+        self.arguments = arguments or []
+
+    def __str__(self):
+        return '{}[{}]'.format(self.callee, ', '.join(map(str, self.arguments)))
+
+
 class Assignment(Node):
 
     _fields = ('lvalue', 'rvalue',)
@@ -457,6 +483,20 @@ class Assignment(Node):
 
     def __str__(self):
         return '{} = {}'.format(self.lvalue, self.rvalue)
+
+
+class SelfAssignement(Node):
+
+    _fields = ('operator', 'lvalue', 'rvalue',)
+
+    def __init__(self, operator, lvalue, rvalue):
+        super().__init__()
+        self.operator = operator
+        self.lvalue   = lvalue
+        self.rvalue    = rvalue
+
+    def __str__(self):
+        return '{} {} {}'.format(self.lvalue, self.operator, self.rvalue)
 
 
 class Return(Node):
@@ -709,6 +749,24 @@ class ProtocolDecl(Node):
         if self.conformance_list:
             result += ': ' + ', '.join(map(str(self.conformance_list)))
         return result + ' ' + str(self.body)
+
+
+class ExtensionDecl(Node):
+
+    _fields = ('subject', 'declaration', 'where_clause',)
+
+    def __init__(self, subject, declaration, where_clause=None):
+        super().__init__()
+        self.subject      = subject
+        self.declaration  = declaration
+        self.where_clause = where_clause
+
+    def __str__(self):
+        result = 'extension ' + self.subject
+        if self.where_clause:
+            result += 'where ' + str(self.where_clause)
+        return result + ' -> ' + str(self.declaration)
+
 
 class ModuleDecl(Node):
 

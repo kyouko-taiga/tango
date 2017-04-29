@@ -12,7 +12,8 @@ def tokenize(s):
         ('comment',    (r'#.*\n',)),
         ('newline',    (r'[\r\n]+',)),
         ('space',      (r'[ \t\v]+',)),
-        ('operator',   (r'\->|not|and|or|[><=!]=|[=\+\-\*\/%\.:,&@<>{}\[\]\(\)]',)),
+        ('operator',   (r'\->|not|and|or|is|as[\?!]|[&\|\+\-\*\/%~><=!]=|===|>>=?|<<=?|'
+                        r'[=\+\-\*\/%~\.:,\?!@<>{}\[\]\(\)]',)),
         ('name',       (r'[^\W\d][\w]*',)),
         ('number',     (r'[-+]?(0|([1-9][0-9]*))(\.[0-9]+)?([Ee][+-]?[0-9]+)?',)),
         ('string',     (r'\'[^\']*\'',)),
@@ -35,18 +36,19 @@ kw_    = lambda value: skip(a(Token('name', value)))
 nl_    = skip(some(lambda token: token.type == 'newline'))
 nl_opt = skip(many(some(lambda token: token.type == 'newline')))
 
-type_signature    = forward_decl()
-expression        = forward_decl()
-select_expression = forward_decl()
-call_expression   = forward_decl()
-if_expression     = forward_decl()
-switch_expression = forward_decl()
-pattern           = forward_decl()
-container_decl    = forward_decl()
-struct_decl       = forward_decl()
-enum_decl         = forward_decl()
-protocol_decl     = forward_decl()
-statement         = forward_decl()
+type_signature = forward_decl()
+expression     = forward_decl()
+select_expr    = forward_decl()
+call_expr      = forward_decl()
+subscript_expr = forward_decl()
+if_expr        = forward_decl()
+switch_expr    = forward_decl()
+pattern        = forward_decl()
+container_decl = forward_decl()
+struct_decl    = forward_decl()
+enum_decl      = forward_decl()
+protocol_decl  = forward_decl()
+statement      = forward_decl()
 
 def make_statement_list(args):
     if args[0] is None:
@@ -71,16 +73,24 @@ name = (
     some(lambda token: token.type == 'name')
     >> make_name)
 
-pfx_op = (op('+') | op('-') | op('not')) >> make_name
+self_assignment_op = (
+    op('&=') | op('|=') | op('+=') | op('-=') | op('*=') | op('/=') | op('%=') |
+    op('>>=') | op('<<=')) >> make_name
 
-mul_op = (op('*') | op('/') | op('%')) >> make_name
-add_op = (op('+') | op('-')) >> make_name
-cmp_op = (op('<') | op('<=') | op('>=') | op('>')) >> make_name
-eq_op  = (op('==') | op('!=')) >> make_name
-and_op = op('and') >> make_name
-or_op  = op('or') >> make_name
+prefix_op  = (op('+') | op('-') | op('~') | op('not')) >> make_name
+postfix_op = (op('?') | op('!')) >> make_name
 
-operator_name = pfx_op | or_op | and_op | eq_op | cmp_op | mul_op | add_op
+shf_op     = (op('>>') | op('<<')) >> make_name
+mul_op     = (op('*') | op('/') | op('%')) >> make_name
+add_op     = (op('+') | op('-')) >> make_name
+cmp_op     = (op('<') | op('<=') | op('>=') | op('>')) >> make_name
+cast_op    = (op('as?') | op('as!')) >> make_name
+eq_op      = (op('is') | op('==') | op('!=') | op('~=') | op('===')) >> make_name
+and_op     = op('and') >> make_name
+or_op      = op('or') >> make_name
+infix_op   = cast_op | or_op | and_op | eq_op | cmp_op | add_op | mul_op
+
+operator_name = self_assignment_op | prefix_op | postfix_op | infix_op
 
 def make_specialization_argument(args):
     return SpecializationArgument(
@@ -104,12 +114,12 @@ type_identifier = (
     name + maybe(op_('<') + specialization_argument_list + op_('>'))
     >> make_type_identifier)
 
-type_expression = type_identifier + op_('.') + kw_('self')
+type_expr = type_identifier + op_('.') + kw_('self')
 
 def make_nested_type_identifier(args):
     if args[1]:
         return Select(
-            owner = make_explicit_select_expression((args[0], args[1][:-1])),
+            owner = make_explicit_select_expr((args[0], args[1][:-1])),
             member = args[1][-1])
     return args[0]
 
@@ -137,7 +147,7 @@ def make_argument_pattern(args):
         pattern = args[1])
 
 argument_pattern = (
-    name + op_('=') + pattern
+    maybe(name + op_('=')) + pattern
     >> make_argument_pattern)
 
 argument_pattern_list = (
@@ -152,19 +162,12 @@ tuple_pattern = (
     >> make_tuple_pattern)
 
 def make_enum_case_pattern(args):
-    if args[0] is not None:
-        case = Select(
-            owner  = args[0],
-            member = args[1])
-    else:
-        case = args[1]
-
     return EnumCasePattern(
-        case      = case,
+        case      = args[0],
         arguments = args[1])
 
 enum_case_pattern = (
-    select_expression +
+    select_expr +
     maybe(op_('(') + argument_pattern_list + op_(')'))
     >> make_enum_case_pattern)
 
@@ -275,26 +278,6 @@ variable_identifier = (
     (name | operator_name)
     >> make_variable_identifier)
 
-def make_implicit_select_expression(args):
-    return ImplicitSelect(member = args)
-
-implicit_select_expression = (
-    op_('.') + name
-    >> make_implicit_select_expression)
-
-def make_explicit_select_expression(args):
-    if args[1]:
-        return Select(
-            owner  = make_explicit_select_expression((args[0], args[1][:-1])),
-            member = args[1][-1])
-    return args[0]
-
-explicit_select_expression = (
-    variable_identifier + many(op_('.') + variable_identifier)
-    >> make_explicit_select_expression)
-
-select_expression.define(explicit_select_expression | implicit_select_expression)
-
 def make_closure(args):
     return Closure(
         parameters = args[0],
@@ -308,26 +291,33 @@ closure = (
     op_('{') + nl_opt + maybe(closure_parameter_list) + statement_list + op_('}')
     >> make_closure)
 
-def make_prefixed_expression(args):
+literal = dictionary_literal | array_literal | number_literal | string_literal
+primary = closure | literal | variable_identifier | op_('(') + expression + op_(')')
+operand = call_expr | subscript_expr | type_expr | select_expr | primary
+
+def make_postfix_expr(args):
+    if args[1]:
+        return PostfixExpression(
+            operand  = args[1],
+            operator = args[0])
+    return args[0]
+
+postfix_expr = (
+    operand + maybe(postfix_op)
+    >> make_postfix_expr)
+
+def make_prefix_expr(args):
     if args[0]:
-        return PrefixedExpression(
+        return PrefixExpression(
             operator = args[0],
             operand  = args[1])
     return args[1]
 
-literal = dictionary_literal | array_literal | number_literal | string_literal
-primary = closure | literal | variable_identifier | op_('(') + expression + op_(')')
+prefix_expr = (
+    maybe(prefix_op) + postfix_expr
+    >> make_prefix_expr)
 
-sfx_expr = (
-    call_expression | if_expression | switch_expression |
-    type_expression | select_expression | implicit_select_expression |
-    primary)
-
-pfx_expr = (
-    maybe(pfx_op) + sfx_expr
-    >> make_prefixed_expression)
-
-def make_binary_expression(args):
+def make_binary_expr(args):
 
     # Implementation note:
     # We receive a tuple (operand, [(operator, operand)]) from the parser.
@@ -338,24 +328,51 @@ def make_binary_expression(args):
         return BinaryExpression(
             left     = args[0],
             operator = args[1][0][0],
-            right    = make_binary_expression((args[1][0][1], args[1][1:])))
+            right    = make_binary_expr((args[1][0][1], args[1][1:])))
 
-    # Note that `make_binary_expression` will be called for the last operand,
+    # Note that `make_binary_expr` will be called for the last operand,
     # even if there isn't any binary expression left to create. Hence we can
     # simply return the operand "as is".
     return args[0]
 
-operand = pfx_expr | (op_('(') + expression + op_(')'))
-expr_50 = operand + many(mul_op + operand) >> make_binary_expression
-expr_40 = expr_50 + many(add_op + expr_50) >> make_binary_expression
-expr_30 = expr_40 + many(cmp_op + expr_40) >> make_binary_expression
-expr_20 = expr_30 + many(eq_op  + expr_30) >> make_binary_expression
-expr_10 = expr_20 + many(and_op + expr_20) >> make_binary_expression
-expr_00 = expr_10 + many(or_op  + expr_10) >> make_binary_expression
+expr_80 = prefix_expr | if_expr | switch_expr | (op_('(') + expression + op_(')'))
+expr_70 = expr_80 + many(shf_op  + expr_80) >> make_binary_expr
+expr_60 = expr_70 + many(mul_op  + expr_70) >> make_binary_expr
+expr_50 = expr_60 + many(add_op  + expr_60) >> make_binary_expr
+expr_40 = expr_50 + many(cast_op + expr_50) >> make_binary_expr
+expr_30 = expr_40 + many(cmp_op  + expr_40) >> make_binary_expr
+expr_20 = expr_30 + many(eq_op   + expr_30) >> make_binary_expr
+expr_10 = expr_20 + many(and_op  + expr_20) >> make_binary_expr
+expr_00 = expr_10 + many(or_op   + expr_10) >> make_binary_expr
 
 bin_expr = expr_00
 
 expression.define(bin_expr)
+
+def make_implicit_select_expr(args):
+    return ImplicitSelect(member = args)
+
+implicit_select_expr = (
+    op_('.') + name
+    >> make_implicit_select_expr)
+
+def make_explicit_select_expr(args):
+    return Select(
+        owner  = args[0],
+        member = args[1])
+
+# FIXME Because of left recursion, parsing the owner as a postfix expression
+# would trigger an infinite recursion. Hence we force such expressions to be
+# enclosed within parenthesis, via the production rule of `primary`.
+explicit_select_owner = (
+    primary + maybe(postfix_op)
+    >> make_postfix_expr)
+
+explicit_select_expr = (
+    explicit_select_owner + op_('.') + variable_identifier
+    >> make_explicit_select_expr)
+
+select_expr.define(explicit_select_expr | implicit_select_expr)
 
 def make_call_positional_argument(args):
     return CallArgument(
@@ -385,24 +402,43 @@ call_argument_list = (
 def make_call(args):
     return Call(callee = args[0], arguments = args[1])
 
-function_identifier = select_expression | implicit_select_expression | variable_identifier
+# FIXME Because of left recursion, parsing the callee as a postfix expression
+# would trigger an infinite recursion. Hence we force such expressions to be
+# enclosed within parenthesis, via the production rule of `primary`.
+call_callee = (
+    primary + maybe(postfix_op)
+    >> make_postfix_expr)
 
-call_expression.define(
-    function_identifier + op_('(') + maybe(call_argument_list) + op_(')')
+call_expr.define(
+    call_callee + op_('(') + maybe(call_argument_list) + op_(')')
     >> make_call)
 
-def make_if_expression(args):
+def make_subscript(args):
+    return Subscript(callee = args[0], arguments = args[1])
+
+# FIXME Because of left recursion, parsing the callee as a postfix expression
+# would trigger an infinite recursion. Hence we force such expressions to be
+# enclosed within parenthesis, via the production rule of `primary`.
+subscript_callee = (
+    primary + maybe(postfix_op)
+    >> make_postfix_expr)
+
+subscript_expr.define(
+    subscript_callee + op_('[') + call_argument_list + op_(']')
+    >> make_subscript)
+
+def make_if_expr(args):
     return If(
         pattern     = args[0],
         body        = args[1],
         else_clause = args[2])
 
 else_clause = (
-    (kw_('else') + if_expression) | (kw_('else') + block))
+    (kw_('else') + if_expr) | (kw_('else') + block))
 
-if_expression.define(
+if_expr.define(
     kw_('if') + pattern + block + maybe(else_clause)
-    >> make_if_expression)
+    >> make_if_expr)
 
 def make_switch_case_clause(args):
     return SwitchCaseClause(
@@ -416,14 +452,14 @@ switch_case_clause = (
 switch_case_clause_list = (
     many(nl_opt + switch_case_clause) + nl_opt)
 
-def make_switch_expression(args):
+def make_switch_expr(args):
     return Switch(
         expression = args[0],
         clauses    = args[1])
 
-switch_expression.define(
+switch_expr.define(
     kw_('switch') + expression + op_('{') + switch_case_clause_list + op_('}')
-    >> make_switch_expression)
+    >> make_switch_expr)
 
 def make_assignment(args):
     return Assignment(
@@ -434,6 +470,15 @@ assignment = (
     pattern + op_('=') + expression
     >> make_assignment)
 
+def make_self_assignement(args):
+    return SelfAssignement(
+        lvalue   = args[0],
+        operator = args[1],
+        rvalue   = args[2])
+
+self_assignment = (
+    expression + self_assignment_op + expression
+    >> make_self_assignement)
 
 def make_return_statement(args):
     return Return(value = args)
@@ -507,7 +552,7 @@ def make_function_decl_parameter(args):
         raise SyntaxError("'_' is not a valid parameter name")
     label = args[1] if (args[1] != '_') else None
 
-    return FunctionParameter(
+    return Parameter(
         name            = name,
         label           = label,
         attributes      = attributes,
@@ -684,21 +729,35 @@ protocol_decl.define(
     op_('{') + protocol_member_list + op_('}')
     >> make_protocol_decl)
 
+def make_extension_decl(args):
+    return ExtensionDecl(
+        subject      = args[0],
+        where_clause = args[1],
+        declaration  = args[2])
+
+extension_decl = (
+    kw_('extension') + name +
+    maybe(kw_('where') + expression) +
+    op_('->') + nl_opt + (struct_decl | enum_decl)
+    >> make_extension_decl)
+
 statement.define(
     container_decl |
     function_decl |
     enum_decl |
     struct_decl |
     protocol_decl |
+    extension_decl |
     assignment |
+    self_assignment |
     for_loop |
     while_loop |
     return_statement |
     break_statement |
     continue_statement |
-    call_expression |
-    if_expression |
-    switch_expression)
+    call_expr |
+    if_expr |
+    switch_expr)
 
 def make_module_decl(args):
     return ModuleDecl(
