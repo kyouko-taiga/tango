@@ -1,0 +1,280 @@
+module_decl             = { newline }, statement_list
+
+statement_list          = statement, newline, { newline }
+
+statement               = block
+                        | computed_prop_decl
+                        | stored_prop_decl
+                        | fun_decl
+                        | struct_decl
+                        | enum_decl
+                        | protocol_decl
+                        | extension_decl
+                        | assignement
+                        | self_assignement
+                        | for_loop
+                        | while_loop
+                        | return_statement
+                        | break_statement
+                        | continue_statement
+                        | call_expr
+                        | if_expr
+                        | switch_expr
+
+block                   = "{", { newline }, [ statement_list ], "}"
+
+computed_prop_decl      = [ "@override" ], mutability_modifier, name
+                        , [ ":", expr ]
+                        , "{", fun_decl, [ newline, fun_decl ], "}"
+
+stored_prop_decl        = [ "@override" ], mutability_modifier, name
+                        , [ ":", expr ]
+                        , [ "=", expr ]
+
+mutability_modifier     = "cst" | "mut" | "shd"
+
+fun_decl                = [ "@override" ], "fun", ( name | operator_name )
+                        , [ generic_clause ]
+                        , "(", [ fun_decl_param_list ], ")"
+                        , [ "->", expr ]
+                        , [ where_clause ]
+                        , block
+
+generic_clause          =  "<", name, { ",", name } ,">"
+
+where_clause            = "where", expr
+
+fun_decl_param_list     = fun_decl_param, { ",", fun_decl_param }
+
+fun_decl_param          = mutability_modifier, ( wildcard | name ), [ name ],
+                          ":", { attribute }, expr,
+                          [ "=", expr ]
+
+attribute               = "@mut" | "@shd"
+
+struct_decl             = [ "@override" ], "struct", name
+                        , [ generic_clause ]
+                        , [ conformance_clause ]
+                        , [ import_clause ]
+                        , [ where_clause ]
+                        , struct_block
+
+conformance_clause      = ":", expr, { ",", expr }
+
+import_clause           = "import", expr, { ",", expr }
+
+struct_block            = "{", { newline }, struct_member_list, "}"
+
+struct_member_list      = struct_member, newline, { newline }
+
+struct_member           = struct_decl
+                        | enum_decl
+                        | protocol_decl
+                        | fun_decl
+                        | computed_prop_decl
+                        | stored_prop_decl
+                        | abstract_type_decl
+
+enum_decl               = [ "@override" ], "enum", name
+                        , [ generic_clause ]
+                        , [ conformance_clause ]
+                        , [ import_clause ]
+                        , [ where_clause ]
+                        , enum_block
+
+enum_block              = "{", { newline }, enum_member_list, "}"
+
+enum_member_list        = enum_member, newline, { newline }
+
+enum_member             = struct_decl
+                        | enum_case_decl
+                        | enum_decl
+                        | protocol_decl
+                        | fun_decl
+                        | computed_prop_decl
+                        | stored_prop_decl
+                        | abstract_type_decl
+
+enum_case_decl          = [ "@override" ], "case", name, [ "(", enum_case_param_list, ")" ]
+
+enum_case_param_list    = enum_case_param, { ",", enum_case_param }
+
+enum_case_param         = ( wildcard | name ), ":", expr
+
+protocol_decl           = [ "@override" ], "protocol", name
+                        , [ conformance_clause ]
+                        , [ import_clause ]
+                        , protocol_block
+
+protocol_block          = "{", { newline }, protocol_member_list, "}"
+
+protocol_member_list    = protocol_member, newline, { newline }
+
+protocol_member         = fun_decl
+                        , fun_requirement_decl
+                        , computed_prop_decl
+                        , prop_requirement_decl
+                        , abstract_type_decl
+
+fun_requirement_decl    = [ "@override" ], "fun", ( name | operator_name )
+                        , [ generic_param_list ]
+                        , "(", [ fun_decl_param_list ], ")"
+                        , [ "->", expr ]
+                        , [ where_clause ]
+
+prop_requirement_decl   = [ "@override" ], mutability_modifier, name
+                        , [ ":", expr ]
+
+abstract_type_decl      = [ "@override" ], "abs", name
+                        , [ conformance_clause ]
+                        , [ "=", expr ]
+
+extension_decl          = "extension", name
+                        , [ where_clause ]
+                        , "->", ( struct_decl | enum_decl )
+
+assignment              = pattern, "=", pattern
+
+self_assignement        = expr, self_assignement_op, expr
+
+self_assignement_op     = "|="  | "&="  | "^="
+                        | "~="
+                        | ">>=" | "<<="
+                        | "+="  | "-="  | "*="  | "/="  | "%="
+
+for_loop                = [ name, ":" ], "for", pattern, "in", expr, block
+
+while_loop              = [ name, ":" ], "while", pattern, block
+
+return_statement        = "return", expr
+
+break_statement         = "break", [ name ]
+
+continue_statement      = "continue", [ name ]
+
+operator_name           = infix_op | prefix_op | postfix_op
+
+expr                    = binary_expr
+
+binary_expr             = operand, { infix_op, operand }
+
+operand                 = prefix_expr | if_expr | switch_expr
+
+infix_op                = "or"  | "and"
+                        | "&"   | "|"   | "^"
+                        | "=="  | "!="  | "~="  | "===" | "is"
+                        | "<"   | "<="  | ">="  | ">"
+                        | "as?" | "as!"
+                        | ">>"  | "<<"
+                        | "+"   | "-"
+                        | "*"   | "/"   | "%"
+
+prefix_expr             = [ prefix_op ], postfix_expr
+
+prefix_op               = "+" | "-" | "~" | "not"
+
+postfix_expr            = primary_expr, [ postfix_op ]
+
+postfix_op              = "!" | "?"
+
+primary_expr            = call_expr
+                        | subscript_expr
+                        | select_expr
+                        | closure_expr
+                        | type_signature
+                        | identifier
+                        | literal
+                        | "(", expr, ")"
+
+call_expr               = expr, "(", [ call_arg_list ], ")"
+
+call_arg_list           = call_arg, { ",", call_arg }
+
+call_arg                = [ name, "=" ], { attribute }, expr
+
+subscript_expr          = expr, "[", [ call_arg_list ], "]"
+
+if_expr                 = "if", pattern, block, [ else_clause ]
+
+else_clause             = ( "else", if_expr ) | ( "else", block )
+
+switch_expr             = "switch", expression, switch_block
+
+switch_block            = "{", { newline }, switch_clause_list, "}"
+
+switch_clause_list      = switch_clause, newline, { newline }
+
+switch_clause           = "case", pattern, block
+
+pattern                 = pattern_expr, [ where_clause ]
+
+pattern_expr            = wildcard
+                        | value_binding_pattern
+                        | tuple_pattern
+                        | enum_case_pattern
+                        | expr
+
+value_binding_pattern   = mutability_modifier, name
+                        , [ ":", expr ]
+
+tuple_pattern           = "(", pattern_arg_list, ")"
+
+pattern_arg_list        = { call_arg, "," }, fresh_arg, { ",", ( call_arg | fresh_arg ) }
+
+fresh_arg               = [ name, "=" ], { attribute }, value_binding_pattern
+
+enum_case_pattern       = select_expr, [ "(", pattern_arg_list, ")" ]
+
+select_expr             = expr, ".", identifier
+
+closure_expr            = "{", [ closure_param_list, "in" ], { newline }, statement_list, "}"
+
+closure_param_list      = value_binding_pattern, { ",", value_binding_pattern }
+
+identifier              (name | operator_name), [ "<", specialization_list, ">" ]
+
+specialization_list     = specialization, { ",", specialization }
+
+specialization          = name, "=", expr
+
+type_signature          = function_signature | tuple_signature
+
+function_signature      = "(", [ signature_param_list ], ")", "->", expr
+
+signature_param_list    = signature_param, { ",", signature_param }
+
+signature_param         = mutability_modifier, name, ":", { attribute }, expr
+
+tuple_signature         = "(", signature_param_list, ")"
+
+literal                 = dict_literal
+                        | array_literal
+                        | number_literal
+                        | string_literal
+
+dict_literal            = "[", ( dict_literal_item_list | ":" ), "]"
+
+dict_literal_item_list  = dict_literal_item, { ",", dict_literal_item }
+
+dict_literal_item       = expr, ":", expr
+
+array_literal           = "[", [ array_literal_item_list ], "]"
+
+array_literal_item_list = expr, { ",", expr }
+
+number_literal          = int_literal | double_literal
+
+int_literal             = "0" | digit excluding "0", { digit }
+
+double_literal          = digit, { digit }, ".", digit, { digit }
+                        , [ ("e" | "E"), [ "+" | "-" ], int_literal ]
+
+digit                   = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+
+string_literal          = "'", { character }, "'"
+
+character               = ? any character ?
+
+name                    = ? any word character ?
+
+wildcard                = "_"
