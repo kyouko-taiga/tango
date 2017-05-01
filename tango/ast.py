@@ -36,6 +36,19 @@ class Node(object):
         return {self.__class__.__name__: data}
 
 
+class ModuleDecl(Node):
+
+    _fields = ('name', 'body',)
+
+    def __init__(self, name, body):
+        super().__init__()
+        self.name = name
+        self.body = body
+
+    def __str__(self):
+        return '\n'.join(map(str, self.body.statements))
+
+
 class Block(Node):
 
     _fields = ('statements',)
@@ -47,129 +60,88 @@ class Block(Node):
     def __str__(self):
         result = '{\n'
         for statement in self.statements:
-            result += '  ' + str(statement) + '\n'
+            result += '\n'.join('  ' + line for line in str(statement).split('\n'))
+            result += '\n'
         return result + '}'
 
 
-class SpecializationArgument(Node):
+class PropertyDecl(Node):
 
-    _fields = ('name', 'type_annotation',)
+    _fields = ('name', 'attributes', 'type_annotation', 'initializer', 'getter', 'setter',)
 
-    def __init__(self, name, type_annotation):
+    def __init__(
+            self, name, attributes=None, type_annotation=None, initializer=None,
+            getter=None, setter=None):
+
         super().__init__()
         self.name            = name
+        self.attributes      = attributes or []
         self.type_annotation = type_annotation
+        self.initializer     = initializer
+        self.getter          = getter
+        self.setter          = setter
 
     def __str__(self):
-        return '{} = {}'.format(self.name, self.type_annotation)
-
-
-class TypeIdentifier(Node):
-
-    _fields = ('name', 'specializations',)
-
-    def __init__(self, name, specializations=None):
-        super().__init__()
-        self.name            = name
-        self.specializations = specializations or []
-
-    def __str__(self):
-        if self.specializations:
-            return '{}<{}>'.format(self.name, ', '.join(map(str, self.specializations)))
-        return self.name
-
-    def __repr__(self):
-        return 'TypeIdentifier({})'.format(self)
-
-
-class Wildcard(Node):
-
-    def __str__(self):
-        return '_'
-
-
-class ValueBindingPattern(Node):
-
-    _fields = ('name', 'is_mutable', 'is_shared', 'type_annotation',)
-
-    def __init__(self, name, is_mutable=False, is_shared=False, type_annotation=None):
-        super().__init__()
-        self.name            = name
-        self.is_mutable      = is_mutable
-        self.is_shared       = is_shared
-        self.type_annotation = type_annotation
-
-    def __str__(self):
-        if self.is_shared:
-            mutability_modifier = 'shd'
-        elif self.is_mutable:
-            mutability_modifier = 'mut'
+        if 'shared' in self.attributes:
+            result = 'shd ' + self.name
+            attributes = sorted(filter(lambda attr: attr != 'shared', self.attributes))
+        elif 'mutable' in self.attributes:
+            result = 'mut ' + self.name
+            attributes = sorted(filter(lambda attr: attr != 'mutable', self.attributes))
         else:
-            mutability_modifier = 'cst'
+            result = 'cst ' + self.name
+            attributes = sorted(self.attributes)
 
+        if self.attributes:
+            result = ' '.join('@' + str(attr) for attr in attributes) + ' ' + result
         if self.type_annotation:
-            return '{} {}: {}'.format(mutability_modifier, self.name, self.type_annotation)
-        return '{} {}'.format(mutability_modifier, self.name)
+            result += ': ' + str(self.type_annotation)
+        if self.initializer:
+            result += ' = ' + str(self.initializer)
+        if self.getter or self.setter:
+            result += ' {\n'
+            if self.getter:
+                result += '\n'.join('  ' + line for line in str(self.getter).split('\n'))
+                result += '\n'
+            if self.setter:
+                result += '\n'.join('  ' + line for line in str(self.setter).split('\n'))
+                result += '\n'
+            result += '}'
+
+        return result
 
 
-class ArgumentPattern(Node):
+class FunctionDecl(Node):
 
-    _fields = ('label', 'pattern',)
+    _fields = ('name', 'signature', 'body', 'generic_parameters', 'where_clause',)
 
-    def __init__(self, pattern, label=None):
+    def __init__(
+            self, name, signature, body=None, attributes=None,
+            generic_parameters=None, where_clause=None):
+
         super().__init__()
-        self.label   = label
-        self.pattern = pattern
+        self.name               = name
+        self.signature          = signature
+        self.body               = body
+        self.attributes         = attributes or []
+        self.generic_parameters = generic_parameters or []
+        self.where_clause       = where_clause
 
     def __str__(self):
-        if self.label:
-            return '{} = {}'.format(self.label, self.pattern)
-        return str(self.pattern)
-
-
-class TuplePattern(Node):
-
-    _fields = ('elements',)
-
-    def __init__(self, elements=None):
-        super().__init__()
-        self.elements = elements or []
-
-    def __str__(self):
-        return '({})'.format(', '.join(map(str, self.elements)))
-
-
-class EnumCasePattern(Node):
-
-    _fields = ('case', 'arguments',)
-
-    def __init__(self, case, arguments=None):
-        super().__init__()
-        self.case      = case
-        self.arguments = arguments or []
-
-    def __str__(self):
-        if self.arguments:
-            return '{}({})'.format(self.case, ''.join(map(str, self.arguments)))
-        return str(self.case)
-
-
-class Pattern(Node):
-
-    _fields = ('expression', 'where_clause',)
-
-    def __init__(self, expression, where_clause=None):
-        super().__init__()
-        self.expression   = expression
-        self.where_clause = where_clause
-
-    def __str__(self):
+        result = 'fun {}'.format(self.name)
+        if self.attributes:
+            result = ' '.join('@' + str(attr) for attr in self.attributes) + ' ' + result
+        if self.generic_parameters:
+            result += '<{}>'.format(', '.join(map(str, self.generic_parameters)))
+        result += str(self.signature)
         if self.where_clause:
-            return '{} where {}'.format(self.expression, self.where_clause)
-        return str(self.expression)
+            result += ' where ' + str(self.where_clause)
+        if self.body:
+            result += ' ' + str(self.body)
+        return result
 
 
-class Parameter(Node):
+class FunctionParameterDecl(Node):
 
     _fields = ('name', 'label', 'type_annotation', 'attributes', 'default_value',)
 
@@ -178,40 +150,214 @@ class Parameter(Node):
         self.name = name
         self.label = label
         self.type_annotation = type_annotation
-        self.attributes = attributes or set()
+        self.attributes = attributes or []
         self.default_value = default_value
 
     def __str__(self):
         if 'shared' in self.attributes:
-            result = 'mut '
-            attributes = sorted(filter(lambda attr: attr != 'mutable', self.attributes))
+            result = 'shd'
         elif 'mutable' in self.attributes:
-            result = 'mut '
-            attributes = sorted(filter(lambda attr: attr != 'mutable', self.attributes))
+            result = 'mut'
         else:
-            result = 'cst '
-            attributes = sorted(self.attributes)
+            result = 'cst'
 
         if self.name != self.label:
-            result += str(self.label or '_') + ' '
-        result += self.name + ' '
+            result += ' ' + str(self.label or '_')
+        result += ' ' + self.name
 
-        if attributes:
-            result += ' '.join('@' + str(attribute) for attribute in self.attributes) + ' '
+        if self.type_annotation:
+            result += ': ' + str(self.type_annotation)
+        if self.default_value:
+            result += ' = ' + str(self.default_value)
+        return result
 
-        return result + str(self.type_annotation)
 
+class StructDecl(Node):
 
-class TupleSignature(Node):
+    _fields = (
+        'name', 'body', 'attributes', 'generic_parameters',
+        'conformance_list', 'import_list', 'where_clause',)
 
-    _fields = ('parameters',)
+    def __init__(
+            self, name, body, attributes=None, generic_parameters=None,
+            conformance_list=None, import_list=None, where_clause=None):
 
-    def __init__(self, parameters):
         super().__init__()
-        self.parameters = parameters
+        self.name               = name
+        self.body               = body
+        self.attributes         = attributes or []
+        self.generic_parameters = generic_parameters or []
+        self.conformance_list   = conformance_list or []
+        self.import_list        = import_list or []
+        self.where_clause       = where_clause
 
     def __str__(self):
-        return '({})'.format(', '.join(map(str, self.parameters)))
+        result = 'struct ' + self.name
+        if self.attributes:
+            result = ' '.join('@' + str(attr) for attr in self.attributes) + ' ' + result
+        if self.generic_parameters:
+            result += '<{}>'.format(', '.join(map(str, self.generic_parameters)))
+        if self.conformance_list:
+            result += ': ' + ', '.join(map(str, self.conformance_list))
+        if self.import_list:
+            result += ' import ' + ', '.join(map(str, self.import_list))
+        if self.where_clause:
+            result += ' where ' + str(self.where_clause)
+        return result + ' ' + str(self.body)
+
+
+class EnumCaseParameterDecl(Node):
+
+    _fields = ('label', 'type_annotation',)
+
+    def __init__(self, label, type_annotation):
+        super().__init__()
+        self.label           = label
+        self.type_annotation = type_annotation
+
+    def __str__(self):
+        return '{}: {}'.format(self.label or '_', self.type_annotation)
+
+
+class EnumCaseDecl(Node):
+
+    _fields = ('name', 'parameters', 'attributes',)
+
+    def __init__(self, name, parameters=None, attributes=None):
+        super().__init__()
+        self.name       = name
+        self.parameters = parameters or []
+        self.attributes = attributes or []
+
+    def __str__(self):
+        result = 'case ' + self.name
+        if self.attributes:
+            result = ' '.join('@' + str(attr) for attr in self.attributes) + ' ' + result
+        if self.parameters:
+            result += '({})'.format(', '.join(map(str, self.parameters)))
+        return result
+
+
+class EnumDecl(Node):
+
+    _fields = (
+        'name', 'body', 'attributes', 'generic_parameters',
+        'conformance_list', 'import_list', 'where_clause',)
+
+    def __init__(
+            self, name, body, attributes=None, generic_parameters=None,
+            conformance_list=None, import_list=None, where_clause=None):
+
+        super().__init__()
+        self.name               = name
+        self.body               = body
+        self.attributes         = attributes or []
+        self.generic_parameters = generic_parameters or []
+        self.conformance_list   = conformance_list or []
+        self.import_list        = import_list or []
+        self.where_clause       = where_clause
+
+    def __str__(self):
+        result = 'enum ' + self.name
+        if self.attributes:
+            result = ' '.join('@' + str(attr) for attr in self.attributes) + ' ' + result
+        if self.generic_parameters:
+            result += '<{}>'.format(', '.join(map(str, self.generic_parameters)))
+        if self.conformance_list:
+            result += ': ' + ', '.join(map(str, self.conformance_list))
+        if self.import_list:
+            result += ' import ' + ', '.join(map(str, self.import_list))
+        if self.where_clause:
+            result += ' where ' + str(self.where_clause)
+        return result + ' ' + str(self.body)
+
+
+class ProtocolDecl(Node):
+
+    _fields = ('name', 'body', 'attributes', 'conformance_list')
+
+    def __init__(self, name, body, attributes=None, conformance_list=None):
+        super().__init__()
+        self.name             = name
+        self.body             = body
+        self.attributes       = attributes
+        self.conformance_list = conformance_list or []
+
+    def __str__(self):
+        result = 'protocol ' + self.name
+        if self.attributes:
+            result = ' '.join('@' + str(attr) for attr in self.attributes) + ' ' + result
+        if self.conformance_list:
+            result += ': ' + ', '.join(map(str(self.conformance_list)))
+        return result + ' ' + str(self.body)
+
+
+class AbstractTypeDecl(Node):
+
+    _fields = ('name', 'conformance_list', 'value', 'attributes',)
+
+    def __init__(self, name, conformance_list=None, value=None, attributes=None):
+        super().__init__()
+        self.name             = name
+        self.conformance_list = conformance_list or []
+        self.value            = value
+        self.attributes       = attributes or []
+
+    def __str__(self):
+        result = 'abs ' + self.name
+
+        if self.attributes:
+            result = ' '.join('@' + str(attr) for attr in self.attributes) + ' ' + result
+        if self.conformance_list:
+            result += ': ' + ', '.join(map(str(self.conformance_list)))
+        if self.value:
+            result += ' = ' + str(self.value)
+        return result
+
+
+class ExtensionDecl(Node):
+
+    _fields = ('subject', 'declaration', 'where_clause',)
+
+    def __init__(self, subject, declaration, where_clause=None):
+        super().__init__()
+        self.subject      = subject
+        self.declaration  = declaration
+        self.where_clause = where_clause
+
+    def __str__(self):
+        result = 'extension ' + self.subject
+        if self.where_clause:
+            result += 'where ' + str(self.where_clause)
+        return result + ' -> ' + str(self.declaration)
+
+
+class SignatureParameter(Node):
+
+    _fields = ('label', 'type_annotation', 'attributes',)
+
+    def __init__(self, label, type_annotation, attributes=None,):
+        super().__init__()
+        self.label = label
+        self.type_annotation = type_annotation
+        self.attributes = attributes or []
+
+    def __str__(self):
+        if 'shared' in self.attributes:
+            result = 'shd'
+            attributes = sorted(filter(lambda attr: attr != 'mutable', self.attributes))
+        elif 'mutable' in self.attributes:
+            result = 'mut'
+            attributes = sorted(filter(lambda attr: attr != 'mutable', self.attributes))
+        else:
+            result = 'cst'
+            attributes = sorted(self.attributes)
+
+        result += ' ' + (self.label or '_')
+
+        if self.type_annotation:
+            result += ': ' + str(self.type_annotation)
+        return result
 
 
 class FunctionSignature(Node):
@@ -227,6 +373,51 @@ class FunctionSignature(Node):
         return '({}) -> {}'.format(', '.join(map(str, self.parameters)), self.return_type)
 
 
+class TupleSignature(Node):
+
+    _fields = ('parameters',)
+
+    def __init__(self, parameters):
+        super().__init__()
+        self.parameters = parameters
+
+    def __str__(self):
+        return '({})'.format(', '.join(map(str, self.parameters)))
+
+
+class Identifier(Node):
+
+    _fields = ('name', 'specializations',)
+
+    def __init__(self, name, specializations=None):
+        super().__init__()
+        self.name            = name
+        self.specializations = specializations or []
+
+    @property
+    def qualname(self):
+        if 'scope' in self.__info__:
+            return '{}.{}'.format(self.__info__['scope'].name, self.name)
+        return self.name
+
+    def __str__(self):
+        if self.specializations:
+            return '{}<{}>'.format(self.name, ', '.join(map(str, self.specializations)))
+        return self.name
+
+
+class SpecializationArgument(Node):
+
+    _fields = ('name', 'type_annotation',)
+
+    def __init__(self, name, value):
+        super().__init__()
+        self.name  = name
+        self.value = value
+
+    def __str__(self):
+        return '{} = {}'.format(self.name, self.value)
+
 class Literal(Node):
 
     _fields = ('value',)
@@ -241,17 +432,17 @@ class Literal(Node):
 
 class ArrayLiteral(Node):
 
-    _fields = ('elements',)
+    _fields = ('items',)
 
-    def __init__(self, elements=None):
+    def __init__(self, items=None):
         super().__init__()
-        self.elements = elements or []
+        self.items = items or []
 
     def __str__(self):
-        return '[{}]'.format(', '.join(map(str, self.elements)))
+        return '[{}]'.format(', '.join(map(str, self.items)))
 
 
-class DictionaryLiteralElement(Node):
+class DictionaryLiteralItem(Node):
 
     _fields = ('key', 'value',)
 
@@ -266,34 +457,82 @@ class DictionaryLiteralElement(Node):
 
 class DictionaryLiteral(Node):
 
-    _fields = ('elements',)
+    _fields = ('items',)
 
-    def __init__(self, elements=None):
+    def __init__(self, items=None):
         super().__init__()
-        self.items = elements or []
+        self.items = items or []
 
     def __str__(self):
-        if self.elements:
-            return '[{}]'.format(', '.join(map(str, self.elements)))
+        if self.items:
+            return '[{}]'.format(', '.join(map(str, self.items)))
         return '[:]'
 
 
-class Identifier(Node):
+class Closure(Node):
 
-    _fields = ('name',)
+    _fields = ('statements', 'parameters',)
 
-    def __init__(self, name):
+    def __init__(self, statements, parameters=None):
         super().__init__()
-        self.name = name
-
-    @property
-    def qualname(self):
-        if 'scope' in self.__info__:
-            return '{}.{}'.format(self.__info__['scope'].name, self.name)
-        return self.name
+        self.statements = statements
+        self.parameters = parameters or []
 
     def __str__(self):
-        return self.name
+        statements = ''
+        for statement in self.statements:
+            statements += '\n'.join('  ' + line for line in str(statement).split('\n'))
+            statements += '\n'
+
+        if self.parameters:
+            return '{{ {} in\n{}}}'.format(', '.join(map(str, self.parameters)), statements)
+        return '{{\n{}}}'.format(statements)
+
+
+class CallArgument(Node):
+
+    _fields = ('value', 'label', 'attributes',)
+
+    def __init__(self, value, label=None, attributes=None):
+        super().__init__()
+        self.value      = value
+        self.label      = label
+        self.attributes = attributes or []
+
+    def __str__(self):
+        if self.label:
+            result = self.label + ' = '
+        else:
+            result = ''
+        if self.attributes:
+            result += ' '.join('@' + str(attr) for attr in self.attributes) + ' '
+        return result + str(self.value)
+
+
+class Call(Node):
+
+    _fields = ('callee', 'arguments',)
+
+    def __init__(self, callee, arguments=None):
+        super().__init__()
+        self.callee    = callee
+        self.arguments = arguments or []
+
+    def __str__(self):
+        return '{}({})'.format(self.callee, ', '.join(map(str, self.arguments)))
+
+
+class Subscript(Node):
+
+    _fields = ('callee', 'arguments',)
+
+    def __init__(self, callee, arguments=None):
+        super().__init__()
+        self.callee    = callee
+        self.arguments = arguments or []
+
+    def __str__(self):
+        return '{}[{}]'.format(self.callee, ', '.join(map(str, self.arguments)))
 
 
 class Select(Node):
@@ -361,23 +600,93 @@ class BinaryExpression(Node):
         return '{} {} {}'.format(self.left, self.operator, self.right)
 
 
-class Closure(Node):
+class ValueBindingPattern(Node):
 
-    _fields = ('statements', 'parameters',)
+    _fields = ('name', 'type_annotation', 'attributes',)
 
-    def __init__(self, statements, parameters=None):
+    def __init__(self, name, type_annotation=None, attributes=None):
         super().__init__()
-        self.statements = statements
-        self.parameters = parameters or []
+        self.name            = name
+        self.type_annotation = type_annotation
+        self.attributes      = attributes or []
 
     def __str__(self):
-        statements = ''
-        for statement in self.statements:
-            result += '  ' + str(statement) + '\n'
+        if 'shared' in self.attributes:
+            result = 'shd ' + self.name
+            attributes = sorted(filter(lambda attr: attr != 'mutable', self.attributes))
+        elif 'mutable' in self.attributes:
+            result = 'mut ' + self.name
+            attributes = sorted(filter(lambda attr: attr != 'mutable', self.attributes))
+        else:
+            result = 'cst ' + self.name
+            attributes = sorted(self.attributes)
 
-        if self.parameters:
-            return '{{ {} in\n{}}}'.format(', '.join(map(str, self.parameters)), statements)
-        return '{{\n{}}}'.format(statements)
+        if self.type_annotation:
+            result += ': ' + str(self.type_annotation)
+        return result
+
+
+class PatternArgument(Node):
+
+    _fields = ('label', 'pattern',)
+
+    def __init__(self, pattern, label=None):
+        super().__init__()
+        self.label   = label
+        self.pattern = pattern
+
+    def __str__(self):
+        if self.label:
+            return '{} = {}'.format(self.label, self.pattern)
+        return str(self.pattern)
+
+
+class TuplePattern(Node):
+
+    _fields = ('items',)
+
+    def __init__(self, items=None):
+        super().__init__()
+        self.items = items or []
+
+    def __str__(self):
+        return '({})'.format(', '.join(map(str, self.items)))
+
+
+class EnumCasePattern(Node):
+
+    _fields = ('case', 'arguments',)
+
+    def __init__(self, case, arguments=None):
+        super().__init__()
+        self.case      = case
+        self.arguments = arguments or []
+
+    def __str__(self):
+        if self.arguments:
+            return '{}({})'.format(self.case, ''.join(map(str, self.arguments)))
+        return str(self.case)
+
+
+class WildcardPattern(Node):
+
+    def __str__(self):
+        return '_'
+
+
+class Pattern(Node):
+
+    _fields = ('expression', 'where_clause',)
+
+    def __init__(self, expression, where_clause=None):
+        super().__init__()
+        self.expression   = expression
+        self.where_clause = where_clause
+
+    def __str__(self):
+        if self.where_clause:
+            return '{} where {}'.format(self.expression, self.where_clause)
+        return str(self.expression)
 
 
 class If(Node):
@@ -421,55 +730,10 @@ class Switch(Node):
     def __str__(self):
         clauses = ''
         for clause in self.clauses:
-            clauses += '  ' + str(clause) + '\n'
+            clauses += '\n'.join('  ' + line for line in str(clause).split('\n'))
+            clauses += '\n'
 
         return 'switch {} {{\n{}}}'.format(self.expression, clauses)
-
-
-class CallArgument(Node):
-
-    _fields = ('value', 'name', 'attributes',)
-
-    def __init__(self, value, name=None, attributes=None):
-        super().__init__()
-        self.value      = value
-        self.name       = name
-        self.attributes = attributes or set()
-
-    def __str__(self):
-        if self.name:
-            result = self.name + ' = '
-        else:
-            result = ''
-        if self.attributes:
-            result += ' '.join('@' + str(attribute) for attribute in self.attributes) + ' '
-        return result + str(self.value)
-
-
-class Call(Node):
-
-    _fields = ('callee', 'arguments',)
-
-    def __init__(self, callee, arguments=None):
-        super().__init__()
-        self.callee    = callee
-        self.arguments = arguments or []
-
-    def __str__(self):
-        return '{}({})'.format(self.callee, ', '.join(map(str, self.arguments)))
-
-
-class Subscript(Node):
-
-    _fields = ('callee', 'arguments',)
-
-    def __init__(self, callee, arguments=None):
-        super().__init__()
-        self.callee    = callee
-        self.arguments = arguments or []
-
-    def __str__(self):
-        return '{}[{}]'.format(self.callee, ', '.join(map(str, self.arguments)))
 
 
 class Assignment(Node):
@@ -570,215 +834,6 @@ class While(Node):
         if self.label:
             return self.label + ': ' + result
         return result
-
-
-class ContainerDecl(Node):
-
-    _fields = ('name', 'is_mutable', 'is_shared', 'type_annotation',)
-
-    def __init__(self, name, is_mutable, is_shared, type_annotation=None, initial_value=None):
-        super().__init__()
-        self.name            = name
-        self.is_mutable      = is_mutable
-        self.is_shared       = is_shared
-        self.type_annotation = type_annotation
-        self.initial_value   = initial_value
-
-    def __str__(self):
-        if self.is_shared:
-            result = 'shd '
-        elif self.is_mutable:
-            result = 'mut '
-        else:
-            result = 'cst '
-
-        result += self.name
-
-        if self.type_annotation:
-            result += ': ' + str(self.type_annotation)
-        if self.initial_value:
-            result += ' = ' + str(self.initial_value)
-
-        return result
-
-
-class FunctionDecl(Node):
-
-    _fields = ('name', 'signature', 'body', 'generic_parameters', 'where_clause',)
-
-    def __init__(self, name, signature, body=None, generic_parameters=None, where_clause=None):
-        super().__init__()
-        self.name               = name
-        self.signature          = signature
-        self.body               = body
-        self.generic_parameters = generic_parameters or []
-        self.where_clause       = where_clause
-
-    def __str__(self):
-        result = 'fun {}'.format(self.name)
-        if self.generic_parameters:
-            result += '<{}>'.format(', '.join(map(str, self.generic_parameters)))
-        result += str(self.signature)
-        if self.where_clause:
-            result += ' where ' + str(self.where_clause)
-        if self.body:
-            result += ' ' + str(self.body)
-        return result
-
-
-class EnumCaseParameter(Node):
-
-    _fields = ('label', 'type_annotation',)
-
-    def __init__(self, label, type_annotation):
-        super().__init__()
-        self.label           = label
-        self.type_annotation = type_annotation
-
-    def __str__(self):
-        return '{}: {}'.format(self.label or '_', self.type_annotation)
-
-
-class EnumCaseDecl(Node):
-
-    _fields = ('name', 'parameters',)
-
-    def __init__(self, name, parameters=None):
-        super().__init__()
-        self.name       = name
-        self.parameters = parameters or []
-
-    def __str__(self):
-        if self.parameters:
-            return 'case {}({})'.format(self.name, ', '.join(map(str, self.parameters)))
-        else:
-            return 'case ' + self.name
-
-
-class EnumDecl(Node):
-
-    _fields = (
-        'name', 'body', 'generic_parameters', 'conformance_list', 'import_list', 'where_clause',)
-
-    def __init__(
-            self, name, body, generic_parameters=None, conformance_list=None, import_list=None,
-            where_clause=None):
-
-        super().__init__()
-        self.name               = name
-        self.body               = body
-        self.generic_parameters = generic_parameters or []
-        self.conformance_list   = conformance_list or []
-        self.import_list        = import_list or []
-        self.where_clause       = where_clause
-
-    def __str__(self):
-        result = 'enum ' + self.name
-        if self.generic_parameters:
-            result += '<{}> '.format(', '.join(map(str, self.generic_parameters)))
-        if self.conformance_list:
-            result += ': ' + ', '.join(map(str(self.conformance_list)))
-        if self.import_list:
-            result += ' import ' + ', '.join(map(str(self.import_list)))
-        if self.where_clause:
-            result += ' where ' + str(self.where_clause)
-        return result + ' ' + str(self.body)
-
-
-class StructDecl(Node):
-
-    _fields = (
-        'name', 'body', 'generic_parameters', 'conformance_list', 'import_list', 'where_clause',)
-
-    def __init__(
-            self, name, body, generic_parameters=None, conformance_list=None, import_list=None,
-            where_clause=None):
-
-        super().__init__()
-        self.name               = name
-        self.body               = body
-        self.generic_parameters = generic_parameters or []
-        self.conformance_list   = conformance_list or []
-        self.import_list        = import_list or []
-        self.where_clause       = where_clause
-
-    def __str__(self):
-        result = 'struct ' + self.name
-        if self.generic_parameters:
-            result += '<{}> '.format(', '.join(map(str, self.generic_parameters)))
-        if self.conformance_list:
-            result += ': ' + ', '.join(map(str(self.conformance_list)))
-        if self.import_list:
-            result += ' import ' + ', '.join(map(str(self.import_list)))
-        if self.where_clause:
-            result += ' where ' + str(self.where_clause)
-        return result + ' ' + str(self.body)
-
-
-class AbstractTypeDecl(Node):
-
-    _fields = ('name', 'conformance_list', 'value',)
-
-    def __init__(self, name, conformance_list=None, value=None):
-        super().__init__()
-        self.name             = name
-        self.conformance_list = conformance_list or []
-        self.value            = value
-
-    def __str__(self):
-        result = 'abs ' + self.name
-        if self.conformance_list:
-            result += ': ' + ', '.join(map(str(self.conformance_list)))
-        if self.value:
-            result += ' = ' + str(self.value)
-        return result
-
-
-class ProtocolDecl(Node):
-
-    _fields = ('name', 'body', 'conformance_list')
-
-    def __init__(self, name, body, conformance_list=None):
-        super().__init__()
-        self.name             = name
-        self.body             = body
-        self.conformance_list = conformance_list or []
-
-    def __str__(self):
-        result = 'protocol ' + self.name
-        if self.conformance_list:
-            result += ': ' + ', '.join(map(str(self.conformance_list)))
-        return result + ' ' + str(self.body)
-
-
-class ExtensionDecl(Node):
-
-    _fields = ('subject', 'declaration', 'where_clause',)
-
-    def __init__(self, subject, declaration, where_clause=None):
-        super().__init__()
-        self.subject      = subject
-        self.declaration  = declaration
-        self.where_clause = where_clause
-
-    def __str__(self):
-        result = 'extension ' + self.subject
-        if self.where_clause:
-            result += 'where ' + str(self.where_clause)
-        return result + ' -> ' + str(self.declaration)
-
-
-class ModuleDecl(Node):
-
-    _fields = ('name', 'body',)
-
-    def __init__(self, name, body):
-        super().__init__()
-        self.name = name
-        self.body = body
-
-    def __str__(self):
-        return '\n'.join(map(str, self.body.statements))
 
 
 class Visitor(object):
