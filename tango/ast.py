@@ -274,14 +274,15 @@ class EnumDecl(Node):
 
 class ProtocolDecl(Node):
 
-    _fields = ('name', 'body', 'attributes', 'conformance_list')
+    _fields = ('name', 'body', 'attributes', 'conformance_list', 'import_list')
 
-    def __init__(self, name, body, attributes=None, conformance_list=None):
+    def __init__(self, name, body, attributes=None, conformance_list=None, import_list=None):
         super().__init__()
         self.name             = name
         self.body             = body
         self.attributes       = attributes
         self.conformance_list = conformance_list or []
+        self.import_list      = import_list or []
 
     def __str__(self):
         result = 'protocol ' + self.name
@@ -289,6 +290,8 @@ class ProtocolDecl(Node):
             result = ' '.join('@' + str(attr) for attr in self.attributes) + ' ' + result
         if self.conformance_list:
             result += ': ' + ', '.join(map(str(self.conformance_list)))
+        if self.import_list:
+            result += ' import ' + ', '.join(map(str, self.import_list))
         return result + ' ' + str(self.body)
 
 
@@ -628,17 +631,17 @@ class ValueBindingPattern(Node):
 
 class PatternArgument(Node):
 
-    _fields = ('label', 'pattern',)
+    _fields = ('label', 'value',)
 
-    def __init__(self, pattern, label=None):
+    def __init__(self, value, label=None):
         super().__init__()
-        self.label   = label
-        self.pattern = pattern
+        self.label = label
+        self.value = value
 
     def __str__(self):
         if self.label:
-            return '{} = {}'.format(self.label, self.pattern)
-        return str(self.pattern)
+            return '{} = {}'.format(self.label, self.value)
+        return str(self.value)
 
 
 class TuplePattern(Node):
@@ -687,6 +690,19 @@ class Pattern(Node):
         if self.where_clause:
             return '{} where {}'.format(self.expression, self.where_clause)
         return str(self.expression)
+
+
+class MatchingPattern(Node):
+
+    _fields = ('value', 'pattern',)
+
+    def __init__(self, value, pattern):
+        super().__init__()
+        self.value   = value
+        self.pattern = pattern
+
+    def __str__(self):
+        return '{} ~= {}'.format(self.value, self.pattern)
 
 
 class If(Node):

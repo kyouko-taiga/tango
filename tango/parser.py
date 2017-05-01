@@ -12,8 +12,8 @@ def tokenize(s):
         ('comment',    (r'#.*\n',)),
         ('newline',    (r'[\r\n]+',)),
         ('space',      (r'[ \t\v]+',)),
-        ('operator',   (r'\->|not|and|or|is|as[\?!]|[&\^\|\+\-\*\/%~><=!]=|===|>>=?|<<=?|'
-                        r'[=\+\-\*\/%~&\^\|\.:,\?!@<>{}\[\]\(\)]',)),
+        ('operator',   (r'\->|not|and|or|is|as[\?!]|===|>>=?|<<=?|[&\^\|\+\-\*\/%~><!=]=?|'
+                        r'[\.:,\?@{}\[\]\(\)]',)),
         ('name',       (r'[^\W\d][\w]*',)),
         ('number',     (r'[-+]?(0|([1-9][0-9]*))(\.[0-9]+)?([Ee][+-]?[0-9]+)?',)),
         ('string',     (r'\'[^\']*\'',)),
@@ -60,7 +60,7 @@ mul_op     = (op('*')   | op('/')   | op('%')                               ) >>
 add_op     = (op('+')   | op('-')                                           ) >> make_name
 cmp_op     = (op('<')   | op('<=')  | op('>=')  | op('>')                   ) >> make_name
 cast_op    = (op('as?') | op('as!')                                         ) >> make_name
-eq_op      = (op('is')  | op('==')  | op('!=')  | op('~=')  | op('===')     ) >> make_name
+eq_op      = (op('is')  | op('==')  | op('!=')  | op('===')                 ) >> make_name
 and_op     =  op('&')                                                         >> make_name
 xor_op     =  op('^')                                                         >> make_name
 or_op      =  op('|')                                                         >> make_name
@@ -89,6 +89,7 @@ struct_decl    = forward_decl()
 enum_decl      = forward_decl()
 protocol_decl  = forward_decl()
 expr           = forward_decl()
+select_expr    = forward_decl()
 operand        = forward_decl()
 if_expr        = forward_decl()
 switch_expr    = forward_decl()
@@ -274,17 +275,17 @@ struct_decl.define(
     op_('{') + struct_member_list + op_('}')
     >> make_struct_decl)
 
-def make_enum_case_parameter(args):
+def make_enum_case_param(args):
     return EnumCaseParameterDecl(
         label           = args[0] if (args[0] != '_') else None,
         type_annotation = args[1])
 
-enum_case_parameter = (
+enum_case_param = (
     name + op_(':') + type_signature
-    >> make_enum_case_parameter)
+    >> make_enum_case_param)
 
-enum_case_parameter_list = (
-    enum_case_parameter + many(op_(',') + enum_case_parameter)
+enum_case_param_list = (
+    enum_case_param + many(op_(',') + enum_case_param)
     >> flatten)
 
 def make_enum_case_decl(args):
@@ -301,7 +302,7 @@ def make_enum_case_decl(args):
 enum_case_decl = (
     many(attribute) +
     kw_('case') + name +
-    maybe(op_('(') + enum_case_parameter_list + op_(')'))
+    maybe(op_('(') + enum_case_param_list + op_(')'))
     >> make_enum_case_decl)
 
 def make_enum_decl(args):
@@ -362,7 +363,8 @@ def make_protocol_decl(args):
         attributes       = attributes,
         name             = args[1],
         conformance_list = args[2],
-        body             = Block(args[3]))
+        import_list      = args[3],
+        body             = Block(args[4]))
 
 protocol_member = prop_decl | fun_decl | abstract_type_decl
 
@@ -374,6 +376,7 @@ protocol_decl.define(
     many(attribute) +
     kw_('protocol') + name +
     maybe(conformance_clause) +
+    maybe(import_clause) +
     op_('{') + protocol_member_list + op_('}')
     >> make_protocol_decl)
 
@@ -393,7 +396,7 @@ def make_signature_param(args):
     if args[0].value == 'mut':
         attributes = {'mutable'}
     elif args[0].value == 'shd':
-        attributes = {'mutable'}
+        attributes = {'shared'}
     else:
         attributes = set()
 
@@ -416,7 +419,7 @@ def make_fun_signature(args):
         parameters  = args[0],
         return_type = args[1])
 
-function_signature = (
+fun_signature = (
     op_('(') + maybe(signature_param_list) + op_(')') +
     op_('->') + type_signature
     >> make_fun_signature)
@@ -579,22 +582,29 @@ def make_binary_expr(args):
     # simply return the operand "as is".
     return args[0]
 
-expr_80  = prefix_expr | (op_('(') + expr + op_(')'))
-expr_70  = expr_80 + many(shf_op  + expr_80) >> make_binary_expr
-expr_60  = expr_70 + many(mul_op  + expr_70) >> make_binary_expr
-expr_50  = expr_60 + many(add_op  + expr_60) >> make_binary_expr
-expr_40  = expr_50 + many(cast_op + expr_50) >> make_binary_expr
-expr_30  = expr_40 + many(cmp_op  + expr_40) >> make_binary_expr
-expr_20  = expr_30 + many(eq_op   + expr_30) >> make_binary_expr
-expr_10  = expr_20 + many(and_op  + expr_20) >> make_binary_expr
-bin_expr = expr_10 + many(or_op   + expr_10) >> make_binary_expr
+expr_10  = prefix_expr | (op_('(') + expr + op_(')'))
+expr_09  = expr_10 + many(shf_op  + expr_10) >> make_binary_expr
+expr_08  = expr_09 + many(mul_op  + expr_09) >> make_binary_expr
+expr_07  = expr_08 + many(add_op  + expr_08) >> make_binary_expr
+expr_06  = expr_07 + many(cmp_op  + expr_07) >> make_binary_expr
+expr_05  = expr_06 + many(cast_op + expr_06) >> make_binary_expr
+expr_04  = expr_05 + many(eq_op   + expr_05) >> make_binary_expr
+expr_03  = expr_04 + many(and_op  + expr_04) >> make_binary_expr
+expr_02  = expr_03 + many(xor_op  + expr_03) >> make_binary_expr
+expr_01  = expr_02 + many(or_op   + expr_02) >> make_binary_expr
+expr_00  = expr_01 + many(land_op + expr_01) >> make_binary_expr
+bin_expr = expr_00 + many(lor_op  + expr_00) >> make_binary_expr
 
-expr.define(bin_expr | if_expr | switch_expr)
+expr.define(if_expr | switch_expr | bin_expr)
 
 def make_call_arg(args):
-    attributes = set(token.value for token in args[1])
-    for attr in attributes:
-        if attr not in ['mut', 'shd']:
+    attributes = set()
+    for attr in args[1]:
+        if attr.value == 'mut':
+            attributes.add('mutable')
+        elif attr.value == 'shd':
+            attributes.add('shared')
+        else:
             raise SyntaxError("invalid attribute '{}' on call argument".format(attr))
 
     return CallArgument(
@@ -613,12 +623,15 @@ call_arg_list = (
 def make_call_expr(args):
     return Call(callee = args[0], arguments = args[1])
 
-# FIXME Because of left recursion, parsing the callee as a postfix expression
-# would trigger an infinite recursion. Hence we force such expressions to be
-# enclosed within parenthesis, via the production rule of `primary`.
+# FIXME Because of left recursion, parsing the owner as a postfix expression
+# would trigger an infinite recursion. Hence, we restrict it to "select" and
+# "primary" expressions. The former is the most current case we'll encounter
+# (after the single identifier), and the latter will break the left recursion
+# since its production rule requires expressions to be enclosed within
+# parenthesis.
 call_callee = (
-    primary + maybe(postfix_op)
-    >> make_postfix_expr)
+    maybe(prefix_op) + (select_expr | primary)
+    >> make_prefix_expr)
 
 call_expr = (
     call_callee + op_('(') + maybe(call_arg_list) + op_(')')
@@ -627,12 +640,15 @@ call_expr = (
 def make_subscript(args):
     return Subscript(callee = args[0], arguments = args[1])
 
-# FIXME Because of left recursion, parsing the callee as a postfix expression
-# would trigger an infinite recursion. Hence we force such expressions to be
-# enclosed within parenthesis, via the production rule of `primary`.
+# FIXME Because of left recursion, parsing the owner as a postfix expression
+# would trigger an infinite recursion. Hence, we restrict it to "select" and
+# "primary" expressions. The former is the most current case we'll encounter
+# (after the single identifier), and the latter will break the left recursion
+# since its production rule requires expressions to be enclosed within
+# parenthesis.
 subscript_callee = (
-    primary + maybe(postfix_op)
-    >> make_postfix_expr)
+    maybe(prefix_op) + (select_expr | primary)
+    >> make_prefix_expr)
 
 subscript_expr = (
     subscript_callee + op_('[') + call_arg_list + op_(']')
@@ -651,19 +667,20 @@ def make_explicit_select_expr(args):
         member = args[1])
 
 # FIXME Because of left recursion, parsing the owner as a postfix expression
-# would trigger an infinite recursion. Hence we force such expressions to be
-# enclosed within parenthesis, via the production rule of `primary`.
+# would trigger an infinite recursion. Hence, we restrict it to "primary"
+# expressions, which will break the left recursion since its production rule
+# requires expressions to be enclosed within parenthesis.
 explicit_select_owner = (
-    primary + maybe(postfix_op)
-    >> make_postfix_expr)
+    maybe(prefix_op) + primary
+    >> make_prefix_expr)
 
 explicit_select_expr = (
     explicit_select_owner + op_('.') + identifier
     >> make_explicit_select_expr)
 
-select_expr = explicit_select_expr | implicit_select_expr
+select_expr.define(explicit_select_expr | implicit_select_expr)
 
-type_signature.define(function_signature | tuple_signature | select_expr | type_name)
+type_signature.define(fun_signature | tuple_signature | select_expr | type_name)
 
 operand.define(call_expr | subscript_expr | select_expr | primary)
 
@@ -671,19 +688,16 @@ wildcard_pattern = kw_('_') >> (lambda _: WildcardPattern())
 
 def make_pattern_arg(args):
     return PatternArgument(
-        label   = args[0],
-        pattern = args[1])
+        label = args[0],
+        value = args[1])
 
 pattern_arg = (
     maybe(name + op_('=')) + pattern
     >> make_pattern_arg)
 
-def make_pattern_arg_list(args):
-    return args[0] + flatten(*args[1:])
-
 pattern_arg_list = (
-    many(call_arg + op_(',')) + pattern_arg + many(op_(',') + (pattern_arg | call_arg))
-    >> make_pattern_arg_list)
+    pattern_arg + many(op_(',') + pattern_arg)
+    >> flatten)
 
 def make_tuple_pattern(args):
     return TuplePattern(items = args)
@@ -699,7 +713,7 @@ def make_enum_case_pattern(args):
 
 enum_case_pattern = (
     select_expr +
-    maybe(op_('(') + pattern_arg_list + op_(')'))
+    op_('(') + pattern_arg_list + op_(')')
     >> make_enum_case_pattern)
 
 def make_pattern(args):
@@ -711,6 +725,15 @@ pattern.define(
     (wildcard_pattern | value_binding_pattern | tuple_pattern | enum_case_pattern | expr) +
     maybe(where_clause)
     >> make_pattern)
+
+def make_matching_pattern(args):
+    return MatchingPattern(
+        value        = args[0],
+        pattern      = args[1])
+
+matching_pattern = (
+    expr + op_('~=') + pattern
+    >> make_matching_pattern)
 
 def make_if_expr(args):
     return If(
@@ -815,6 +838,7 @@ stmt.define(
     enum_decl       |
     protocol_decl   |
     extension_decl  |
+    call_expr       |
     if_expr         |
     switch_expr     |
     assignment      |
