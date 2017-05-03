@@ -510,6 +510,37 @@ dict_literal = (
 
 literal = dict_literal | array_literal | string_literal | number_literal
 
+def make_tuple_item(args):
+    if args[0].value == 'mut':
+        attributes = {'mutable'}
+    elif args[0].value == 'shd':
+        attributes = {'mutable'}
+    else:
+        attributes = set()
+
+    return TupleItemDecl(
+        attributes      = attributes,
+        label           = args[1] if (args[1] != '_') else None,
+        type_annotation = args[2],
+        initializer     = args[3])
+
+tuple_item = (
+    mutability_modifier + name +
+    maybe(op_(':') + type_signature) +
+    initializer
+    >> make_tuple_item)
+
+tuple_item_list = (
+    tuple_item + many(op_(',') + tuple_item)
+    >> flatten)
+
+def make_tuple_expr(args):
+    return Tuple(items = args)
+
+tuple_expr = (
+    op_('(') + tuple_item_list + op_(')')
+    >> make_tuple_expr)
+
 def make_value_binding_pattern(args):
     if args[0].value == 'mut':
         attributes = {'mutable'}
@@ -541,7 +572,7 @@ closure_expr = (
     op_('{') + maybe(closure_param_list) + stmt_list + op_('}')
     >> make_closure)
 
-primary = closure_expr | literal | identifier | op_('(') + expr + op_(')')
+primary = tuple_expr | closure_expr | literal | identifier | op_('(') + expr + op_(')')
 
 def make_postfix_expr(args):
     if args[1]:

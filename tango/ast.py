@@ -472,6 +472,48 @@ class DictionaryLiteral(Node):
         return '[:]'
 
 
+class TupleItemDecl(Node):
+
+    _fields = ('label', 'attributes', 'type_signature', 'initializer')
+
+    def __init__(self, label, initializer, attributes=None, type_annotation=None):
+
+        super().__init__()
+        self.label           = label
+        self.initializer     = initializer
+        self.attributes      = attributes or []
+        self.type_annotation = type_annotation
+
+    def __str__(self):
+        if 'shared' in self.attributes:
+            result = 'shd ' + (self.label or '_')
+            attributes = sorted(filter(lambda attr: attr != 'shared', self.attributes))
+        elif 'mutable' in self.attributes:
+            result = 'mut ' + (self.label or '_')
+            attributes = sorted(filter(lambda attr: attr != 'mutable', self.attributes))
+        else:
+            result = 'cst ' + (self.label or '_')
+            attributes = sorted(self.attributes)
+
+        if self.attributes:
+            result = ' '.join('@' + str(attr) for attr in attributes) + ' ' + result
+        if self.type_annotation:
+            result += ': ' + str(self.type_annotation)
+        return result + ' = ' + str(self.initializer)
+
+
+class Tuple(Node):
+
+    _fields = ('items',)
+
+    def __init__(self, items):
+        super().__init__()
+        self.items = items
+
+    def __str__(self):
+        return '({})'.format(', '.join(map(str, self.items)))
+
+
 class Closure(Node):
 
     _fields = ('statements', 'parameters',)
