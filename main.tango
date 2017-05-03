@@ -1,0 +1,6 @@
+#struct S<T> {
+#    abs Key = T
+#    fun new(mut _ self: Self.Key) -> Self {}
+#}
+
+cst x = y

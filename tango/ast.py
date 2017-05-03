@@ -411,7 +411,7 @@ class Identifier(Node):
 
 class SpecializationArgument(Node):
 
-    _fields = ('name', 'type_annotation',)
+    _fields = ('name', 'value',)
 
     def __init__(self, name, value):
         super().__init__()

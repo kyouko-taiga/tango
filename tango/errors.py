@@ -1,3 +1,7 @@
+class ModuleImportError(Exception):
+    pass
+
+
 class DuplicateDeclaration(Exception):
 
     def __init__(self, name):

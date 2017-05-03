@@ -1,40 +1,9 @@
 from .ast import *
-from .builtin import builtin_scope
+from .builtin import builtin_module, ModuleType
 from .errors import DuplicateDeclaration, UndefinedSymbol
-from .scope import Scope, Symbol
+from .module import Symbol
+# from .scope import Scope
 from .types import BaseType
-
-
-def bind_scopes(node):
-    # Extract the symbols declared in each scopes.
-    symbols_extractor = SymbolsExtractor()
-    result = symbols_extractor.visit(node)
-
-    # Bind all identifiers to their respective scope.
-    scope_binder = ScopeBinder()
-    scope_binder.visit(result)
-
-    return result
-
-
-class SymbolsExtractor(Transformer):
-
-    def visit_Block(self, node):
-        symbols = set()
-
-        for i, statement in enumerate(node.statements):
-            if isinstance(statement, (EnumCaseDecl, ContainerDecl)):
-                # Add the container's identifier to the current scope.
-                symbols.add(statement.name)
-
-            if isinstance(statement, (FunctionDecl, EnumDecl, StructDecl)):
-                # Add the name of the type declaration to the current scope.
-                symbols.add(statement.name)
-
-        self.generic_visit(node)
-
-        node.__info__['symbols'] = symbols
-        return node
 
 
 class ScopeBinder(Visitor):
@@ -42,9 +11,7 @@ class ScopeBinder(Visitor):
     def __init__(self):
         # This list represent the scope stack we'll manipulate as we'll walk
         # down the AST.
-
-        # Array[Scope]
-        self.scopes = [builtin_scope]
+        self.scopes = []
 
         self.next_scope_id = 0
 
@@ -58,8 +25,6 @@ class ScopeBinder(Visitor):
         # the value of the constant `x` defined in the global scope:
         # >>> cst x = 0
         # >>> fun f() { mut x = x }
-
-        # (Scope) -> Set[String]
         self.under_declaration = {}
 
     @property
@@ -72,12 +37,62 @@ class ScopeBinder(Visitor):
             self.next_scope_id += 1
 
         # Push a new scope on the stack.
-        self.current_scope.children.append(Scope(name=name, parent=self.scopes[-1]))
-        self.scopes.append(self.current_scope.children[-1])
+        new_scope = Scope(name=name)
+        if self.scopes:
+            new_scope.parent = self.current_scope
+            self.current_scope.children.append(new_scope)
+        self.scopes.append(new_scope)
 
         # Initialize the set that keeps track of what identifier is being
         # declared when visiting its declaration.
         self.under_declaration[self.current_scope] = set()
+
+    def visit_ModuleDecl(self, node):
+        # Create a scope for the module under declaration, pre-filled with the
+        # the symbols of the builtin module.
+        self.push_scope(name=node.name)
+        for symbol in builtin_module.symbols.values():
+            self.current_scope.add(symbol)
+
+        # Add `Tango` itself as a symbol of the module scope, so we can also
+        # refer to builtin symbols by their fully qualified names (e.g.
+        # `Tango.Int`).
+        self.current_scope.add(
+            Symbol(name='Tango', type=ModuleType, nested=builtin_module.symbols))
+
+        # TODO Register a symbol for each imported module.
+
+        # NOTE We can choose here how we want to handle shadowing of imported
+        # symbols. With the current implementation, redeclaring a symbol that
+        # can't be overloaded will raise a DuplicateDeclaration error. That's
+        # because we don't replace imported symbols with unbound symbols in
+        # the module scope.
+
+        # Add all the symbols declared within the node's block.
+        for name in node.body.__info__['symbols']:
+            if name not in self.current_scope:
+                self.current_scope.add(Symbol(name=name))
+        node.body.__info__['scope'] = self.current_scope
+
+        self.visit(node.body)
+        self.scopes.pop()
+
+    def visit_PropertyDecl(self, node):
+        # Make sure the property's name wasn't already declared.
+        symbol = self.current_scope[node.name]
+        if symbol.code is not None:
+            raise DuplicateDeclaration(node.name)
+
+        # Bind the symbol to the current node.
+        symbol.code = node
+
+        # Bind the scopes of the container's type annotation and initializer.
+        self.under_declaration[self.current_scope].add(node.name)
+        self.generic_visit(node)
+        self.under_declaration[self.current_scope].remove(node.name)
+
+        # Bind the node to the current scope.
+        node.__info__['scope'] = self.current_scope
 
     def visit_pattern_matching_node(self, node):
         # Push a new scope on the stack before visiting the node's pattern,
@@ -125,40 +140,6 @@ class ScopeBinder(Visitor):
 
     def visit_SwitchCaseClause(self, node):
         self.visit_pattern_matching_node(node)
-
-    def visit_ModuleDecl(self, node):
-        # Push a new scope on the stack before visiting the node's block, pre-
-        # filled with the symbols declared within the latter.
-        self.push_scope(name=node.name)
-        for symbol in node.body.__info__['symbols']:
-            self.current_scope.add(Symbol(name=symbol))
-        node.body.__info__['scope'] = self.current_scope
-
-        self.visit(node.body)
-        self.scopes.pop()
-
-    def visit_ContainerDecl(self, node):
-        # Make sure the container's name wasn't already declared within the
-        # current scope.
-        symbol = self.current_scope[node.name]
-        if symbol.decl is not None:
-            raise DuplicateDeclaration(node.name)
-
-        # Bind the scopes of the container's type annotation and initializing
-        # expression (if any).
-        self.under_declaration[self.current_scope].add(node.name)
-
-        if node.initial_value:
-            self.visit(node.initial_value)
-        if node.type_annotation:
-            self.visit(node.type_annotation)
-
-        self.under_declaration[self.current_scope].remove(node.name)
-
-        # Finally, set the symbol declaration and mutability.
-        symbol.decl            = node
-        symbol.is_mutable      = node.is_mutable
-        node.__info__['scope'] = self.current_scope
 
     def visit_FunctionDecl(self, node):
         # If the function's identifer was already declared within the current
@@ -301,3 +282,66 @@ class ScopeBinder(Visitor):
         # Unfortunately, we can't bind the symbols of a select expression yet,
         # because it will depend on the kind of declaration the owner's
         # identifier is refencing.
+
+
+class Scope(object):
+
+    next_id = 0
+
+    def __init__(self, name, parent=None):
+        self.id = Scope.next_id
+        Scope.next_id += 1
+
+        self.name = name
+        self.parent = parent
+        self.children = []
+
+        # (String) -> Symbol
+        self.symbols = {}
+
+        # Types are first-class citizen (typed with `Type`), but there're many
+        # instances where we need the type name to refer to the type's itself
+        # rather than the first-class type value (e.g. in annotations).
+        # Whether the type name should be interpreted as a first-class value
+        # or a reference to its own type depends on where the name is used. As
+        # a result, we've to know what symbols refer to a type name in a given
+        # scope, so that we can decide what semantics give those identifiers.
+        self.typenames = set()
+
+    @property
+    def qualified_name(self):
+        if self.parent is None:
+            return self.name
+        return self.parent.qualified_name + '.' + self.name
+
+    def defining_scope(self, name):
+        if name in self.symbols:
+            return self
+        if self.parent:
+            return self.parent.defining_scope(name)
+        return None
+
+    def add(self, symbol):
+        self.symbols[symbol.name] = symbol
+        # symbol.scope = self
+
+    def get(self, name, default=None):
+        return self.symbols.get(name, default)
+
+    def __iter__(self):
+        return iter(self.symbols)
+
+    def __contains__(self, name):
+        return name in self.symbols
+
+    def __getitem__(self, name):
+        return self.symbols[name]
+
+    def __hash__(self):
+        return hash(self.id)
+
+    def __eq__(self, other):
+        return self.id == other.id
+
+    def __str__(self):
+        return self.qualified_name

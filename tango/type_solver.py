@@ -930,6 +930,7 @@ class TypeSolver(Visitor):
                     specialize_with_pattern(
                         self.environment.deepwalk(candidate), specializer, node)
                     for candidate in compatible_candidates))
+            print(len(specialized_candidates))
 
             # Then we filter out the specialized candidates whose signature
             # doesn't match the node's arguments or return type.
@@ -1132,7 +1133,7 @@ def specialize(signature, specializations):
     if isinstance(signature, GenericType):
         return specializations.get(id(signature), signature)
 
-    assert False
+    assert False, signature
 
 
 def specialize_with_pattern(unspecialized, specializer, call_node, specializations=None):

@@ -1,16 +1,18 @@
 import os
 import sys
 
-from tango.parser import parse
-from tango.scope_binder import SymbolsExtractor, ScopeBinder
-from tango.type_builder import build_types
-from tango.type_solver import infer_types
-from tango.type_disambiguator import disambiguate_types
+from tango.module_loader import ModuleLoader
 
-from tango.transpilers.python import transpile
+# from tango.parser import parse
+# from tango.scope_binder import SymbolsExtractor, ScopeBinder
+# from tango.type_builder import build_types
+# from tango.type_solver import infer_types
+# from tango.type_disambiguator import disambiguate_types
+#
+# from tango.transpilers.python import transpile
 
 from tango.ast import Node
-from tango.scope import Scope
+from tango.scope_binder import Scope
 from tango.types import BaseType
 from json import dumps, JSONEncoder
 
@@ -30,14 +32,27 @@ class SetEncoder(JSONEncoder):
 
 if __name__ == '__main__':
     filename = sys.argv[1]
+    module_loader = ModuleLoader(search_paths=[os.path.dirname(filename)])
+    module_decl = module_loader.load(os.path.splitext(filename)[0])
+
+    if len(sys.argv) > 2:
+        if sys.argv[2] == '--unparse':
+            print(module_decl)
+        elif sys.argv[2] == '--dump-ast':
+            print(dumps(module_decl.to_dict(), indent=2, sort_keys=True, cls=SetEncoder))
+
+
+if __name__ != '__main__':
+    filename = sys.argv[1]
     with open(filename) as f:
         source = f.read()
 
     # Parse the given source file.
-    module = parse(source)
-    module.name = '__main__'
-    # print(module)
-    # exit(0)
+    module_decl = parse(source)
+    module_decl.name = '__main__'
+    print(module_decl)
+    # print(dumps(module.to_dict(), indent=2, sort_keys=True, cls=SetEncoder))
+    exit(0)
 
     # Build the types syntactic definitions.
     module = build_types(module)

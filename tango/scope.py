@@ -67,3 +67,6 @@ class Scope(object):
 
     def __eq__(self, other):
         return self.id == other.id
+
+    def __str__(self):
+        return self.qualified_name

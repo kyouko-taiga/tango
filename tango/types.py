@@ -76,10 +76,21 @@ class TypeUnion(BaseType):
         return '[' + ' | '.join(map(str, self.types)) + ']'
 
 
+class TypeName(BaseType):
+
+    def __init__(self, name, type):
+        super().__init__()
+        self.name = name
+        self.type = type
+
+    def __str__(self):
+        return self.name
+
+
 class NominalType(BaseType):
 
     def __init__(
-            self, name, scope, inner_scope=None, members=None,
+            self, name, scope=None, inner_scope=None, members=None,
             generic_parameters=None, specializations=None):
 
         super().__init__(members)

@@ -236,6 +236,33 @@ fun_decl.define(
     maybe(block)
     >> make_fun_decl)
 
+conformance_clause = (
+    op_(':') + type_name + many(op_(',') + type_name)
+    >> flatten)
+
+import_clause = (
+    kw_('import') + type_name + many(op_(',') + type_name)
+    >> flatten)
+
+def make_abstract_type_decl(args):
+    attributes = set(token.value for token in args[0])
+    for attr in attributes:
+        if attr != 'override':
+            raise SyntaxError("invalid attribute '{}' on abstract type declaration".format(attr))
+
+    return AbstractTypeDecl(
+        attributes       = attributes,
+        name             = args[1],
+        conformance_list = args[2],
+        value            = args[3])
+
+abstract_type_decl = (
+    many(attribute) +
+    kw_('abs') + name +
+    maybe(conformance_clause) +
+    maybe(initializer)
+    >> make_abstract_type_decl)
+
 def make_struct_decl(args):
     attributes = set(token.value for token in args[0])
     for attr in attributes:
@@ -251,15 +278,7 @@ def make_struct_decl(args):
         where_clause       = args[5],
         body               = Block(args[6]))
 
-conformance_clause = (
-    op_(':') + type_name + many(op_(',') + type_name)
-    >> flatten)
-
-import_clause = (
-    kw_('import') + type_name + many(op_(',') + type_name)
-    >> flatten)
-
-struct_member = prop_decl | fun_decl | struct_decl | enum_decl | protocol_decl
+struct_member = prop_decl | fun_decl | struct_decl | enum_decl | protocol_decl | abstract_type_decl
 
 struct_member_list = (
     maybe(struct_member) + many(struct_member)
@@ -320,7 +339,9 @@ def make_enum_decl(args):
         where_clause       = args[5],
         body               = Block(args[6]))
 
-enum_member = prop_decl | fun_decl | struct_decl | enum_decl | enum_case_decl | protocol_decl
+enum_member = (
+    prop_decl | fun_decl | struct_decl | enum_decl | enum_case_decl | protocol_decl |
+    abstract_type_decl)
 
 enum_member_list = (
     maybe(enum_member) + many(enum_member)
@@ -335,23 +356,6 @@ enum_decl.define(
     maybe(where_clause) +
     op_('{') + enum_member_list + op_('}')
     >> make_enum_decl)
-
-def make_abstract_type_decl(args):
-    attributes = set(token.value for token in args[0])
-    for attr in attributes:
-        if attr != 'override':
-            raise SyntaxError("invalid attribute '{}' on abstract type declaration".format(attr))
-
-    return AbstractTypeDecl(
-        attributes       = attributes,
-        name             = args[0],
-        conformance_list = args[1])
-
-abstract_type_decl = (
-    many(attribute) +
-    kw_('abs') + name +
-    maybe(conformance_clause)
-    >> make_abstract_type_decl)
 
 def make_protocol_decl(args):
     attributes = set(token.value for token in args[0])
