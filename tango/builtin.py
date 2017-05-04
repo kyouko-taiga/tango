@@ -26,6 +26,10 @@ Double     = make_builtin_type('Double')
 String     = make_builtin_type('String')
 Bool       = make_builtin_type('Bool')
 
+
+builtin_module.symbols['true']  = Symbol(name='true',  type=Bool)
+builtin_module.symbols['false'] = Symbol(name='false', type=Bool)
+
 # Int.members = {
 #     'new': TypeUnion((
 #            FunctionType(domain=[Int],      codomain=Int),
