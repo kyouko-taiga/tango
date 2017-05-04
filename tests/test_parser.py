@@ -338,19 +338,17 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('x'))
         self.assertIsInstance(result, ast.PatternArgument)
-        self.assertIsInstance(result.value, ast.Pattern)
-        self.assertIsInstance(result.value.expression, ast.Identifier)
+        self.assertIsInstance(result.value, ast.Identifier)
+        self.assertIsNone(result.label)
 
         result = parser.parse(tango.tokenize('cst x'))
         self.assertIsInstance(result, ast.PatternArgument)
-        self.assertIsInstance(result.value, ast.Pattern)
-        self.assertIsInstance(result.value.expression, ast.ValueBindingPattern)
+        self.assertIsInstance(result.value, ast.ValueBindingPattern)
         self.assertIsNone(result.label)
 
         result = parser.parse(tango.tokenize('a = cst x'))
         self.assertIsInstance(result, ast.PatternArgument)
-        self.assertIsInstance(result.value, ast.Pattern)
-        self.assertIsInstance(result.value.expression, ast.ValueBindingPattern)
+        self.assertIsInstance(result.value, ast.ValueBindingPattern)
         self.assertEqual(result.label, 'a')
 
     def test_enum_case_pattern(self):
@@ -387,42 +385,54 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(result.arguments[1], ast.PatternArgument)
         self.assertEqual(result.arguments[1].label, 'tail')
 
-    def test_pattern(self):
-        parser = tango.pattern + skip(finished)
-
-        result = parser.parse(tango.tokenize('_'))
-        self.assertIsInstance(result, ast.Pattern)
-        self.assertIsInstance(result.expression, ast.WildcardPattern)
-        self.assertIsNone(result.where_clause)
-
-        result = parser.parse(tango.tokenize('a'))
-        self.assertIsInstance(result, ast.Pattern)
-        self.assertEqual(result.expression.name, 'a')
-        self.assertIsNone(result.where_clause)
-
-        result = parser.parse(tango.tokenize('cst x'))
-        self.assertIsInstance(result, ast.Pattern)
-        self.assertIsInstance(result.expression, ast.ValueBindingPattern)
-        self.assertIsNone(result.where_clause)
-
-        result = parser.parse(tango.tokenize('.succ(cst x)'))
-        self.assertIsInstance(result, ast.Pattern)
-        self.assertIsInstance(result.expression, ast.EnumCasePattern)
-        self.assertIsNone(result.where_clause)
-
-        result = parser.parse(tango.tokenize('.some(cst x) where x > 0'))
-        self.assertIsInstance(result, ast.Pattern)
-        self.assertIsInstance(result.expression, ast.EnumCasePattern)
-        self.assertIsInstance(result.where_clause, ast.BinaryExpression)
-
     def test_matching_pattern(self):
         parser = tango.matching_pattern + skip(finished)
 
         result = parser.parse(tango.tokenize('a ~= cst x'))
         self.assertIsInstance(result, ast.MatchingPattern)
         self.assertIsInstance(result.value, ast.Identifier)
-        self.assertIsInstance(result.pattern, ast.Pattern)
-        self.assertIsInstance(result.pattern.expression, ast.ValueBindingPattern)
+        self.assertIsInstance(result.pattern, ast.ValueBindingPattern)
+
+    def test_pattern(self):
+        parser = tango.pattern + skip(finished)
+
+        result = parser.parse(tango.tokenize('a'))
+        self.assertIsInstance(result, ast.Identifier)
+
+        result = parser.parse(tango.tokenize('_'))
+        self.assertIsInstance(result, ast.WildcardPattern)
+
+        result = parser.parse(tango.tokenize('cst x'))
+        self.assertIsInstance(result, ast.ValueBindingPattern)
+
+        result = parser.parse(tango.tokenize('.succ(cst x)'))
+        self.assertIsInstance(result, ast.EnumCasePattern)
+
+        result = parser.parse(tango.tokenize('a ~= .succ(cst x)'))
+        self.assertIsInstance(result, ast.MatchingPattern)
+
+    def test_pattern_with_where_clause(self):
+        parser = tango.pattern + skip(finished)
+
+        result = parser.parse(tango.tokenize('a where a > 0'))
+        self.assertIsInstance(result, ast.Pattern)
+        self.assertIsInstance(result.expression, ast.Identifier)
+        self.assertIsInstance(result.where_clause, ast.BinaryExpression)
+
+        result = parser.parse(tango.tokenize('_ where a > 0'))
+        self.assertIsInstance(result, ast.Pattern)
+        self.assertIsInstance(result.expression, ast.WildcardPattern)
+        self.assertIsInstance(result.where_clause, ast.BinaryExpression)
+
+        result = parser.parse(tango.tokenize('cst x where a > 0'))
+        self.assertIsInstance(result, ast.Pattern)
+        self.assertIsInstance(result.expression, ast.ValueBindingPattern)
+        self.assertIsInstance(result.where_clause, ast.BinaryExpression)
+
+        result = parser.parse(tango.tokenize('.succ(cst x) where a > 0'))
+        self.assertIsInstance(result, ast.Pattern)
+        self.assertIsInstance(result.expression, ast.EnumCasePattern)
+        self.assertIsInstance(result.where_clause, ast.BinaryExpression)
 
     def test_if_expr(self):
         parser = tango.if_expr + skip(finished)
@@ -445,7 +455,7 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('case a { }'))
         self.assertIsInstance(result, ast.SwitchCaseClause)
-        self.assertEqual(result.pattern.expression.name, 'a')
+        self.assertEqual(result.pattern.name, 'a')
         self.assertFalse(result.body.statements)
 
     def test_switch_expr(self):
@@ -460,14 +470,14 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(result, ast.Switch)
         self.assertEqual(result.expression.name, 'a')
         self.assertEqual(len(result.clauses), 1)
-        self.assertEqual(result.clauses[0].pattern.expression.name, 'b')
+        self.assertEqual(result.clauses[0].pattern.name, 'b')
 
         result = parser.parse(tango.tokenize('switch a { case b { } case c { } }'))
         self.assertIsInstance(result, ast.Switch)
         self.assertEqual(result.expression.name, 'a')
         self.assertEqual(len(result.clauses), 2)
-        self.assertEqual(result.clauses[0].pattern.expression.name, 'b')
-        self.assertEqual(result.clauses[1].pattern.expression.name, 'c')
+        self.assertEqual(result.clauses[0].pattern.name, 'b')
+        self.assertEqual(result.clauses[1].pattern.name, 'c')
 
     def test_break_stmt(self):
         parser = tango.break_stmt + skip(finished)
@@ -497,21 +507,21 @@ class TestParser(unittest.TestCase):
         result = parser.parse(tango.tokenize('for _ in a { }'))
         self.assertIsInstance(result, ast.For)
         self.assertIsNone(result.label)
-        self.assertIsInstance(result.iterator, ast.Pattern)
+        self.assertIsInstance(result.iterator, ast.WildcardPattern)
         self.assertEqual(result.sequence.name, 'a')
         self.assertFalse(result.body.statements)
 
         result = parser.parse(tango.tokenize('for x in a { }'))
         self.assertIsInstance(result, ast.For)
         self.assertIsNone(result.label)
-        self.assertEqual(result.iterator.expression.name, 'x')
+        self.assertEqual(result.iterator.name, 'x')
         self.assertEqual(result.sequence.name, 'a')
         self.assertFalse(result.body.statements)
 
         result = parser.parse(tango.tokenize('foo: for x in a { }'))
         self.assertIsInstance(result, ast.For)
         self.assertEqual(result.label, 'foo')
-        self.assertEqual(result.iterator.expression.name, 'x')
+        self.assertEqual(result.iterator.name, 'x')
         self.assertEqual(result.sequence.name, 'a')
         self.assertFalse(result.body.statements)
 
@@ -535,12 +545,12 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('x = 0'))
         self.assertIsInstance(result, ast.Assignment)
-        self.assertEqual(result.lvalue.expression.name, 'x')
+        self.assertEqual(result.lvalue.name, 'x')
         self.assertEqual(result.rvalue.value, '0')
 
         result = parser.parse(tango.tokenize('x = if a { } else { }'))
         self.assertIsInstance(result, ast.Assignment)
-        self.assertEqual(result.lvalue.expression.name, 'x')
+        self.assertEqual(result.lvalue.name, 'x')
         self.assertIsInstance(result.rvalue, ast.If)
         self.assertEqual(result.rvalue.condition.name, 'a')
 

@@ -751,16 +751,6 @@ enum_case_pattern = (
     op_('(') + pattern_arg_list + op_(')')
     >> make_enum_case_pattern)
 
-def make_pattern(args):
-    return Pattern(
-        expression   = args[0],
-        where_clause = args[1])
-
-pattern.define(
-    (wildcard_pattern | value_binding_pattern | tuple_pattern | enum_case_pattern | expr) +
-    maybe(where_clause)
-    >> make_pattern)
-
 def make_matching_pattern(args):
     return MatchingPattern(
         value        = args[0],
@@ -770,7 +760,18 @@ matching_pattern = (
     expr + op_('~=') + pattern
     >> make_matching_pattern)
 
-condition = matching_pattern | expr
+def make_pattern(args):
+    if args[1] is not None:
+        return Pattern(
+            expression   = args[0],
+            where_clause = args[1])
+    return args[0]
+
+pattern.define(
+    (wildcard_pattern | value_binding_pattern | tuple_pattern | enum_case_pattern |
+     matching_pattern | expr) +
+    maybe(where_clause)
+    >> make_pattern)
 
 def make_if_expr(args):
     return If(
@@ -782,7 +783,7 @@ else_clause = (
     (kw_('else') + if_expr) | (kw_('else') + block))
 
 if_expr.define(
-    kw_('if') + condition + block + maybe(else_clause)
+    kw_('if') + pattern + block + maybe(else_clause)
     >> make_if_expr)
 
 def make_switch_case_clause(args):
@@ -865,7 +866,7 @@ def make_while_loop(args):
 
 while_loop = (
     maybe(name + op_(':')) +
-    kw_('while') + condition + block
+    kw_('while') + pattern + block
     >> make_while_loop)
 
 stmt.define(
