@@ -2,8 +2,8 @@ from .ast import *
 from .builtin import builtin_module, ModuleType
 from .errors import DuplicateDeclaration, UndefinedSymbol
 from .module import Symbol
-# from .scope import Scope
-from .types import BaseType
+from .scope import Scope
+from .types import BaseType, FunctionType
 
 
 class ScopeBinder(Visitor):
@@ -85,87 +85,63 @@ class ScopeBinder(Visitor):
 
         # Bind the symbol to the current node.
         symbol.code = node
+        node.__info__['scope'] = self.current_scope
+
+        # Push a new scope on the stack before visiting them, pre-filled with
+        # the `get` and `set` symbols.
+        self.push_scope()
+        self.current_scope.add(Symbol(name='get'))
+        self.current_scope.add(Symbol(name='set'))
+
+        # Bind the scopes of the container's type annotation and initializer.
+        self.under_declaration[self.current_scope].add(node.name)
+        self.generic_visit(node)
+        self.under_declaration[self.current_scope].remove(node.name)
+        self.scopes.pop()
+
+    def visit_ValueBindingPattern(self, node):
+        # Make sure the name of the pattern wasn't already declared.
+        symbol = self.current_scope[node.name]
+        if symbol.code is not None:
+            raise DuplicateDeclaration(node.name)
+
+        # Bind the symbol to the current node.
+        symbol.code = node
+        node.__info__['scope'] = self.current_scope
 
         # Bind the scopes of the container's type annotation and initializer.
         self.under_declaration[self.current_scope].add(node.name)
         self.generic_visit(node)
         self.under_declaration[self.current_scope].remove(node.name)
 
-        # Bind the node to the current scope.
-        node.__info__['scope'] = self.current_scope
-
-    def visit_pattern_matching_node(self, node):
-        # Push a new scope on the stack before visiting the node's pattern,
-        # pre-filled with the symbols declared as pattern parameters.
-        self.push_scope()
-        for parameter in node.pattern.parameters:
-            self.current_scope.add(Symbol(name=parameter.name))
-        self.visit(node.pattern)
-
-        # Insert the symbols declared within the node's body into the current
-        # scope. Note that we do that *after* we visited the declarations of
-        # pattern parameters, so as to avoid binding any of them to the
-        # symbols of the node's scope.
-        node.body.__info__['scope'] = self.current_scope
-        for symbol in node.body.__info__['symbols']:
-            # Note that we could detect whether a symbol collides with a the
-            # name of a parameter here. But letting the scope binder find
-            # about the error while visiting the duplicate declaration makes
-            # for better error messages.
-            if symbol not in self.current_scope:
-                self.current_scope.add(Symbol(name=symbol))
-
-        # Visit the node's body.
-        self.visit(node.body)
-        self.scopes.pop()
-
-    def visit_If(self, node):
-        self.visit_pattern_matching_node(node)
-
-        # If the node's else clause is a simple block, we have to push a new
-        # scope on the stack before visiting it.
-        if isinstance(node.else_clause, Block):
-            self.push_scope()
-            for symbol in node.else_clause.__info__['symbols']:
-                self.current_scope.add(Symbol(name=symbol))
-            node.else_clause.__info__['scope'] = self.current_scope
-
-            self.visit(node.else_clause)
-            self.scopes.pop()
-
-        # If the node's else clause is another if expression, we can let its
-        # visitor create a new scope for it.
-        elif isinstance(node.else_clause, If):
-            self.visit(node.else_clause)
-
-    def visit_SwitchCaseClause(self, node):
-        self.visit_pattern_matching_node(node)
-
     def visit_FunctionDecl(self, node):
         # If the function's identifer was already declared within the current
         # scope, make sure it is associated with other function declarations
         # only (overloading).
         symbol = self.current_scope[node.name]
-        if symbol.decl:
-            if not isinstance(symbol.decl, list) or not isinstance(symbol.decl[0], FunctionDecl):
+        if (symbol.code is not None):
+            if not (isinstance(symbol.code, FunctionDecl) or
+                    isinstance(symbol.type, FunctionType)):
                 raise DuplicateDeclaration(node.name)
 
-        # Set the symbol declaration to the current node, so that we can
-        # properly refer to it in nested scopes.
-        symbol.decl            = [node] if symbol.decl is None else symbol.decl + [node]
+        # Bind the symbol to the current node.
+        if symbol.code is None:
+            symbol.code = node
+        else:
+            self.current_scope.add(Symbol(name=node.name, code=node))
         node.__info__['scope'] = self.current_scope
 
         # Push a new scope on the stack before visiting the function's
         # declaration, pre-filled with the symbols declared within the
         # function's generic parameters.
         self.push_scope()
-        for symbol in node.generic_parameters:
-            self.current_scope.add(Symbol(name=symbol, decl=Identifier(name=symbol)))
+        for name in node.generic_parameters:
+            self.current_scope.add(Symbol(name=name, code=Identifier(name=name)))
         node.body.__info__['scope'] = self.current_scope
 
         # Visit the default values of the function's parameters (if any). Note
         # that we allow such default values to refer to the function itself,
-        # so as to match the behaviour of container declarations.
+        # as if it were defined in an outer scope.
         for parameter in node.signature.parameters:
             self.visit(parameter.type_annotation)
             if parameter.default_value:
@@ -178,16 +154,20 @@ class ScopeBinder(Visitor):
         if not isinstance(node.signature.return_type, BaseType):
             self.visit(node.signature.return_type)
 
+        # Visit the where clause of the function (if any).
+        if node.where_clause:
+            self.visit(node.where_clause)
+
         # Add the parameter names to the function's scope. Note that we do
         # that *after* we visited the default values and the return type, so
-        # as to avoid binding any of them to the parameter names.
+        # as to avoid binding any of them to be bound to any parameter name.
         for parameter in node.signature.parameters:
             # Make sure the parameter's name doesn't collide with the name of
             # a generic parameter.
             if parameter.name in self.current_scope:
                 raise DuplicateDeclaration(parameter.name)
 
-            self.current_scope.add(Symbol(name=parameter.name, decl=parameter))
+            self.current_scope.add(Symbol(name=parameter.name, code=parameter))
             parameter.__info__['scope'] = self.current_scope
 
         # Insert the symbols declared within the function's block into the
@@ -195,9 +175,9 @@ class ScopeBinder(Visitor):
         # values and the return type, so as to avoid binding any of them to
         # the symbols of the function's scope.
         for symbol in node.body.__info__['symbols']:
-            # Note that we could detect whether a symbol collides with a the
-            # name of a parameter or generic parameter here. But letting the
-            # scope binder find about the error while visiting the duplicate
+            # We could detect whether a symbol collides with a the name of a
+            # parameter or generic parameter here. But letting the scope
+            # binder find about the error while visiting the duplicate
             # declaration makes for better error messages.
             if symbol not in self.current_scope:
                 self.current_scope.add(Symbol(name=symbol))
@@ -206,31 +186,43 @@ class ScopeBinder(Visitor):
         self.visit(node.body)
         self.scopes.pop()
 
+    def visit_AbstractTypeDecl(self, node):
+        # Make sure the abstract type's name wasn't already declared.
+        symbol = self.current_scope[node.name]
+        if symbol.code is not None:
+            raise DuplicateDeclaration(node.name)
+
+        # Bind the symbol to the current node.
+        symbol.code = node
+        node.__info__['scope'] = self.current_scope
+
+        # Visit the node's initializer (if any).
+        self.generic_visit(node)
+
     def visit_EnumCaseDecl(self, node):
         # Make sure the case's identifier wasn't already declared within the
         # current scope.
         symbol = self.current_scope[node.name]
-        if symbol.decl is not None:
+        if symbol.code is not None:
             raise DuplicateDeclaration(node.name)
+
+        # Bind the symbol to the current node.
+        symbol.code = node
+        node.__info__['scope'] = self.current_scope
 
         # Visit the case's parameters (if any).
         for parameter in node.parameters:
             self.visit(parameter)
 
-        # Finally, set the symbol declaration.
-        symbol.decl            = node
-        node.__info__['scope'] = self.current_scope
-
     def visit_nominal_type(self, node):
         # Make sure the type's identifier wasn't already declared within the
         # current scope.
         symbol = self.current_scope[node.name]
-        if symbol.decl is not None:
+        if symbol.code is not None:
             raise DuplicateDeclaration(node.name)
 
-        # Set the symbol declaration, so that we can properly refer to it in
-        # nested scopes.
-        symbol.decl            = node
+        # Bind the symbol to the current node.
+        symbol.code = node
         node.__info__['scope'] = self.current_scope
 
         # Insert the type's name in the typenames of the current scope.
@@ -240,20 +232,27 @@ class ScopeBinder(Visitor):
         # filled with the symbols it declares, as well as those declared as
         # its generic parameters.
         self.push_scope(name=node.name)
-        for symbol in node.body.__info__['symbols']:
-            self.current_scope.add(Symbol(name=symbol))
-        for symbol in node.generic_parameters:
-            self.current_scope.add(Symbol(name=symbol, decl=Identifier(name=symbol)))
+        for name in node.body.__info__['symbols']:
+            self.current_scope.add(Symbol(name=name))
+        for name in node.generic_parameters:
+            self.current_scope.add(Symbol(name=name, code=Identifier(name=symbol)))
         node.body.__info__['scope'] = self.current_scope
 
-        # Finally, visit the type's body.
-        self.visit(node.body)
+        # Introduces a `Self` symbol in the type's scope, to bind references
+        # to the placeholder.
+        self.current_scope.add(Symbol(name='Self', code=node))
+
+        # Visit the type's declaration.
+        self.generic_visit(node.body)
         self.scopes.pop()
+
+    def visit_StructDecl(self, node):
+        self.visit_nominal_type(node)
 
     def visit_EnumDecl(self, node):
         self.visit_nominal_type(node)
 
-    def visit_StructDecl(self, node):
+    def visit_ProtocolDecl(self, node):
         self.visit_nominal_type(node)
 
     def visit_Identifier(self, node):
@@ -270,9 +269,7 @@ class ScopeBinder(Visitor):
             raise UndefinedSymbol(node.name)
         node.__info__['scope'] = defining_scope
 
-    def visit_TypeIdentifier(self, node):
-        self.visit_Identifier(node)
-        for argument in node.specialization_arguments:
+        for argument in node.specializations:
             self.visit(argument)
 
     def visit_Select(self, node):
@@ -283,65 +280,146 @@ class ScopeBinder(Visitor):
         # because it will depend on the kind of declaration the owner's
         # identifier is refencing.
 
+    def visit_ImplicitSelect(self, node):
+        pass
 
-class Scope(object):
+    def visit_If(self, node):
+        # Push a new scope on the stack before visiting the node's condition,
+        # pre-filled with the symbols it declares.
+        self.push_scope()
+        for name in node.__info__['symbols']:
+            self.current_scope.add(Symbol(name=name))
+        self.visit(node.condition)
 
-    next_id = 0
+        # Push yet another scope on the stack before visiting the node's body,
+        # pre-filled with the symbols it declares. Note how we nest this
+        # second scope inside that of the node's condition, so that we can
+        # bind symbols declared within patterns.
+        self.push_scope()
+        for name in node.body.__info__['symbols']:
+            self.current_scope.add(Symbol(name=name))
+        node.body.__info__['scope'] = self.current_scope
+        self.visit(node.body)
 
-    def __init__(self, name, parent=None):
-        self.id = Scope.next_id
-        Scope.next_id += 1
+        # Pop both scopes.
+        self.scopes.pop()
+        self.scopes.pop()
 
-        self.name = name
-        self.parent = parent
-        self.children = []
+        # If the node's else clause is a simple block, we have to push a new
+        # scope on the stack before visiting it.
+        if isinstance(node.else_clause, Block):
+            self.push_scope()
+            for name in node.else_clause.__info__['symbols']:
+                self.current_scope.add(Symbol(name=name))
+            node.else_clause.__info__['scope'] = self.current_scope
 
-        # (String) -> Symbol
-        self.symbols = {}
+            self.visit(node.else_clause)
+            self.scopes.pop()
 
-        # Types are first-class citizen (typed with `Type`), but there're many
-        # instances where we need the type name to refer to the type's itself
-        # rather than the first-class type value (e.g. in annotations).
-        # Whether the type name should be interpreted as a first-class value
-        # or a reference to its own type depends on where the name is used. As
-        # a result, we've to know what symbols refer to a type name in a given
-        # scope, so that we can decide what semantics give those identifiers.
-        self.typenames = set()
+        # If the node's else clause is another if expression, we can let its
+        # visitor create take it from there.
+        elif isinstance(node.else_clause, If):
+            self.visit(node.else_clause)
 
-    @property
-    def qualified_name(self):
-        if self.parent is None:
-            return self.name
-        return self.parent.qualified_name + '.' + self.name
+    def visit_SwitchCaseClause(self, node):
+        # Push a new scope on the stack before visiting the node's pattern,
+        # pre-filled with the symbols it declares.
+        self.push_scope()
+        for name in node.__info__['symbols']:
+            self.current_scope.add(Symbol(name=name))
+        self.visit(node.pattern)
 
-    def defining_scope(self, name):
-        if name in self.symbols:
-            return self
-        if self.parent:
-            return self.parent.defining_scope(name)
-        return None
+        # Push yet another scope on the stack before visiting the node's body,
+        # pre-filled with the symbols it declares. Note how we nest this
+        # second scope inside that of the node's condition, so that we can
+        # bind symbols declared within patterns.
+        self.push_scope()
+        for name in node.body.__info__['symbols']:
+            self.current_scope.add(Symbol(name=name))
+        node.body.__info__['scope'] = self.current_scope
+        self.visit(node.body)
 
-    def add(self, symbol):
-        self.symbols[symbol.name] = symbol
-        # symbol.scope = self
+        # Pop both scopes.
+        self.scopes.pop()
+        self.scopes.pop()
 
-    def get(self, name, default=None):
-        return self.symbols.get(name, default)
+    def visit_For(self, node):
+        # Push a new scope on the stack before visiting the node's iterator,
+        # pre-filled with the symbols it declares.
+        self.push_scope()
+        for name in node.__info__['symbols']:
+            self.current_scope.add(Symbol(name=name))
+        self.visit(node.iterator)
 
-    def __iter__(self):
-        return iter(self.symbols)
+        # Push yet another scope on the stack before visiting the node's body,
+        # pre-filled with the symbols it declares. Note how we nest this
+        # second scope inside that of the node's condition, so that we can
+        # bind symbols declared within patterns.
+        self.push_scope()
+        for name in node.body.__info__['symbols']:
+            self.current_scope.add(Symbol(name=name))
+        node.body.__info__['scope'] = self.current_scope
+        self.visit(node.body)
 
-    def __contains__(self, name):
-        return name in self.symbols
+        # Pop both scopes.
+        self.scopes.pop()
+        self.scopes.pop()
 
-    def __getitem__(self, name):
-        return self.symbols[name]
+    def visit_While(self, node):
+        # Push a new scope on the stack before visiting the node's condition,
+        # pre-filled with the symbols it declares.
+        self.push_scope()
+        for name in node.__info__['symbols']:
+            self.current_scope.add(Symbol(name=name))
+        self.visit(node.condition)
 
-    def __hash__(self):
-        return hash(self.id)
+        # Push yet another scope on the stack before visiting the node's body,
+        # pre-filled with the symbols it declares. Note how we nest this
+        # second scope inside that of the node's condition, so that we can
+        # bind symbols declared within patterns.
+        self.push_scope()
+        for name in node.body.__info__['symbols']:
+            self.current_scope.add(Symbol(name=name))
+        node.body.__info__['scope'] = self.current_scope
+        self.visit(node.body)
 
-    def __eq__(self, other):
-        return self.id == other.id
+        # Pop both scopes.
+        self.scopes.pop()
+        self.scopes.pop()
 
-    def __str__(self):
-        return self.qualified_name
+    def visit_Closure(self, node):
+        # Push a new scope on the stack before visiting the node's parameters
+        # and statements, pre-filled with the symbols they declare.
+        self.push_scope()
+        for name in node.__info__['symbols']:
+            self.current_scope.add(Symbol(name=name))
+        node.__info__['scope'] = self.current_scope
+
+        self.generic_visit(node)
+        self.scopes.pop()
+
+
+class SymbolsExtractor(Visitor):
+    '''Annotate every Block node with the symbols it declares.'''
+
+    scope_opening_node_classes = (Block, If, SwitchCaseClause, For, While, Closure,)
+
+    symbol_node_classes = (
+        PropertyDecl, FunctionDecl, AbstractTypeDecl,
+        StructDecl, EnumDecl, EnumCaseDecl, ProtocolDecl,
+        ValueBindingPattern,)
+
+    def __init__(self):
+        self.blocks = []
+
+    def visit(self, node):
+        if isinstance(node, SymbolsExtractor.scope_opening_node_classes):
+            self.blocks.append(node)
+            node.__info__['symbols'] = set()
+        elif isinstance(node, SymbolsExtractor.symbol_node_classes):
+            self.blocks[-1].__info__['symbols'].add(node.name)
+
+        self.generic_visit(node)
+
+        if isinstance(node, SymbolsExtractor.scope_opening_node_classes):
+            self.blocks.pop()

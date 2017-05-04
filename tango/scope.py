@@ -1,15 +1,14 @@
-class Symbol(object):
-
-    def __init__(self, name, is_mutable=False, decl=None, type=None):
-        self.name = name
-        self.is_mutable = is_mutable
-        self.decl = decl
-        self.type = type
-
-        self.scope = None
-
-
 class Scope(object):
+    '''
+    A scope works like a dictionary of symbols, but that can store multiple
+    values for the same symbol name. This is necessary because some symbols
+    may be overloaded.
+
+    Internally, all values for a key are stored as a list, but the standard
+    dict access method (`__getitem__`) will only return the first value for a
+    key. To get the full list of all values for a symbol name, use the list
+    methods.
+    '''
 
     next_id = 0
 
@@ -47,11 +46,18 @@ class Scope(object):
         return None
 
     def add(self, symbol):
-        self.symbols[symbol.name] = symbol
-        symbol.scope = self
+        if symbol in self.symbols:
+            self.symbols[symbol.name].append(symbol)
+        else:
+            self.symbols[symbol.name] = [symbol]
 
     def get(self, name, default=None):
-        return self.symbols.get(name, default)
+        if name in self.symbols:
+            return self[name]
+        return default
+
+    def getlist(self, name):
+        return self.symbols[name]
 
     def __iter__(self):
         return iter(self.symbols)
@@ -60,7 +66,7 @@ class Scope(object):
         return name in self.symbols
 
     def __getitem__(self, name):
-        return self.symbols[name]
+        return self.symbols[name][0]
 
     def __hash__(self):
         return hash(self.id)

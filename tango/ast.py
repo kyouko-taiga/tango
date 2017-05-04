@@ -866,6 +866,7 @@ class For(Node):
     _fields = ('iterator', 'sequence', 'body', 'label',)
 
     def __init__(self, iterator, sequence, body, label=None):
+        super().__init__()
         self.iterator = iterator
         self.sequence = sequence
         self.body     = body
@@ -883,6 +884,7 @@ class While(Node):
     _fields = ('condition', 'body', 'label',)
 
     def __init__(self, condition, body, label=None):
+        super().__init__()
         self.condition = condition
         self.body      = body
         self.label     = label
