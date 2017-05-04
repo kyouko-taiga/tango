@@ -770,9 +770,11 @@ matching_pattern = (
     expr + op_('~=') + pattern
     >> make_matching_pattern)
 
+condition = matching_pattern | expr
+
 def make_if_expr(args):
     return If(
-        pattern     = args[0],
+        condition   = args[0],
         body        = args[1],
         else_clause = args[2])
 
@@ -780,7 +782,7 @@ else_clause = (
     (kw_('else') + if_expr) | (kw_('else') + block))
 
 if_expr.define(
-    kw_('if') + pattern + block + maybe(else_clause)
+    kw_('if') + condition + block + maybe(else_clause)
     >> make_if_expr)
 
 def make_switch_case_clause(args):
@@ -857,13 +859,13 @@ for_loop = (
 
 def make_while_loop(args):
     return While(
-        label   = args[0],
-        pattern = args[1],
-        body    = args[2])
+        label     = args[0],
+        condition = args[1],
+        body      = args[2])
 
 while_loop = (
     maybe(name + op_(':')) +
-    kw_('while') + pattern + block
+    kw_('while') + condition + block
     >> make_while_loop)
 
 stmt.define(

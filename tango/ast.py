@@ -749,18 +749,18 @@ class MatchingPattern(Node):
 
 class If(Node):
 
-    _fields = ('pattern', 'body', 'else_clause',)
+    _fields = ('condition', 'body', 'else_clause',)
 
-    def __init__(self, pattern, body, else_clause=None):
+    def __init__(self, condition, body, else_clause=None):
         super().__init__()
-        self.pattern     = pattern
+        self.condition   = condition
         self.body        = body
         self.else_clause = else_clause
 
     def __str__(self):
         if self.else_clause:
-            return 'if {} {} else {}'.format(self.pattern, self.body, self.else_clause)
-        return 'if {} {}'.format(self.pattern, self.body)
+            return 'if {} {} else {}'.format(self.condition, self.body, self.else_clause)
+        return 'if {} {}'.format(self.condition, self.body)
 
 
 class SwitchCaseClause(Node):
@@ -880,15 +880,15 @@ class For(Node):
 
 class While(Node):
 
-    _fields = ('pattern', 'body', 'label',)
+    _fields = ('condition', 'body', 'label',)
 
-    def __init__(self, pattern, body, label=None):
-        self.pattern = pattern
-        self.body    = body
-        self.label   = label
+    def __init__(self, condition, body, label=None):
+        self.condition = condition
+        self.body      = body
+        self.label     = label
 
     def __str__(self):
-        result = 'while {} {}'.format(self.pattern, self.body)
+        result = 'while {} {}'.format(self.condition, self.body)
         if self.label:
             return self.label + ': ' + result
         return result

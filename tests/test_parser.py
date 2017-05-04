@@ -429,7 +429,7 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('if a { }'))
         self.assertIsInstance(result, ast.If)
-        self.assertEqual(result.pattern.expression.name, 'a')
+        self.assertEqual(result.condition.name, 'a')
         self.assertFalse(result.body.statements)
         self.assertIsNone(result.else_clause)
 
@@ -438,7 +438,7 @@ class TestParser(unittest.TestCase):
 
         result = parser.parse(tango.tokenize('if a { } else if b { }'))
         self.assertIsInstance(result.else_clause, ast.If)
-        self.assertEqual(result.else_clause.pattern.expression.name, 'b')
+        self.assertEqual(result.else_clause.condition.name, 'b')
 
     def test_switch_case_clause(self):
         parser = tango.switch_case_clause + skip(finished)
@@ -521,13 +521,13 @@ class TestParser(unittest.TestCase):
         result = parser.parse(tango.tokenize('while a { }'))
         self.assertIsInstance(result, ast.While)
         self.assertIsNone(result.label)
-        self.assertIsInstance(result.pattern, ast.Pattern)
+        self.assertEqual(result.condition.name, 'a')
         self.assertFalse(result.body.statements)
 
         result = parser.parse(tango.tokenize('foo: while a { }'))
         self.assertIsInstance(result, ast.While)
         self.assertEqual(result.label, 'foo')
-        self.assertIsInstance(result.pattern, ast.Pattern)
+        self.assertEqual(result.condition.name, 'a')
         self.assertFalse(result.body.statements)
 
     def test_assignment(self):
@@ -542,7 +542,7 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(result, ast.Assignment)
         self.assertEqual(result.lvalue.expression.name, 'x')
         self.assertIsInstance(result.rvalue, ast.If)
-        self.assertEqual(result.rvalue.pattern.expression.name, 'a')
+        self.assertEqual(result.rvalue.condition.name, 'a')
 
         # TODO Test tuple assignment.
 
