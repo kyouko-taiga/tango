@@ -1,6 +1,10 @@
-#struct S<T> {
-#    abs Key = T
-#    fun new(mut _ self: Self.Key) -> Self {}
-#}
-
-cst x = y
+fun gcd(var x: Int) -> (var y: Int) -> Int {
+    fun _gcd(var y: Int) -> Int {
+        if y == 0 {
+            return x
+        }
+        return gcd(x = y)(y = x % b)
+    }
+}
+var a: Int
+a = gcd(x = 12)(y = 8)
