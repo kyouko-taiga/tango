@@ -13,7 +13,7 @@ _simple_stmt   : var_decl
                | assign_stmt
                | if_stmt
                | return_stmt
-//             | call_expr
+               | call_expr
 
 var_decl       : "var" NAME ":" _type_ident
 
@@ -70,7 +70,6 @@ NAME           : /[^\W\d][\w]*/
 NUMBER         : /(0|([1-9][0-9]*))(\.[0-9]+)?([Ee][+-]?[0-9]+)?/
 STRING         : /'[^']*'/
 
-%ignore /[\t \f]+/              // WS
-// %ignore /\\\\[\t \f]*\r?\n/     // LINE_CONT
+%ignore /[\t \f]+/
 %ignore COMMENT
 %ignore _NEWLINE
