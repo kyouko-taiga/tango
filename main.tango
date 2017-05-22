@@ -3,7 +3,7 @@ fun gcd(var x: Int) -> (var y: Int) -> Int {
         if y == 0 {
             return x
         }
-        return gcd(x = y)(y = x % b)
+        return gcd(x = y)(y = x % y)
     }
 }
 var a: Int

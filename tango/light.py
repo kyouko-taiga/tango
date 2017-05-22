@@ -3,6 +3,7 @@ import os
 from lark import Lark, Transformer
 
 from . import ast
+from .builtin import Int, Double, String
 
 
 grammar_filename = os.path.join(os.path.dirname(__file__), 'light.g')
@@ -22,8 +23,8 @@ class TangoLightTransformer(Transformer):
     def stmt_list(self, items):
         return list(items)
 
-    def var_decl(self, items):
-        return ast.VariableDecl(
+    def prop_decl(self, items):
+        return ast.PropertyDecl(
             name            = items[0].value,
             type_annotation = items[1])
 
@@ -74,11 +75,27 @@ class TangoLightTransformer(Transformer):
             callee   = items[0],
             argument = items[1])
 
+    def call_arg(self, items):
+        return ast.CallArgument(
+            label    = items[0],
+            operator = items[1].children[0].value,
+            value    = items[2])
+
     def ident(self, items):
-        return items[0].value
+        return ast.Identifier(name = items[0].value)
 
     def literal(self, items):
-        return ast.Literal(value=items[0])
+        value = items[0].value
+        if items[0].type == 'NUMBER':
+            result = ast.Literal(value=value)
+            if ('.' in value) or ('e' in value) or ('E' in value):
+                result.__info__['type'] = Double
+            else:
+                result.__info__['type'] = Int
+        elif items[0].type == 'STRING':
+            result = ast.Literal(value=value[1:-1])
+            result.__info__['type'] = String
+        return result
 
     def fun_sign(self, items):
         return ast.FunctionSignature(

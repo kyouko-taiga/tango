@@ -26,11 +26,12 @@ class Node(object):
 
 class ModuleDecl(Node):
 
-    _fields = ('body',)
+    _fields = ('body','name',)
 
-    def __init__(self, body):
+    def __init__(self, body, name=None):
         super().__init__()
         self.body = body
+        self.name = name
 
     def __str__(self):
         return '\n'.join(map(str, self.body.statements))
@@ -52,7 +53,7 @@ class Block(Node):
         return result + '}'
 
 
-class VariableDecl(Node):
+class PropertyDecl(Node):
 
     _fields = ('name', 'type_annotation',)
 
@@ -111,6 +112,7 @@ class If(Node):
     _fields = ('condition', 'body',)
 
     def __init__(self, condition, body):
+        super().__init__()
         self.condition = condition
         self.body = body
 
@@ -181,6 +183,20 @@ class Call(Node):
 
     def __str__(self):
         return '{}({})'.format(self.callee, self.argument)
+
+
+class CallArgument(Node):
+
+    _fields = ('label', 'operator', 'value',)
+
+    def __init__(self, label, operator, value):
+        super().__init__()
+        self.label    = label
+        self.operator = operator
+        self.value    = value
+
+    def __str__(self):
+        return '{} {} {}'.format(self.label, self.operator, self.value)
 
 
 class Identifier(Node):

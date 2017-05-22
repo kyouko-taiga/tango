@@ -8,14 +8,14 @@ stmt_list      : _stmt*
 
 _stmt          : _simple_stmt
 
-_simple_stmt   : var_decl
+_simple_stmt   : prop_decl
                | fun_decl
                | assign_stmt
                | if_stmt
                | return_stmt
-//             | call_expr
+               | call_expr
 
-var_decl       : "var" NAME ":" _type_ident
+prop_decl      : "var" NAME ":" _type_ident
 
 fun_decl       : "fun" NAME "(" param_decl ")" "->" _type_ident block
 
@@ -52,7 +52,9 @@ _primary       : call_expr
                | literal
                | "(" _expr ")"
 
-call_expr      : _expr "(" assign_stmt ")"
+call_expr      : _expr "(" call_arg ")"
+
+call_arg       : NAME assign_op _expr
 
 fun_sign       : "(" "var" NAME ":" _type_ident ")" "->" _type_ident
 
