@@ -63,10 +63,10 @@ class ScopeBinder(NodeVisitor):
         # the module scope.
 
         # Add all the symbols declared within the node's block.
-        for name in node.body.__info__['symbols']:
+        for name in node.body.__meta__['symbols']:
             if name not in self.current_scope:
                 self.current_scope.add(Symbol(name=name))
-        node.body.__info__['scope'] = self.current_scope
+        node.body.__meta__['scope'] = self.current_scope
 
         self.visit(node.body)
         self.scopes.pop()
@@ -75,11 +75,16 @@ class ScopeBinder(NodeVisitor):
         # Make sure the property's name wasn't already declared.
         symbol = self.current_scope[node.name]
         if symbol.code is not None:
-            raise DuplicateDeclaration(node.name)
+            raise DuplicateDeclaration(
+                "{}:{}: duplicate declaration of '{}'".format(
+                    node.__meta__['start'][0],
+                    node.__meta__['start'][1],
+                    node.name
+                ))
 
         # Bind the symbol to the current node.
         symbol.code = node
-        node.__info__['scope'] = self.current_scope
+        node.__meta__['scope'] = self.current_scope
 
         # Bind the scopes of the container's type annotation and initializer.
         self.under_declaration[self.current_scope].add(node.name)
@@ -94,37 +99,46 @@ class ScopeBinder(NodeVisitor):
         if (symbol.code is not None):
             if not (isinstance(symbol.code, FunctionDecl) or
                     isinstance(symbol.type, FunctionType)):
-                raise DuplicateDeclaration(node.name)
+                raise DuplicateDeclaration(
+                    "{}:{}: duplicate declaration of '{}'".format(
+                        node.__meta__['start'][0],
+                        node.__meta__['start'][1],
+                        node.name
+                    ))
 
         # Bind the symbol to the current node.
         if symbol.code is None:
             symbol.code = node
         else:
             self.current_scope.add(Symbol(name=node.name, code=node))
-        node.__info__['scope'] = self.current_scope
+        node.__meta__['scope'] = self.current_scope
 
         # Push a new scope on the stack before visiting the function's
         # declaration.
         self.push_scope()
-        node.body.__info__['scope'] = self.current_scope
+        node.body.__meta__['scope'] = self.current_scope
 
         # Visit the type annotation of the function parameter.
-        self.visit(node.signature.domain.type_annotation)
+        self.visit(node.parameter.type_annotation)
 
         # Visit the return type of the function.
-        self.visit(node.signature.codomain)
+        self.visit(node.return_type)
 
         # Add the parameter name to the function's scope.
-        parameter = node.signature.domain
-        if parameter.name in self.current_scope:
-            raise DuplicateDeclaration(parameter.name)
+        if node.parameter.name in self.current_scope:
+            raise DuplicateDeclaration(
+                "{}:{}: duplicate declaration of '{}'".format(
+                    node.parameter.__meta__['start'][0],
+                    node.parameter.__meta__['start'][1],
+                    node.parameter.name
+                ))
 
-        self.current_scope.add(Symbol(name=parameter.name, code=parameter))
-        parameter.__info__['scope'] = self.current_scope
+        self.current_scope.add(Symbol(name=node.parameter.name, code=node.parameter))
+        node.parameter.__meta__['scope'] = self.current_scope
 
         # Insert the symbols declared within the function's block into the
         # current scope.
-        for symbol in node.body.__info__['symbols']:
+        for symbol in node.body.__meta__['symbols']:
             # We could detect whether a symbol collides with a the name of a
             # parameter or generic parameter here. But letting the scope
             # binder find about the error while visiting the duplicate
@@ -143,12 +157,22 @@ class ScopeBinder(NodeVisitor):
         if defining_scope is not None:
             if node.name in self.under_declaration.get(defining_scope, {}):
                 if defining_scope.parent is None:
-                    raise UndefinedSymbol(node.name)
+                    raise UndefinedSymbol(
+                        "{}:{}: undefined symbol '{}'".format(
+                            node.__meta__['start'][0],
+                            node.__meta__['start'][1],
+                            node.name
+                        ))
                 defining_scope = defining_scope.parent.defining_scope(node.name)
 
         if defining_scope is None:
-            raise UndefinedSymbol(node.name)
-        node.__info__['scope'] = defining_scope
+            raise UndefinedSymbol(
+                "{}:{}: undefined symbol '{}'".format(
+                    node.__meta__['start'][0],
+                    node.__meta__['start'][1],
+                    node.name
+                ))
+        node.__meta__['scope'] = defining_scope
 
     def visit_If(self, node):
         # Bind the symbols in the node's condition.
@@ -157,9 +181,9 @@ class ScopeBinder(NodeVisitor):
         # Push a new scope on the stack before visiting the node's body, pre-
         # filled with the symbols it declares.
         self.push_scope()
-        for name in node.body.__info__['symbols']:
+        for name in node.body.__meta__['symbols']:
             self.current_scope.add(Symbol(name=name))
-        node.body.__info__['scope'] = self.current_scope
+        node.body.__meta__['scope'] = self.current_scope
         self.visit(node.body)
 
         self.scopes.pop()
@@ -177,9 +201,9 @@ class SymbolsExtractor(NodeVisitor):
     def visit(self, node):
         if isinstance(node, SymbolsExtractor.scope_opening_node_classes):
             self.blocks.append(node)
-            node.__info__['symbols'] = set()
+            node.__meta__['symbols'] = set()
         elif isinstance(node, SymbolsExtractor.symbol_node_classes):
-            self.blocks[-1].__info__['symbols'].add(node.name)
+            self.blocks[-1].__meta__['symbols'].add(node.name)
 
         self.generic_visit(node)
 

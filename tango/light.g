@@ -2,7 +2,7 @@
 
 module         : stmt_list
 
-block          : "{" stmt_list "}"
+!block         : "{" stmt_list "}"
 
 stmt_list      : _stmt*
 
@@ -15,17 +15,17 @@ _simple_stmt   : prop_decl
                | return_stmt
                | call_expr
 
-prop_decl      : "var" NAME ":" _type_ident
+prop_decl      : (CST | MUT | SHD) NAME ":" _type_ident
 
-fun_decl       : "fun" NAME "(" param_decl ")" "->" _type_ident block
+fun_decl       : FUN NAME "(" param_decl ")" "->" _type_ident block
 
-param_decl     : "var" NAME ":" _type_ident
+param_decl     : (CST | MUT | SHD) NAME ":" _type_ident
 
 assign_stmt    : ident assign_op _expr
 
-if_stmt        : "if" _expr block
+if_stmt        : IF _expr block
 
-return_stmt    : "return" _expr
+return_stmt    : RETURN _expr
 
 _expr          : or_test
 
@@ -44,7 +44,7 @@ prefix_expr    : prefix_op? _primary
 !cmp_op        : "<"  | "<=" | ">=" | ">"
 !add_op        : "+"  | "-"
 !mul_op        : "*"  | "/"  | "%"
-!prefix_op     : "-"
+!prefix_op     : "+"  | "-"
 !assign_op     : "=" | "&-" | "<-"
 
 _primary       : call_expr
@@ -52,11 +52,13 @@ _primary       : call_expr
                | literal
                | "(" _expr ")"
 
-call_expr      : _expr "(" call_arg ")"
+!call_expr     : _expr "(" call_arg ")"
 
 call_arg       : NAME assign_op _expr
 
-fun_sign       : "(" "var" NAME ":" _type_ident ")" "->" _type_ident
+!fun_sign      : "(" sign_param ")" "->" _type_ident
+
+sign_param     : (CST | MUT | SHD) NAME ":" _type_ident
 
 _type_ident    : ident | fun_sign | "(" _type_ident ")"
 
@@ -64,6 +66,13 @@ ident          : NAME
 
 literal        : NUMBER
                | STRING
+
+CST            : "cst"
+MUT            : "mut"
+SHD            : "shd"
+FUN            : "fun"
+IF             : "if"
+RETURN         : "return"
 
 COMMENT        : /\#[^\n]*/
 _NEWLINE       : ( /\r?\n[\t ]*/ | COMMENT )+

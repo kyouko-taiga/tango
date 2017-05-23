@@ -2,8 +2,8 @@ class Node(object):
 
     _fields = tuple()
 
-    def __init__(self):
-        self.__info__ = {}
+    def __init__(self, meta=None):
+        self.__meta__ = meta or {}
 
     def to_dict(self):
         data = {}
@@ -28,8 +28,8 @@ class ModuleDecl(Node):
 
     _fields = ('body','name',)
 
-    def __init__(self, body, name=None):
-        super().__init__()
+    def __init__(self, body, name=None, meta=None):
+        super().__init__(meta)
         self.body = body
         self.name = name
 
@@ -41,8 +41,8 @@ class Block(Node):
 
     _fields = ('statements',)
 
-    def __init__(self, statements=None):
-        super().__init__()
+    def __init__(self, statements=None, meta=None):
+        super().__init__(meta)
         self.statements = statements or []
 
     def __str__(self):
@@ -55,50 +55,54 @@ class Block(Node):
 
 class PropertyDecl(Node):
 
-    _fields = ('name', 'type_annotation',)
+    _fields = ('name', 'mutability', 'type_annotation',)
 
-    def __init__(self, name, type_annotation):
-        super().__init__()
+    def __init__(self, name, mutability, type_annotation, meta=None):
+        super().__init__(meta)
         self.name            = name
+        self.mutability      = mutability
         self.type_annotation = type_annotation
 
     def __str__(self):
-        return 'var {}: {}'.format(self.name, self.type_annotation)
+        return '{} {}: {}'.format(self.mutability, self.name, self.type_annotation)
 
 
 class FunctionDecl(Node):
 
-    _fields = ('name', 'signature', 'body',)
+    _fields = ('name', 'parameter', 'return_type', 'body',)
 
-    def __init__(self, name, signature, body):
-        super().__init__()
-        self.name      = name
-        self.signature = signature
-        self.body      = body
+    def __init__(self, name, parameter, return_type, body, meta=None):
+        super().__init__(meta)
+        self.name         = name
+        self.parameter   = parameter
+        self.return_type = return_type
+        self.body        = body
 
     def __str__(self):
-        return 'fun {} {} {}'.format(self.name, self.signature, self.body)
+        return 'fun {} ({}) -> {} {}'.format(
+            self.name, self.parameter, self.return_type, self.body)
 
 
 class FunctionParameter(Node):
 
-    _fields = ('name', 'type_annotation',)
+    _fields = ('name', 'mutability', 'type_annotation',)
 
-    def __init__(self, name, type_annotation):
-        super().__init__()
+    def __init__(self, name, mutability, type_annotation, meta=None):
+        super().__init__(meta)
         self.name            = name
+        self.mutability      = mutability
         self.type_annotation = type_annotation
 
     def __str__(self):
-        return 'var {}: {}'.format(self.name, self.type_annotation)
+        return '{} {}: {}'.format(self.mutability, self.name, self.type_annotation)
 
 
 class Assign(Node):
 
     _fields = ('target', 'operator', 'expression',)
 
-    def __init__(self, target, operator, expression):
-        super().__init__()
+    def __init__(self, target, operator, expression, meta=None):
+        super().__init__(meta)
         self.target     = target
         self.operator   = operator
         self.expression = expression
@@ -111,8 +115,8 @@ class If(Node):
 
     _fields = ('condition', 'body',)
 
-    def __init__(self, condition, body):
-        super().__init__()
+    def __init__(self, condition, body, meta=None):
+        super().__init__(meta)
         self.condition = condition
         self.body = body
 
@@ -124,8 +128,8 @@ class Return(Node):
 
     _fields = ('value',)
 
-    def __init__(self, value):
-        super().__init__()
+    def __init__(self, value, meta=None):
+        super().__init__(meta)
         self.value = value
 
     def __str__(self):
@@ -134,23 +138,37 @@ class Return(Node):
 
 class FunctionSignature(Node):
 
-    _fields = ('domain', 'codomain',)
+    _fields = ('parameter', 'return_type',)
 
-    def __init__(self, domain, codomain):
-        super().__init__()
-        self.domain   = domain
-        self.codomain = codomain
+    def __init__(self, parameter, return_type, meta=None):
+        super().__init__(meta)
+        self.parameter   = parameter
+        self.return_type = return_type
 
     def __str__(self):
-        return '({}) -> {}'.format(self.domain, self.codomain)
+        return '({}) -> {}'.format(self.parameter, self.return_type)
+
+
+class SignatureParameter(Node):
+
+    _fields = ('label', 'mutability', 'type_annotation',)
+
+    def __init__(self, label, mutability, type_annotation, meta=None):
+        super().__init__(meta)
+        self.label           = label
+        self.mutability      = mutability
+        self.type_annotation = type_annotation
+
+    def __str__(self):
+        return '{} {}: {}'.format(self.mutability, self.label, self.type_annotation)
 
 
 class PrefixExpression(Node):
 
     _fields = ('operator', 'operand',)
 
-    def __init__(self, operator, operand):
-        super().__init__()
+    def __init__(self, operator, operand, meta=None):
+        super().__init__(meta)
         self.operator = operator
         self.operand  = operand
 
@@ -162,8 +180,8 @@ class BinaryExpression(Node):
 
     _fields = ('left', 'operator', 'right')
 
-    def __init__(self, left, operator, right):
-        super().__init__()
+    def __init__(self, left, operator, right, meta=None):
+        super().__init__(meta)
         self.left     = left
         self.operator = operator
         self.right    = right
@@ -176,8 +194,8 @@ class Call(Node):
 
     _fields = ('callee', 'argument',)
 
-    def __init__(self, callee, argument):
-        super().__init__()
+    def __init__(self, callee, argument, meta=None):
+        super().__init__(meta)
         self.callee = callee
         self.argument = argument
 
@@ -189,8 +207,8 @@ class CallArgument(Node):
 
     _fields = ('label', 'operator', 'value',)
 
-    def __init__(self, label, operator, value):
-        super().__init__()
+    def __init__(self, label, operator, value, meta=None):
+        super().__init__(meta)
         self.label    = label
         self.operator = operator
         self.value    = value
@@ -203,8 +221,8 @@ class Identifier(Node):
 
     _fields = ('name',)
 
-    def __init__(self, name):
-        super().__init__()
+    def __init__(self, name, meta=None):
+        super().__init__(meta)
         self.name = name
 
     def __str__(self):
@@ -215,8 +233,8 @@ class Literal(Node):
 
     _fields = ('value',)
 
-    def __init__(self, value):
-        super().__init__()
+    def __init__(self, value, meta=None):
+        super().__init__(meta)
         self.value = value
 
     def __str__(self):
