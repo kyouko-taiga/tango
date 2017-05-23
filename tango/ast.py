@@ -97,18 +97,18 @@ class FunctionParameter(Node):
         return '{} {}: {}'.format(self.mutability, self.name, self.type_annotation)
 
 
-class Assign(Node):
+class Assignment(Node):
 
-    _fields = ('target', 'operator', 'expression',)
+    _fields = ('lvalue', 'operator', 'rvalue',)
 
-    def __init__(self, target, operator, expression, meta=None):
+    def __init__(self, lvalue, operator, rvalue, meta=None):
         super().__init__(meta)
-        self.target     = target
-        self.operator   = operator
-        self.expression = expression
+        self.lvalue   = lvalue
+        self.operator = operator
+        self.rvalue   = rvalue
 
     def __str__(self):
-        return '{} {} {}'.format(self.target, self.operator, self.expression)
+        return '{} {} {}'.format(self.lvalue, self.operator, self.rvalue)
 
 
 class If(Node):

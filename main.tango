@@ -1,10 +1,11 @@
-fun gcd(var x: Int) -> (var y: Int) -> Int {
-    fun _gcd(var y: Int) -> Int {
+fun gcd(cst x: Int) -> (cst y: Int) -> Int {
+    fun _gcd(cst y: Int) -> Int {
         if y == 0 {
             return x
         }
         return gcd(x = y)(y = x % y)
     }
+    return _gcd
 }
-var a: Int
+cst a: Int
 a = gcd(x = 12)(y = 8)

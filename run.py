@@ -3,13 +3,15 @@ import sys
 
 from tango.light import parser, TangoLightTransformer
 from tango.scope_binder import ScopeBinder, SymbolsExtractor
+from tango.type_solver import infer_types
 
 from tango.ast import Node
 from tango.scope import Scope
 from tango.types import BaseType
+from tango.type_solver import TypeVariable
 from json import dumps, JSONEncoder
 
-class SetEncoder(JSONEncoder):
+class ASTEncoder(JSONEncoder):
 
     def default(self, obj):
         if isinstance(obj, set):
@@ -19,6 +21,8 @@ class SetEncoder(JSONEncoder):
         if isinstance(obj, Scope):
             return obj.qualified_name
         if isinstance(obj, BaseType):
+            return str(obj)
+        if isinstance(obj, TypeVariable):
             return str(obj)
         return JSONEncoder.default(self, obj)
 
@@ -42,4 +46,7 @@ if __name__ == '__main__':
     scope_binder = ScopeBinder()
     scope_binder.visit(module_decl)
 
-    print(module_decl)
+    # Infer the types of all expressions.
+    (module, environment) = infer_types(module_decl)
+    # print(dumps(module_decl.to_dict(), indent=2, sort_keys=True, cls=ASTEncoder))
+    environment.print_debug()

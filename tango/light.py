@@ -60,11 +60,11 @@ class TangoLightTransformer(Transformer):
             })
 
     def assign_stmt(self, items):
-        return ast.Assign(
-            target     = items[0],
-            operator   = items[1].children[0].value,
-            expression = items[2],
-            meta       = {
+        return ast.Assignment(
+            lvalue   = items[0],
+            operator = items[1].children[0].value,
+            rvalue   = items[2],
+            meta     = {
                 'start': items[0].__meta__['start'],
                 'end'  : items[2].__meta__['end']
             })
@@ -148,7 +148,8 @@ class TangoLightTransformer(Transformer):
             value = value,
             meta  = {
                 'start': (items[0].line, items[0].column),
-                'end'  : (items[0].line, items[0].column + len(items[0].value))
+                'end'  : (items[0].line, items[0].column + len(items[0].value)),
+                'type' : type
             })
 
     def fun_sign(self, items):

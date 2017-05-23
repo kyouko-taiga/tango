@@ -15,7 +15,9 @@ def make_builtin_type(name):
     return builtin_type
 
 
+Type       = make_builtin_type('Type')
 Nothing    = make_builtin_type('Nothing')
+Anything   = make_builtin_type('Anything')
 
 Int        = make_builtin_type('Int')
 Double     = make_builtin_type('Double')
