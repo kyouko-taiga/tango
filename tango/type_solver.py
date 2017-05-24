@@ -376,7 +376,7 @@ class TypeSolver(NodeVisitor):
             domain             = [parameter_type],
             codomain           = return_type,
             labels             = [node.parameter.name],
-            attributes         = [set(node.parameter.mutability)],
+            attributes         = [set((node.parameter.mutability,))],
             generic_parameters = [])
 
         # As functions may be overloaded, we can't unify the function type
@@ -557,12 +557,15 @@ class TypeSolver(NodeVisitor):
             result = self.environment[TypeVariable(node)]
             node.__meta__['type'] = result
 
+            # We also have to determine the identifier's mutability.
+            node.__meta__['mutability'] = node.__meta__['scope'][node.name].mutability
+
             return result
 
         # If the node is a function signature, we should build a FunctionType.
         if isinstance(node, FunctionSignature):
             domain = []
-            for parameter in node.parameters:
+            for parameter in [node.parameter]:
                 type_annotation = self.read_type_reference(parameter.type_annotation)
                 domain.append(type_annotation)
 
@@ -571,8 +574,8 @@ class TypeSolver(NodeVisitor):
             function_type = FunctionType(
                 domain     = domain,
                 codomain   = codomain,
-                labels     = [parameter.label for parameter in node.parameters],
-                attributes = [parameter.attributes for parameter in node.parameters])
+                labels     = [node.parameter.label],
+                attributes = [set((node.parameter.mutability,))])
 
             node.__meta__['type'] = function_type
             return function_type
@@ -717,24 +720,15 @@ class TypeSolver(NodeVisitor):
             for signature in candidates:
                 assert(isinstance(signature, FunctionType))
 
-                # We check it the number of parameters match.
+                # Check it the number of parameters match.
                 if len(signature.domain) != len(node.arguments):
                     continue
 
+                # Check if the argument labels match.
                 valid = True
                 for i, argument in zip(range(len(node.arguments)), node.arguments):
-                    # We check if the argument label match.
                     expected_label = signature.labels[i]
-                    if (expected_label == '_') and (argument.name is not None):
-                        valid = False
-                        break
-                    elif expected_label != argument.name:
-                        valid = False
-                        break
-
-                    # We check if the argument mutability match.
-                    expected_mutability = 'mutable' in signature.attributes[i]
-                    if expected_mutability and not argument.value.__meta__.get('mutable', False):
+                    if expected_label != argument.label:
                         valid = False
                         break
 
@@ -761,7 +755,6 @@ class TypeSolver(NodeVisitor):
                     specialize_with_pattern(
                         self.environment.deepwalk(candidate), specializer, node)
                     for candidate in compatible_candidates))
-            print(len(specialized_candidates))
 
             # Then we filter out the specialized candidates whose signature
             # doesn't match the node's arguments or return type.
@@ -837,32 +830,6 @@ class TypeSolver(NodeVisitor):
             # argument. Depending on the definitive syntax and restrictions
             # we'll adopt for variadics parameters, we might have to check
             # multiple configurations of argument groups.
-
-        if isinstance(node, (If, Switch)):
-            # First we visit the node as if it was a statement.
-            self.visit(node)
-
-            # Then, we have to unify the type of all return values.
-            return_finder = TypeSolver.ReturnFinder()
-            return_finder.visit(node)
-
-            # Since the node is used as an rvalue, it must have at least one
-            # return statement.
-            if not return_finder.return_statements:
-                raise InferenceError('if expressions used as rvalues must return something')
-
-            result = return_finder.return_statements[0].value.__meta__['type']
-            for statement in return_finder.return_statements[1:]:
-                return_value_type = statement.value.__meta__['type']
-                self.environment.unify(return_value_type, result)
-
-            node.__meta__['type'] = result
-            return result
-
-        if isinstance(node, Wildcard):
-            if 'type' in node.__meta__:
-                return node.__meta__['type']
-            return TypeVariable()
 
         assert False, "no type inference for node '{}'".format(node.__class__.__name__)
 

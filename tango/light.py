@@ -111,9 +111,9 @@ class TangoLightTransformer(Transformer):
 
     def call_expr(self, items):
         return ast.Call(
-            callee   = items[0],
-            argument = items[2],
-            meta     = {
+            callee    = items[0],
+            arguments = [items[2]],
+            meta      = {
                 'start': items[0].__meta__['start'],
                 'end'  : (items[3].line, items[3].column),
             })

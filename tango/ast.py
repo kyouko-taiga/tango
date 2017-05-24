@@ -192,29 +192,31 @@ class BinaryExpression(Node):
 
 class Call(Node):
 
-    _fields = ('callee', 'argument',)
+    _fields = ('callee', 'arguments',)
 
-    def __init__(self, callee, argument, meta=None):
+    def __init__(self, callee, arguments=None, meta=None):
         super().__init__(meta)
-        self.callee = callee
-        self.argument = argument
+        self.callee    = callee
+        self.arguments = arguments or []
 
     def __str__(self):
-        return '{}({})'.format(self.callee, self.argument)
+        return '{}({})'.format(self.callee, ', '.join(map(str, self.arguments)))
 
 
 class CallArgument(Node):
 
     _fields = ('label', 'operator', 'value',)
 
-    def __init__(self, label, operator, value, meta=None):
+    def __init__(self, value, operator='=', label=None, meta=None):
         super().__init__(meta)
         self.label    = label
         self.operator = operator
         self.value    = value
 
     def __str__(self):
-        return '{} {} {}'.format(self.label, self.operator, self.value)
+        if self.label is not None:
+            return '{} {} {}'.format(self.label, self.operator, self.value)
+        return str(self.value)
 
 
 class Identifier(Node):
