@@ -18,8 +18,9 @@ class Module(object):
 
 class Symbol(object):
 
-    def __init__(self, name, type=None, code=None, nested=None):
-        self.name   = name
-        self.type   = type
-        self.code   = code
-        self.nested = nested or {}
+    def __init__(self, name, type=None, code=None, nested=None, mutability='cst'):
+        self.name       = name
+        self.type       = type
+        self.code       = code
+        self.nested     = nested or {}
+        self.mutability = mutability

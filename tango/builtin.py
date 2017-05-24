@@ -9,8 +9,8 @@ builtin_types  = []
 def make_builtin_type(name):
     builtin_type = NominalType(name)
     builtin_module.symbols[name] = Symbol(
-        name=name,
-        type=TypeName(name=name, type=builtin_type))
+        name = name,
+        type = TypeName(name=name, type=builtin_type))
 
     return builtin_type
 
