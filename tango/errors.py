@@ -14,3 +14,11 @@ class UndefinedSymbol(Exception):
 
 class InferenceError(Exception):
     pass
+
+
+class AssignmentError(Exception):
+    pass
+
+
+class ResourceAccessError(Exception):
+    pass

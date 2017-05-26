@@ -4,6 +4,7 @@ import sys
 from tango.light import parser, TangoLightTransformer
 from tango.scope_binder import ScopeBinder, SymbolsExtractor
 from tango.type_solver import infer_types
+from tango.state_checker import CaptureFinder, StateChecker
 
 from tango.ast import Node
 from tango.scope import Scope
@@ -48,5 +49,13 @@ if __name__ == '__main__':
 
     # Infer the types of all expressions.
     (module, environment) = infer_types(module_decl)
+    # environment.print_debug()
+
+    # Check the correctness of resource access.
+    capture_finder = CaptureFinder()
+    capture_finder.visit(module_decl)
+    state_checker = StateChecker()
+    state_checker.visit(module_decl)
+
     # print(dumps(module_decl.to_dict(), indent=2, sort_keys=True, cls=ASTEncoder))
-    environment.print_debug()
+    print(module_decl)
