@@ -3,10 +3,10 @@
 #include <boost/python.hpp>
 #include <boost/python/suite/indexing/vector_indexing_suite.hpp>
 
-#include "ast.hh"
+#include "ast/ast.hh"
 
 
-BOOST_PYTHON_MODULE(ast) {
+BOOST_PYTHON_MODULE(wrapper) {
 
     using namespace boost::python;
     using namespace tango;

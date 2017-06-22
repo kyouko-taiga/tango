@@ -1,4 +1,4 @@
-from .ast import *
+from tango.wrapper import *
 
 __all__ = [
     'Node', 'NodeVisitor', 'NodeTransformer',
