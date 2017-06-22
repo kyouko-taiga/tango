@@ -9,6 +9,9 @@
 
 namespace tango {
 
+    // Forward declarations.
+    struct ASTNodeVisitor;
+
     // Identifier attributes.
     enum IdentifierMutability {
         im_cst, im_mut,
@@ -20,7 +23,7 @@ namespace tango {
         o_cpy, o_ref, o_mov,
     };
 
-    struct ASTNodeVisitor;
+    // -----------------------------------------------------------------------
 
     /// Location (start/end) of a node within its source file.
     struct ASTNodeLocation {
@@ -35,6 +38,8 @@ namespace tango {
 
         // TypePtr md_type;
     };
+
+    // -----------------------------------------------------------------------
 
     /// Base class for all AST nodes.
     struct ASTNode {
@@ -53,6 +58,8 @@ namespace tango {
     typedef std::shared_ptr<ASTNode> ASTNodePtr;
     typedef std::vector<ASTNodePtr> ASTNodeList;
 
+    // -----------------------------------------------------------------------
+
     /// AST node for blocks of instructions.
     struct Block: public ASTNode {
         Block(const ASTNodeList& statements)
@@ -62,6 +69,8 @@ namespace tango {
 
         ASTNodeList statements;
     };
+
+    // -----------------------------------------------------------------------
 
     /// AST node for module declarations.
     struct Module: public ASTNode {
@@ -73,6 +82,8 @@ namespace tango {
         ASTNodePtr  body;
         std::string name;
     };
+
+    // -----------------------------------------------------------------------
 
     /// AST node for property declarations.
     struct PropDecl: public ASTNode {
@@ -89,6 +100,8 @@ namespace tango {
         ASTNodePtr           type_annotation;
     };
 
+    // -----------------------------------------------------------------------
+
     /// AST node for function parameters.
     struct ParamDecl: public ASTNode {
         ParamDecl(
@@ -103,6 +116,8 @@ namespace tango {
         IdentifierMutability mutability;
         ASTNodePtr           type_annotation;
     };
+
+    // -----------------------------------------------------------------------
 
     /// AST node for function declarations.
     struct FunDecl: public ASTNode {
@@ -121,6 +136,8 @@ namespace tango {
         ASTNodePtr  body;
     };
 
+    // -----------------------------------------------------------------------
+
     // AST node for assignments.
     struct Assignment: public ASTNode {
         Assignment(
@@ -135,6 +152,8 @@ namespace tango {
         Operator   op;
         ASTNodePtr rvalue;
     };
+
+    // -----------------------------------------------------------------------
 
     // AST node for conditional statements.
     struct If: public ASTNode {
@@ -151,6 +170,8 @@ namespace tango {
         ASTNodePtr else_block;
     };
 
+    // -----------------------------------------------------------------------
+
     /// AST node for return statements.
     struct Return: public ASTNode {
         Return(ASTNodePtr value)
@@ -160,6 +181,8 @@ namespace tango {
 
         ASTNodePtr value;
     };
+
+    // -----------------------------------------------------------------------
 
     /// AST node for binary expressions.
     struct BinaryExpr: public ASTNode {
@@ -176,6 +199,8 @@ namespace tango {
         ASTNodePtr right;
     };
 
+    // -----------------------------------------------------------------------
+
     // AST node for call arguments.
     struct CallArg: public ASTNode {
         CallArg(
@@ -191,6 +216,8 @@ namespace tango {
         ASTNodePtr  value;
     };
 
+    // -----------------------------------------------------------------------
+
     /// AST node for call expressions.
     struct Call: public ASTNode {
         Call(
@@ -204,6 +231,8 @@ namespace tango {
         ASTNodeList arguments;
     };
 
+    // -----------------------------------------------------------------------
+
     /// AST node for identifiers.
     struct Identifier: public ASTNode {
         Identifier(const std::string& name)
@@ -213,6 +242,8 @@ namespace tango {
 
         std::string name;
     };
+
+    // -----------------------------------------------------------------------
 
     /// AST node for integer literals.
     struct IntLiteral: public ASTNode {
@@ -224,6 +255,8 @@ namespace tango {
         long value;
     };
 
+    // -----------------------------------------------------------------------
+
     /// AST node for boolean literals.
     struct BoolLiteral: public ASTNode {
         BoolLiteral(bool value)
@@ -233,6 +266,8 @@ namespace tango {
 
         bool value;
     };
+
+    // -----------------------------------------------------------------------
 
     struct ASTNodeVisitor {
         virtual void visit(Block&         node) = 0;
@@ -250,7 +285,5 @@ namespace tango {
         virtual void visit(IntLiteral&    node) = 0;
         virtual void visit(BoolLiteral&   node) = 0;
     };
-
-    std::unique_ptr<tango::ASTNode> read_ast(std::ifstream&);
 
 } // namespace tango
