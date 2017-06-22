@@ -7,9 +7,55 @@ namespace tango {
         visitor.visit(*this);
     }
 
-    // -----------------------------------------------------------------------
+    void Module::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
 
-    void IntegerLiteral::accept(ASTNodeVisitor& visitor) {
+    void PropDecl::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void ParamDecl::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void FunDecl::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void Assignment::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void If::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void Return::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void BinaryExpr::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void CallArg::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void Call::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void Identifier::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void IntLiteral::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void BoolLiteral::accept(ASTNodeVisitor& visitor) {
         visitor.visit(*this);
     }
 
