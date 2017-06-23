@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "tango/types/types.hh"
+
 
 namespace tango {
 
@@ -36,7 +38,7 @@ namespace tango {
         ASTNodeLocation start;
         ASTNodeLocation end;
 
-        // TypePtr md_type;
+        TypePtr         type;
     };
 
     // -----------------------------------------------------------------------
@@ -56,7 +58,7 @@ namespace tango {
     };
 
     typedef std::shared_ptr<ASTNode> ASTNodePtr;
-    typedef std::vector<ASTNodePtr> ASTNodeList;
+    typedef std::vector<ASTNodePtr>  ASTNodeList;
 
     // -----------------------------------------------------------------------
 

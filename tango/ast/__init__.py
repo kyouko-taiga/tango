@@ -52,8 +52,8 @@ class NodeTransformer(NodeVisitor):
         return node
 
 
-# Following are some helper methods and properties we add to the C++ classes
-# before we re-export them, so as to have a nicer API to work with.
+# Following are some helper methods and properties we add by monkeypatching
+# the C++ classes, so as to have a nicer API to work with.
 
 NodeList_initializer = NodeList.__init__
 def NodeList_init(self, nodes=None):
@@ -135,9 +135,7 @@ BinaryExpr.__str__ = BinaryExpr_str
 
 
 def CallArg_str(self):
-    if self.label is not None:
-        return '{} {} {}'.format(self.label, self.operator, self.value)
-    return str(self.value)
+    return '{} {} {}'.format(self.label, self.operator, self.value)
 
 CallArg._fields = ('label', 'operator', 'value',)
 CallArg.__str__ = CallArg_str

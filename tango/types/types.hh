@@ -5,17 +5,6 @@
 #include <vector>
 
 
-namespace llvm {
-
-    class FunctionType;
-    class LLVMContext;
-    class PointerType;
-    class Type;
-    class StructType;
-
-} // namespace llvm
-
-
 namespace tango {
 
     struct TypeBase {
@@ -24,41 +13,23 @@ namespace tango {
         virtual bool is_primitive() const = 0;
         virtual bool is_generic()   const = 0;
         virtual bool is_reference() const = 0;
-
-        virtual llvm::Type* get_llvm_type(llvm::LLVMContext&) const = 0;
     };
 
     typedef std::shared_ptr<TypeBase> TypePtr;
+    typedef std::vector<TypePtr>      TypeList;
 
     // -----------------------------------------------------------------------
 
-    struct RefType: public TypeBase {
-        RefType(TypePtr rt): referred_type(rt) {}
+    struct ReferenceType: public TypeBase {
+        ReferenceType(const ReferenceType&) = delete;
+        ReferenceType(TypePtr rt)
+            : referred_type(rt) {}
 
         bool is_primitive() const { return true; }
-        bool is_generic()   const { return this->referred_type->is_generic(); }
+        bool is_generic()   const { return referred_type->is_generic(); }
         bool is_reference() const { return true; }
 
-        llvm::Type* get_llvm_type(llvm::LLVMContext&) const;
-
         TypePtr referred_type;
-
-        static TypePtr get(TypePtr rt) {
-            return std::make_shared<RefType>(rt);
-        }
-    };
-
-    // -----------------------------------------------------------------------
-
-    struct NominalType: public TypeBase {
-        NominalType(const std::string& name): name(name) {}
-
-        virtual ~NominalType() {}
-
-        bool is_generic()   const { return false; }
-        bool is_reference() const { return false; }
-
-        const std::string name;
     };
 
     // -----------------------------------------------------------------------
@@ -66,7 +37,7 @@ namespace tango {
     struct FunctionType: public TypeBase {
         FunctionType(const FunctionType&) = delete;
         FunctionType(
-            const std::vector<TypePtr>&     domain,
+            const TypeList&                 domain,
             const std::vector<std::string>& labels,
             TypePtr                         codomain):
             domain(domain), labels(labels), codomain(codomain) {}
@@ -75,38 +46,36 @@ namespace tango {
         bool is_generic()   const { return false; }
         bool is_reference() const { return false; }
 
-        llvm::Type* get_llvm_type(llvm::LLVMContext&) const;
-
-        /// Same as #get_llvm_type, but adding a pointer to a closure instance
-        /// as its first parameter.
-        llvm::FunctionType* get_llvm_lifted_type(
-            llvm::LLVMContext&, llvm::StructType* closure_type) const;
-
-        std::vector<TypePtr>     domain;
+        TypeList                 domain;
         std::vector<std::string> labels;
         TypePtr                  codomain;
-
-        static TypePtr get(
-            const std::vector<TypePtr>&     domain,
-            const std::vector<std::string>& labels,
-            TypePtr                         codomain)
-        {
-            return std::make_shared<FunctionType>(domain, labels, codomain);
-        }
     };
 
     // -----------------------------------------------------------------------
 
-    struct IntType: public NominalType {
-        IntType(): NominalType("Int") {}
+    struct NominalType: public TypeBase {
+        NominalType(const std::string& name)
+            : name(name) {}
 
-        bool is_primitive() const { return true; }
+        virtual ~NominalType() {}
 
-        llvm::Type* get_llvm_type(llvm::LLVMContext&) const;
+        bool is_reference() const { return false; }
 
-        static TypePtr get() {
-            return std::make_shared<IntType>();
+        std::string name;
+    };
+
+    // -----------------------------------------------------------------------
+
+    struct BuiltinType: public NominalType {
+        // BuiltinType(const BuiltinType&) = delete;
+        BuiltinType(const std::string& name)
+            : NominalType(name) {}
+
+        bool is_primitive() const {
+            return (name == "Int") || (name == "Double") || (name == "Bool");
         }
+
+        bool is_generic() const { return false; }
     };
 
 } // namespace tango

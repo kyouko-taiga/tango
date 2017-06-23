@@ -1,22 +1,25 @@
+#!/bin/bash
+
+PYTHON_ROOT=/opt/local/Library/Frameworks/Python.framework/Versions/3.6/
+LLVM_ROOT=
+SRC_ROOT=$(pwd)
+
+PYTHON_INCLUDE=${PYTHON_ROOT}/include/python3.6m
+PYTHON_LIB=${PYTHON_ROOT}/lib
+
 # AST sources
 c++ -c -std=c++11 \
-    tango/ast/ast.cc -o tango/ast/ast.o
+    -I${SRC_ROOT} \
+    ${SRC_ROOT}/tango/ast/ast.cc -o ${SRC_ROOT}/tango/ast/ast.o
 
 # Wrapper module
 c++ -c -std=c++11 \
-    -I/opt/local/Library/Frameworks/Python.framework/Versions/3.6/include/python3.6m \
-    tango/wrapper.cc -o tango/wrapper.o
+    -I${PYTHON_INCLUDE} \
+    -I${SRC_ROOT} \
+    ${SRC_ROOT}/tango/wrapper.cc -o ${SRC_ROOT}/tango/wrapper.o
 
 c++ -shared \
-    -L/opt/local/Library/Frameworks/Python.framework/Versions/3.6/lib \
+    -L${PYTHON_LIB} \
     -lpython3.6 \
     -lboost_python3 \
-    tango/ast/ast.o tango/wrapper.o -o tango/wrapper.so
-
-# c++ -shared -std=c++11 \
-#     -I/opt/local/Library/Frameworks/Python.framework/Versions/3.6/include/python3.6m \
-#     -L/opt/local/Library/Frameworks/Python.framework/Versions/3.6/lib \
-#     -lpython3.6 \
-#     -lboost_python3 \
-#     tango/ast/wrapper.cc \
-#     -o tango/ast/ast.so
+    ${SRC_ROOT}/tango/ast/ast.o ${SRC_ROOT}/tango/wrapper.o -o ${SRC_ROOT}/tango/wrapper.so

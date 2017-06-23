@@ -3,13 +3,46 @@
 #include <boost/python.hpp>
 #include <boost/python/suite/indexing/vector_indexing_suite.hpp>
 
-#include "ast/ast.hh"
+#include "tango/ast/ast.hh"
+#include "tango/types/types.hh"
 
 
 BOOST_PYTHON_MODULE(wrapper) {
 
     using namespace boost::python;
     using namespace tango;
+
+    class_<std::vector<std::string>>("StringList")
+        .def(vector_indexing_suite<std::vector<std::string>, true>());
+
+    // -----------------------------------------------------------------------
+
+    class_<TypeBase, boost::noncopyable>("TypeBase", no_init)
+        .add_property("is_primitive", make_function(&TypeBase::is_primitive))
+        .add_property("is_generic",   make_function(&TypeBase::is_generic))
+        .add_property("is_reference", make_function(&TypeBase::is_reference));
+
+    class_<TypeList>("TypeList")
+        .def(vector_indexing_suite<TypeList, true>());
+
+    class_<ReferenceType, bases<TypeBase>, boost::noncopyable>(
+        "ReferenceType", init<TypePtr>())
+        .def_readwrite("referred_type",       &ReferenceType::referred_type);
+
+    class_<FunctionType, bases<TypeBase>, boost::noncopyable>(
+        "FunctionType", init<TypeList, std::vector<std::string>, TypePtr>())
+        .def_readwrite("domain",              &FunctionType::domain)
+        .def_readwrite("labels",              &FunctionType::labels)
+        .def_readwrite("codomain",            &FunctionType::codomain);
+
+    class_<NominalType, bases<TypeBase>, boost::noncopyable>(
+        "NominalType", no_init)
+        .def_readwrite("name",                &NominalType::name);
+
+    class_<BuiltinType, bases<NominalType>, boost::noncopyable>(
+        "BuiltinType", init<std::string>());
+
+    // -----------------------------------------------------------------------
 
     enum_<IdentifierMutability>("IdentifierMutability")
         .value("im_cst", im_cst)
@@ -30,7 +63,8 @@ BOOST_PYTHON_MODULE(wrapper) {
 
     class_<ASTNodeMetadata>("NodeMetadata")
         .def_readwrite("start",               &ASTNodeMetadata::start)
-        .def_readwrite("end",                 &ASTNodeMetadata::end);
+        .def_readwrite("end",                 &ASTNodeMetadata::end)
+        .def_readwrite("type",                &ASTNodeMetadata::type);
 
     class_<ASTNode, boost::noncopyable>("Node", no_init)
         .def_readwrite("meta",                &ASTNode::meta);
