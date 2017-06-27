@@ -15,7 +15,8 @@ class TangoLightTransformer(Transformer):
 
     def module(self, items):
         return ast.ModuleDecl(
-            body = ast.Block(statements=items[0]))
+            body = ast.Block(statements=items[0]),
+            name = '')
 
     def block(self, items):
         return ast.Block(
@@ -29,8 +30,8 @@ class TangoLightTransformer(Transformer):
         return items
 
     def prop_decl(self, items):
-        return ast.PropertyDecl(
-            mutability      = items[0].value,
+        return ast.PropDecl(
+            mutability      = _mutability_modifier(items[0]),
             name            = items[1].value,
             type_annotation = items[2],
             meta            = {
@@ -128,6 +129,30 @@ class TangoLightTransformer(Transformer):
                 'end'  : items[2].__meta__['end']
             })
 
+    def type_ident(self, items):
+        modifier = ast.TypeModifier.tm_none
+        if len(items) > 1:
+            signature = items[1]
+            modifier  = (
+                ast.TypeModifier.tm_ref if items[0].children[0] == '&' else
+                ast.TypeModifier.tm_own if items[0].children[0] == '!' else
+                ast.TypeModifier.tm_none)
+            start     = (items[0].children[0].line, items[0].children[0].column)
+            end       = items[1].__meta__['end']
+        else:
+            signature = items[0]
+            modifier  = ast.TypeModifier.tm_none
+            start     = items[0].__meta__['start']
+            end       = items[0].__meta__['end']
+
+        return ast.TypeIdentifier(
+            signature = signature,
+            modifier  = modifier,
+            meta      = {
+                'start': start,
+                'end'  : end
+            })
+
     def ident(self, items):
         return ast.Identifier(
             name = items[0].value,
@@ -139,17 +164,21 @@ class TangoLightTransformer(Transformer):
     def literal(self, items):
         value = items[0].value
         if items[0].type == 'NUMBER':
-            type = Double if ('.' in value) or ('e' in value) or ('E' in value) else Int
+            if ('.' in value) or ('e' in value) or ('E' in value):
+                node_class = ast.DoubleLiteral
+            else:
+                node_class = ast.IntLiteral
         elif items[0].type == 'STRING':
+            node_class = ast.StringLiteral
             value = value[1:-1]
-            type  = String
+        else:
+            assert False, 'unknown literal type: {}'.format(items[0].type)
 
-        return ast.Literal(
+        return node_class(
             value = value,
             meta  = {
                 'start': (items[0].line, items[0].column),
                 'end'  : (items[0].line, items[0].column + len(items[0].value)),
-                'type' : type
             })
 
     def fun_sign(self, items):
@@ -170,3 +199,11 @@ class TangoLightTransformer(Transformer):
                 'start': (items[0].line, items[0].column),
                 'end'  : items[2].__meta__['end']
             })
+
+
+def _mutability_modifier(token):
+    if token.type == 'CST':
+        return ast.IdentifierMutability.im_cst
+    if token.type == 'MUT':
+        return IdentifierMutability.im_mut
+    assert False, 'unsupported identifier mutability {}'.format(token.type)

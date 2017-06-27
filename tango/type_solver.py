@@ -4,8 +4,9 @@ from .ast import *
 from .builtin import Bool, Type
 from .errors import InferenceError
 from .scope import Scope
-from .types import (
-    BaseType, EnumType, FunctionType, GenericType, NominalType, StructType, TypeName, TypeUnion)
+from .types import TypeBase, FunctionType,NominalType, TypeName, TypeUnion
+# from .types import (
+#     TypeBase, EnumType, FunctionType, GenericType, NominalType, StructType, TypeName, TypeUnion)
 
 
 def infer_types(node, max_iter=100):
@@ -133,7 +134,7 @@ class Substitution(object):
             a.replace_content(results)
             b.replace_content(results)
 
-        elif isinstance(a, TypeUnion) and isinstance(b, BaseType):
+        elif isinstance(a, TypeUnion) and isinstance(b, TypeBase):
             for it in a:
                 if self.matches(it, b):
                     self.unify(it, b, memo)
@@ -146,7 +147,7 @@ class Substitution(object):
             # might have to to unify multiple result instead of simply the
             # first type that matches in the union.
 
-        elif isinstance(b, TypeUnion) and isinstance(a, BaseType):
+        elif isinstance(b, TypeUnion) and isinstance(a, TypeBase):
             self.unify(b, a, memo)
 
         elif isinstance(a, NominalType) and isinstance(b, NominalType):
@@ -160,7 +161,7 @@ class Substitution(object):
                 self.unify(ita, itb, memo)
             self.unify(a.codomain, b.codomain, memo)
 
-        elif isinstance(a, BaseType) and isinstance(b, BaseType):
+        elif isinstance(a, TypeBase) and isinstance(b, TypeBase):
             if a != b:
                 raise InferenceError("type '{}' does not match '{}'".format(a, b))
 
@@ -322,7 +323,7 @@ class TypeSolver(NodeVisitor):
         for name in module_scope:
             types = []
             for symbol in module_scope.getlist(name):
-                if isinstance(symbol.type, BaseType):
+                if isinstance(symbol.type, TypeBase):
                     types.append(symbol.type)
             if types:
                 types = TypeUnion(types) if len(types) > 1 else types[0]
@@ -539,7 +540,7 @@ class TypeSolver(NodeVisitor):
         self.read_type_instance(node.value)
 
     def analyse(self, node):
-        if isinstance(node, BaseType):
+        if isinstance(node, TypeBase):
             return node
 
         # If the node is a dummy TypeNode, we should simply return the types
@@ -656,7 +657,7 @@ class TypeSolver(NodeVisitor):
                 # If the signature is a non-function type, it may designate a
                 # call to a type constructor. In that case, all constructors
                 # of the type become candidates.
-                if isinstance(signature, BaseType):
+                if isinstance(signature, TypeBase):
                     if 'new' not in signature.members:
                         continue
                     constructors = self.environment[signature.members['new']]
@@ -874,7 +875,7 @@ class TypeSolver(NodeVisitor):
             if isinstance(expr_type, TypeVariable):
                 candidates.append(TypeVariable())
 
-            elif isinstance(expr_type, BaseType) and (operator in expr_type.members):
+            elif isinstance(expr_type, TypeBase) and (operator in expr_type.members):
                 candidate = self.environment[expr_type.members[operator]]
                 if isinstance(candidate, TypeUnion):
                     candidates.extend(self.environment[c] for c in candidate)

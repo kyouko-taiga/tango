@@ -7,7 +7,7 @@ namespace tango {
         visitor.visit(*this);
     }
 
-    void Module::accept(ASTNodeVisitor& visitor) {
+    void ModuleDecl::accept(ASTNodeVisitor& visitor) {
         visitor.visit(*this);
     }
 
@@ -48,6 +48,10 @@ namespace tango {
     }
 
     void Identifier::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void TypeIdentifier::accept(ASTNodeVisitor& visitor) {
         visitor.visit(*this);
     }
 

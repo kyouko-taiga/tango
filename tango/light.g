@@ -15,11 +15,13 @@ _simple_stmt   : prop_decl
                | return_stmt
                | call_expr
 
-prop_decl      : (CST | MUT | SHD) NAME ":" _type_ident
+prop_decl      : (CST | MUT | SHD) NAME ":" type_ident
 
-fun_decl       : FUN NAME "(" param_decl ")" "->" _type_ident block
+fun_decl       : FUN NAME "(" param_decls? ")" "->" type_ident block
 
-param_decl     : (CST | MUT | SHD) NAME ":" _type_ident
+param_decls    : param_decl ("," param_decl)*
+
+param_decl     : (CST | MUT | SHD) NAME ":" type_ident
 
 assign_stmt    : ident assign_op _expr
 
@@ -56,11 +58,15 @@ _primary       : call_expr
 
 call_arg       : NAME assign_op _expr
 
-!fun_sign      : "(" sign_param ")" "->" _type_ident
+!fun_sign      : "(" sign_param ")" "->" type_ident
 
-sign_param     : (CST | MUT | SHD) NAME ":" _type_ident
+sign_param     : (CST | MUT | SHD) NAME ":" type_ident
 
-_type_ident    : ident | fun_sign | "(" _type_ident ")"
+type_ident     : type_modifier? _type_sign
+
+_type_sign     : ident | fun_sign | "(" type_ident ")"
+
+!type_modifier : "&" | "!"
 
 ident          : NAME
 

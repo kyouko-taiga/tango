@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/python.hpp>
+
 #include "tango/types/types.hh"
 
 
@@ -19,6 +21,11 @@ namespace tango {
         im_cst, im_mut,
     };
 
+    // Type identifier attributes.
+    enum TypeModifier {
+        tm_none, tm_ref, tm_own,
+    };
+
     // Enumerations of operators.
     enum Operator {
         o_add, o_sub, o_mul, o_div,
@@ -27,18 +34,10 @@ namespace tango {
 
     // -----------------------------------------------------------------------
 
-    /// Location (start/end) of a node within its source file.
-    struct ASTNodeLocation {
-        int line = 0;
-        int col  = 0;
-    };
-
     /// Struct for AST node metadata.
     struct ASTNodeMetadata {
-        ASTNodeLocation start;
-        ASTNodeLocation end;
-
-        TypePtr         type;
+        boost::python::object _py_attrs;
+        TypePtr               type;
     };
 
     // -----------------------------------------------------------------------
@@ -75,8 +74,8 @@ namespace tango {
     // -----------------------------------------------------------------------
 
     /// AST node for module declarations.
-    struct Module: public ASTNode {
-        Module(ASTNodePtr body, const std::string& name)
+    struct ModuleDecl: public ASTNode {
+        ModuleDecl(ASTNodePtr body, const std::string& name)
             : body(body), name(name) {}
 
         void accept(ASTNodeVisitor& visitor);
@@ -207,8 +206,8 @@ namespace tango {
     struct CallArg: public ASTNode {
         CallArg(
             const std::string& label,
-            Operator   op,
-            ASTNodePtr value)
+            Operator           op,
+            ASTNodePtr         value)
             : label(label), op(op), value(value) {}
 
         void accept(ASTNodeVisitor& visitor);
@@ -245,6 +244,17 @@ namespace tango {
         std::string name;
     };
 
+    /// AST node for type signatures.
+    struct TypeIdentifier: public ASTNode {
+        TypeIdentifier(ASTNodePtr signature, TypeModifier modifier)
+            : signature(signature), modifier(modifier) {}
+
+        void accept(ASTNodeVisitor& visitor);
+
+        ASTNodePtr   signature;
+        TypeModifier modifier;
+    };
+
     // -----------------------------------------------------------------------
 
     /// AST node for integer literals.
@@ -272,20 +282,21 @@ namespace tango {
     // -----------------------------------------------------------------------
 
     struct ASTNodeVisitor {
-        virtual void visit(Block&         node) = 0;
-        virtual void visit(Module&        node) = 0;
-        virtual void visit(PropDecl&      node) = 0;
-        virtual void visit(ParamDecl&     node) = 0;
-        virtual void visit(FunDecl&       node) = 0;
-        virtual void visit(Assignment&    node) = 0;
-        virtual void visit(If&            node) = 0;
-        virtual void visit(Return&        node) = 0;
-        virtual void visit(BinaryExpr&    node) = 0;
-        virtual void visit(CallArg&       node) = 0;
-        virtual void visit(Call&          node) = 0;
-        virtual void visit(Identifier&    node) = 0;
-        virtual void visit(IntLiteral&    node) = 0;
-        virtual void visit(BoolLiteral&   node) = 0;
+        virtual void visit(Block&          node) = 0;
+        virtual void visit(ModuleDecl&     node) = 0;
+        virtual void visit(PropDecl&       node) = 0;
+        virtual void visit(ParamDecl&      node) = 0;
+        virtual void visit(FunDecl&        node) = 0;
+        virtual void visit(Assignment&     node) = 0;
+        virtual void visit(If&             node) = 0;
+        virtual void visit(Return&         node) = 0;
+        virtual void visit(BinaryExpr&     node) = 0;
+        virtual void visit(CallArg&        node) = 0;
+        virtual void visit(Call&           node) = 0;
+        virtual void visit(Identifier&     node) = 0;
+        virtual void visit(TypeIdentifier& node) = 0;
+        virtual void visit(IntLiteral&     node) = 0;
+        virtual void visit(BoolLiteral&    node) = 0;
     };
 
 } // namespace tango

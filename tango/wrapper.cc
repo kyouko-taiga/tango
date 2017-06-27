@@ -26,11 +26,14 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def(vector_indexing_suite<TypeList, true>());
 
     class_<ReferenceType, bases<TypeBase>, boost::noncopyable>(
-        "ReferenceType", init<TypePtr>())
+        "ReferenceType", init<TypePtr>((arg("referred_type"))))
         .def_readwrite("referred_type",       &ReferenceType::referred_type);
 
     class_<FunctionType, bases<TypeBase>, boost::noncopyable>(
-        "FunctionType", init<TypeList, std::vector<std::string>, TypePtr>())
+        "FunctionType", init<TypeList, std::vector<std::string>, TypePtr>((
+            arg("domain"),
+            arg("labels"),
+            arg("codomain"))))
         .def_readwrite("domain",              &FunctionType::domain)
         .def_readwrite("labels",              &FunctionType::labels)
         .def_readwrite("codomain",            &FunctionType::codomain);
@@ -40,13 +43,18 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def_readwrite("name",                &NominalType::name);
 
     class_<BuiltinType, bases<NominalType>, boost::noncopyable>(
-        "BuiltinType", init<std::string>());
+        "BuiltinType", init<std::string>((arg("name"))));
 
     // -----------------------------------------------------------------------
 
     enum_<IdentifierMutability>("IdentifierMutability")
         .value("im_cst", im_cst)
         .value("im_mut", im_mut);
+
+    enum_<TypeModifier>("TypeModifier")
+        .value("tm_none", tm_none)
+        .value("tm_ref",  tm_ref)
+        .value("tm_own",  tm_own);
 
     enum_<Operator>("Operator")
         .value("o_add", o_add)
@@ -57,92 +65,120 @@ BOOST_PYTHON_MODULE(wrapper) {
         .value("o_ref", o_div)
         .value("o_mov", o_div);
 
-    class_<ASTNodeLocation>("NodeLocation")
-        .def_readwrite("line",                &ASTNodeLocation::line)
-        .def_readwrite("col",                 &ASTNodeLocation::col);
-
     class_<ASTNodeMetadata>("NodeMetadata")
-        .def_readwrite("start",               &ASTNodeMetadata::start)
-        .def_readwrite("end",                 &ASTNodeMetadata::end)
+        .def_readwrite("_py_attrs",           &ASTNodeMetadata::_py_attrs)
         .def_readwrite("type",                &ASTNodeMetadata::type);
 
     class_<ASTNode, boost::noncopyable>("Node", no_init)
-        .def_readwrite("meta",                &ASTNode::meta);
+        .def_readwrite("__meta__",            &ASTNode::meta);
 
     class_<ASTNodeList>("NodeList")
         .def(vector_indexing_suite<ASTNodeList, true>());
 
     class_<Block, bases<ASTNode>>(
-        "Block", init<ASTNodeList>())
+        "Block", init<ASTNodeList>((arg("statements"))))
         .def_readwrite("statements",          &Block::statements);
 
-    class_<Module, bases<ASTNode>>(
-        "Module", init<ASTNodePtr, std::string>())
-        .def_readwrite("body",                &Module::body)
-        .def_readwrite("name",                &Module::name);
+    class_<ModuleDecl, bases<ASTNode>>(
+        "ModuleDecl", init<ASTNodePtr, std::string>((
+            arg("body"),
+            arg("name"))))
+        .def_readwrite("body",                &ModuleDecl::body)
+        .def_readwrite("name",                &ModuleDecl::name);
 
     class_<PropDecl, bases<ASTNode>>(
-        "PropDecl", init<std::string, IdentifierMutability, ASTNodePtr>())
+        "PropDecl", init<std::string, optional<IdentifierMutability, ASTNodePtr>>((
+                arg("name"),
+                arg("mutability"),
+                arg("type_annotation"))))
         .def_readwrite("name",                &PropDecl::name)
         .def_readwrite("mutability",          &PropDecl::mutability)
         .def_readwrite("type_annotation",     &PropDecl::type_annotation);
 
     class_<ParamDecl, bases<ASTNode>>(
-        "ParamDecl", init<std::string, IdentifierMutability, ASTNodePtr>())
+        "ParamDecl", init<std::string, optional<IdentifierMutability, ASTNodePtr>>((
+                arg("name"),
+                arg("mutability"),
+                arg("type_annotation"))))
         .def_readwrite("name",                &ParamDecl::name)
         .def_readwrite("mutability",          &ParamDecl::mutability)
         .def_readwrite("type_annotation",     &ParamDecl::type_annotation);
 
     class_<FunDecl, bases<ASTNode>>(
-        "FunDecl", init<std::string, ASTNodeList, ASTNodePtr, ASTNodePtr>())
+        "FunDecl", init<std::string, ASTNodeList, ASTNodePtr, ASTNodePtr>((
+            arg("name"),
+            arg("parameters"),
+            arg("codomain_annotation"),
+            arg("body"))))
         .def_readwrite("name",                &FunDecl::name)
         .def_readwrite("parameters",          &FunDecl::parameters)
         .def_readwrite("codomain_annotation", &FunDecl::codomain_annotation)
         .def_readwrite("body",                &FunDecl::body);
 
     class_<Assignment, bases<ASTNode>>(
-        "Assignment", init<ASTNodePtr, Operator, ASTNodePtr>())
+        "Assignment", init<ASTNodePtr, Operator, ASTNodePtr>((
+            arg("lvalue"),
+            arg("operator"),
+            arg("rvalue"))))
         .def_readwrite("lvalue",              &Assignment::lvalue)
         .def_readwrite("operator",            &Assignment::op)
         .def_readwrite("rvalue",              &Assignment::rvalue);
 
     class_<If, bases<ASTNode>>(
-        "If", init<ASTNodePtr, ASTNodePtr, ASTNodePtr>())
+        "If", init<ASTNodePtr, ASTNodePtr, ASTNodePtr>((
+            arg("condition"),
+            arg("then_block"),
+            arg("else_block"))))
         .def_readwrite("condition",           &If::condition)
         .def_readwrite("then_block",          &If::then_block)
         .def_readwrite("else_block",          &If::else_block);
 
     class_<Return, bases<ASTNode>>(
-        "Return", init<ASTNodePtr>())
+        "Return", init<ASTNodePtr>((arg("value"))))
         .def_readwrite("value",               &Return::value);
 
     class_<BinaryExpr, bases<ASTNode>>(
-        "BinaryExpr", init<ASTNodePtr, Operator, ASTNodePtr>())
+        "BinaryExpr", init<ASTNodePtr, Operator, ASTNodePtr>((
+            arg("left"),
+            arg("operator"),
+            arg("right"))))
         .def_readwrite("left",                &BinaryExpr::left)
         .def_readwrite("operator",            &BinaryExpr::op)
         .def_readwrite("right",               &BinaryExpr::right);
 
     class_<CallArg, bases<ASTNode>>(
-        "CallArg", init<std::string, Operator, ASTNodePtr>())
+        "CallArg", init<std::string, Operator, ASTNodePtr>((
+            arg("label"),
+            arg("operator"),
+            arg("value"))))
         .def_readwrite("label",               &CallArg::label)
         .def_readwrite("operator",            &CallArg::op)
         .def_readwrite("value",               &CallArg::value);
 
     class_<Call, bases<ASTNode>>(
-        "Call", init<ASTNodePtr, ASTNodeList>())
+        "Call", init<ASTNodePtr, ASTNodeList>((
+            arg("callee"),
+            arg("arguments"))))
         .def_readwrite("callee",              &Call::callee)
         .def_readwrite("arguments",           &Call::arguments);
 
     class_<Identifier, bases<ASTNode>>(
-        "Identifier", init<std::string>())
+        "Identifier", init<std::string>((arg("name"))))
         .def_readwrite("name",                &Identifier::name);
 
+    class_<TypeIdentifier, bases<ASTNode>>(
+        "TypeIdentifier", init<ASTNodePtr, TypeModifier>((
+            arg("signature"),
+            arg("modifier"))))
+        .def_readwrite("signature",           &TypeIdentifier::signature)
+        .def_readwrite("modifier",            &TypeIdentifier::modifier);
+
     class_<IntLiteral, std::shared_ptr<IntLiteral>, bases<ASTNode>>(
-        "IntLiteral", init<long>())
+        "IntLiteral", init<long>((arg("value"))))
         .def_readwrite("value",               &IntLiteral::value);
 
     class_<BoolLiteral, std::shared_ptr<BoolLiteral>, bases<ASTNode>>(
-        "BoolLiteral", init<bool>())
+        "BoolLiteral", init<bool>((arg("value"))))
         .def_readwrite("value",               &BoolLiteral::value);
 
 }

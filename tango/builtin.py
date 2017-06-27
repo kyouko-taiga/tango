@@ -1,13 +1,13 @@
 from .module import Module, Symbol
 from .scope import Scope
-from .types import FunctionType, NominalType, TypeName, TypeUnion
+from .types import FunctionType, BuiltinType, TypeName, TypeUnion
 
 
 builtin_module = Module(name='Tango')
 builtin_types  = []
 
 def make_builtin_type(name):
-    builtin_type = NominalType(name)
+    builtin_type = BuiltinType(name)
     builtin_module.symbols[name] = Symbol(
         name = name,
         type = TypeName(name=name, type=builtin_type))

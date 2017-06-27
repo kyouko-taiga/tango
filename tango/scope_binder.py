@@ -3,7 +3,7 @@ from .builtin import builtin_module
 from .errors import DuplicateDeclaration, UndefinedSymbol
 from .module import Symbol
 from .scope import Scope
-from .types import BaseType, FunctionType
+from .types import TypeBase, FunctionType
 
 
 class ScopeBinder(NodeVisitor):
@@ -71,7 +71,7 @@ class ScopeBinder(NodeVisitor):
         self.visit(node.body)
         self.scopes.pop()
 
-    def visit_PropertyDecl(self, node):
+    def visit_PropDecl(self, node):
         # Make sure the property's name wasn't already declared.
         symbol = self.current_scope[node.name]
         if symbol.code is not None:
@@ -94,13 +94,13 @@ class ScopeBinder(NodeVisitor):
         self.generic_visit(node)
         self.under_declaration[self.current_scope].remove(node.name)
 
-    def visit_FunctionDecl(self, node):
+    def visit_FunDecl(self, node):
         # If the function's identifer was already declared within the current
         # scope, make sure it is associated with other function declarations
         # only (overloading).
         symbol = self.current_scope[node.name]
         if (symbol.code is not None):
-            if not (isinstance(symbol.code, FunctionDecl) or
+            if not (isinstance(symbol.code, FunDecl) or
                     isinstance(symbol.type, FunctionType)):
                 raise DuplicateDeclaration(
                     "{}:{}: duplicate declaration of '{}'".format(
@@ -196,7 +196,7 @@ class SymbolsExtractor(NodeVisitor):
     '''Annotate every Block node with the symbols it declares.'''
 
     scope_opening_node_classes = (Block, If,)
-    symbol_node_classes        = (PropertyDecl, FunctionDecl,)
+    symbol_node_classes        = (PropDecl, FunDecl,)
 
     def __init__(self):
         self.blocks = []

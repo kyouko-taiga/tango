@@ -8,7 +8,7 @@ from tango.state_checker import CaptureFinder, StateChecker
 
 from tango.ast import Node
 from tango.scope import Scope
-from tango.types import BaseType
+from tango.types import TypeBase
 from tango.type_solver import TypeVariable
 from json import dumps, JSONEncoder
 
@@ -34,9 +34,9 @@ if __name__ == '__main__':
         source = f.read()
 
     # Parse the module declaration and produce an AST.
-    parse_tree = parser.parse(source)
-    transformer = TangoLightTransformer()
-    module_decl = transformer.transform(parse_tree)
+    parse_tree       = parser.parse(source)
+    transformer      = TangoLightTransformer()
+    module_decl      = transformer.transform(parse_tree)
     module_decl.name = os.path.splitext(os.path.basename(filename))[0]
 
     # Annotate each scope-opening node with the symols it declares.

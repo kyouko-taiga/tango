@@ -9,6 +9,7 @@ PYTHON_LIB=${PYTHON_ROOT}/lib
 
 # AST sources
 c++ -c -std=c++11 \
+    -I${PYTHON_INCLUDE} \
     -I${SRC_ROOT} \
     ${SRC_ROOT}/tango/ast/ast.cc -o ${SRC_ROOT}/tango/ast/ast.o
 

@@ -6,7 +6,6 @@ __all__ = ['TypeBase', 'ReferenceType', 'FunctionType', 'NominalType', 'BuiltinT
 class TypeUnion(TypeBase):
 
     def __init__(self, types=None):
-        super().__init__()
         self.types = []
 
         # We can't use a set to store the types of the union, as not all types
@@ -52,6 +51,16 @@ class TypeUnion(TypeBase):
 
     def __str__(self):
         return '[' + ' | '.join(map(str, self.types)) + ']'
+
+
+class TypeName(TypeBase):
+
+    def __init__(self, name, type):
+        self.name = name
+        self.type = type
+
+    def __str__(self):
+        return self.name
 
 
 # Following are some helper methods and properties we add by monkeypatching
