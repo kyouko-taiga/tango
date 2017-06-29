@@ -27,7 +27,9 @@ namespace tango {
         virtual bool is_reference() const = 0;
         virtual bool isa(TypeClass) const = 0;
 
-        bool operator==(const TypeBase&) const;
+        bool operator==(const TypeBase& rhs) const {
+            return this == &rhs;
+        }
     };
 
     typedef std::shared_ptr<TypeBase>      TypePtr;
@@ -120,14 +122,16 @@ namespace tango {
 
     // -----------------------------------------------------------------------
 
+    bool deep_equals(const TypeBase&, const TypeBase&);
+
     struct TypeFactory {
         template<typename T, typename ... Args>
-        std::shared_ptr<T> make_type(Args&& ... args) {
+        std::shared_ptr<T> make(Args&& ... args) {
             auto type_ptr = std::make_shared<T>(std::forward<Args>(args)...);
             for (auto it = types.begin(); it != types.end();) {
                 if (it->expired()) {
                     it = types.erase(it);
-                } else if (*(it->lock()) == *type_ptr) {
+                } else if (deep_equals(*(it->lock()), *type_ptr)) {
                     return std::static_pointer_cast<T>(it->lock());
                 } else {
                     it++;
@@ -139,42 +143,6 @@ namespace tango {
         }
 
         std::vector<WeakTypePtr> types;
-
-        // template<typename T>
-        // TypePtr make_nominal_type(const std::string& name) {
-        //     for (auto it = nominal_types.begin(); it != nominal_types.end();) {
-        //         if (it->second.expired()) {
-        //             it = nominal_types.erase(it);
-        //         } else if (it->first == name) {
-        //             return it->second.lock();
-        //         } else {
-        //             it++;
-        //         }
-        //     }
-        //
-        //     return std::make_shared<BuiltinType>(name);
-        // }
-        //
-        // template<typename ... Args>
-        // TypePtr make_function_type(Args&& ... args) {
-        //     auto ftype = std::make_shared<FunctionType>(std::forward<Args>(args)...);
-        //     auto it    = std::find_if(
-        //         structual_types.begin(),
-        //         structual_types.end(),
-        //         [ftype](WeakTypePtr const& p) {
-        //             return !p.expired() and (*(p.lock()) == *ftype);
-        //         });
-        //
-        //     if (it == structual_types.end()) {
-        //         structual_types.push_back(ftype);
-        //         return ftype;
-        //     } else {
-        //         return it->second;
-        //     }
-        // }
-
-        // std::unordered_map<std::string, WeakTypePtr> nominal_types;
-        // std::vector<WeakTypePtr>                     structual_types;
     };
 
 } // namespace tango

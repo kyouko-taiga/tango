@@ -36,8 +36,12 @@ namespace tango {
 
     /// Struct for AST node metadata.
     struct ASTNodeMetadata {
-        boost::python::object _py_attrs;
-        TypePtr               type;
+        TypePtr type;
+
+        // Since other metadata attributes aren't required by the LLVM code
+        // generator, we don't bother storing them as C++ variables and use a
+        // python dictionary instead.
+        boost::python::dict _py_attrs;
     };
 
     // -----------------------------------------------------------------------
@@ -51,9 +55,6 @@ namespace tango {
         virtual void accept(ASTNodeVisitor& visitor) = 0;
 
         ASTNodeMetadata meta;
-
-        // Following are metadata about AST nodes.
-        // TypePtr md_type;
     };
 
     typedef std::shared_ptr<ASTNode> ASTNodePtr;

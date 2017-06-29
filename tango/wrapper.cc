@@ -10,8 +10,54 @@
 
 namespace tango {
 
-    std::shared_ptr<BuiltinType> make_builtin_type(TypeFactory& factory, const std::string& name) {
-        return factory.make_type<BuiltinType>(name);
+    std::shared_ptr<TypeUnion> make_union_type(
+        TypeFactory&        factory,
+        boost::python::list py_types)
+    {
+        using namespace boost::python;
+
+        TypeList cc_types;
+
+        int length = extract<int>(py_types.attr("__len__")());
+        for (std::size_t i = 0; i < length; ++i) {
+            cc_types.push_back(extract<TypePtr>(py_types[i]));
+        }
+
+        return factory.make<TypeUnion>(cc_types);
+    }
+
+    std::shared_ptr<ReferenceType> make_reference_type(
+        TypeFactory& factory,
+        TypePtr      referred_type)
+    {
+        return factory.make<ReferenceType>(referred_type);
+    }
+
+    std::shared_ptr<FunctionType> make_function_type(
+        TypeFactory&        factory,
+        boost::python::list py_domain,
+        boost::python::list py_labels,
+        TypePtr             codomain)
+    {
+        using namespace boost::python;
+
+        TypeList                 cc_domain;
+        std::vector<std::string> cc_labels;
+
+        int domain_length = extract<int>(py_domain.attr("__len__")());
+        for (std::size_t i = 0; i < domain_length; ++i) {
+            cc_domain.push_back(extract<TypePtr>(py_domain[i]));
+            cc_labels.push_back(extract<std::string>(py_labels[i]));
+        }
+
+        return factory.make<FunctionType>(cc_domain, cc_labels, codomain);
+    }
+
+    std::shared_ptr<BuiltinType> make_builtin_type(
+        TypeFactory&       factory,
+        const std::string& name)
+    {
+        return factory.make<BuiltinType>(name);
     }
 
 } // namespace tango
@@ -39,22 +85,19 @@ BOOST_PYTHON_MODULE(wrapper) {
     class_<TypeMap>("TypeMap")
         .def(map_indexing_suite<TypeMap, true>());
 
-    class_<TypeUnion, bases<TypeBase>, boost::noncopyable>(
-        "TypeUnion", init<>())
+    class_<TypeUnion, std::shared_ptr<TypeUnion>, bases<TypeBase>, boost::noncopyable>(
+        "TypeUnion", no_init)
         .def_readwrite("types",               &TypeUnion::types)
         .def("add",                           &TypeUnion::add)
         .def("replace_content",               &TypeUnion::replace_content)
         .def("first",                         &TypeUnion::first);
 
-    class_<ReferenceType, bases<TypeBase>, boost::noncopyable>(
-        "ReferenceType", init<TypePtr>((arg("referred_type"))))
+    class_<ReferenceType, std::shared_ptr<ReferenceType>, bases<TypeBase>, boost::noncopyable>(
+        "ReferenceType", no_init)
         .def_readwrite("referred_type",       &ReferenceType::referred_type);
 
-    class_<FunctionType, bases<TypeBase>, boost::noncopyable>(
-        "FunctionType", init<optional<TypeList, std::vector<std::string>, TypePtr>>((
-            arg("domain"),
-            arg("labels"),
-            arg("codomain"))))
+    class_<FunctionType, std::shared_ptr<FunctionType>, bases<TypeBase>, boost::noncopyable>(
+        "FunctionType", no_init)
         .def_readwrite("domain",              &FunctionType::domain)
         .def_readwrite("labels",              &FunctionType::labels)
         .def_readwrite("codomain",            &FunctionType::codomain);
@@ -65,10 +108,26 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def_readwrite("members",             &NominalType::members);
 
     class_<BuiltinType, std::shared_ptr<BuiltinType>, bases<NominalType>, boost::noncopyable>(
-        "BuiltinType", init<std::string>((arg("name"))));
+        "BuiltinType", no_init);
 
     class_<TypeFactory>("TypeFactory")
-        .def("make_builtin_type", &make_builtin_type);
+        // def make_union(self, types=[])
+        .def("make_union", &make_union_type,
+            (arg("types")=list()))
+
+        // def make_reference(self, referred_type)
+        .def("make_reference", &make_reference_type,
+            (arg("referred_type")))
+
+        // def make_function(self, domain=[], labels=[], codomain)
+        .def("make_function", &make_function_type,
+            (arg("domain")=list(),
+             arg("labels")=list(),
+             arg("codomain")))
+
+        // def make_function(self, name)
+        .def("make_builtin", &make_builtin_type,
+            (arg("name")));
 
     // -----------------------------------------------------------------------
 
@@ -198,11 +257,11 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def_readwrite("signature",           &TypeIdentifier::signature)
         .def_readwrite("modifier",            &TypeIdentifier::modifier);
 
-    class_<IntLiteral, std::shared_ptr<IntLiteral>, bases<ASTNode>>(
+    class_<IntLiteral, bases<ASTNode>>(
         "IntLiteral", init<long>((arg("value"))))
         .def_readwrite("value",               &IntLiteral::value);
 
-    class_<BoolLiteral, std::shared_ptr<BoolLiteral>, bases<ASTNode>>(
+    class_<BoolLiteral, bases<ASTNode>>(
         "BoolLiteral", init<bool>((arg("value"))))
         .def_readwrite("value",               &BoolLiteral::value);
 

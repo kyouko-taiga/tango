@@ -44,32 +44,32 @@ namespace tango {
         return lhs.name == rhs.name;
     }
 
-    bool TypeBase::operator==(const TypeBase& rhs) const {
-        if (auto lty = dynamic_cast<const TypeUnion*>(this)) {
+    bool deep_equals(const TypeBase& lhs, const TypeBase& rhs) {
+        if (auto lty = dynamic_cast<const TypeUnion*>(&lhs)) {
             if (auto rty = dynamic_cast<const TypeUnion*>(&rhs)) {
                 return *lty == *rty;
             }
         }
 
-        if (auto lty = dynamic_cast<const ReferenceType*>(this)) {
+        if (auto lty = dynamic_cast<const ReferenceType*>(&lhs)) {
             if (auto rty = dynamic_cast<const ReferenceType*>(&rhs)) {
                 return *lty == *rty;
             }
         }
 
-        if (auto lty = dynamic_cast<const FunctionType*>(this)) {
+        if (auto lty = dynamic_cast<const FunctionType*>(&lhs)) {
             if (auto rty = dynamic_cast<const FunctionType*>(&rhs)) {
                 return *lty == *rty;
             }
         }
 
-        if (auto lty = dynamic_cast<const NominalType*>(this)) {
+        if (auto lty = dynamic_cast<const NominalType*>(&lhs)) {
             if (auto rty = dynamic_cast<const NominalType*>(&rhs)) {
                 return *lty == *rty;
             }
         }
 
-        return this == &rhs;
+        return &lhs == &rhs;
     }
 
     // -----------------------------------------------------------------------
@@ -116,60 +116,5 @@ namespace tango {
         }
         return nullptr;
     }
-
-    // bool TypeUnion::operator==(const TypeUnion& rhs) const {
-    //     if (rhs.types.size() != this->types.size()) {
-    //         return false;
-    //     }
-    //
-    //     for (auto t: this->types) {
-    //         auto it = std::find_if(
-    //             rhs.types.begin(),
-    //             rhs.types.end(),
-    //             [t](TypePtr const& u) { return t.get() == u.get(); });
-    //         if (it == rhs.types.end()) {
-    //             return false;
-    //         }
-    //     }
-    //
-    //     return true;
-    // }
-    //
-    // // -----------------------------------------------------------------------
-    //
-    // bool FunctionType::operator==(const FunctionType& rhs) const {
-    //     if (rhs.domain.size() != this->domain.size()) {
-    //         return false;
-    //     }
-    //
-    //     for (std::size_t i = 0; i < rhs.domain.size(); ++i) {
-    //         if ((rhs.domain[i] != this->domain[i]) || (rhs.labels[i] != this->labels[i])) {
-    //             return false;
-    //         }
-    //     }
-    //
-    //     return rhs.codomain == this->codomain;
-    // }
-    //
-    // // -----------------------------------------------------------------------
-    //
-    // bool NominalType::operator==(const NominalType& rhs) const {
-    //     if (rhs.name != this->name) {
-    //         return false;
-    //     }
-    //
-    //     if (rhs.members.size() != this->members.size()) {
-    //         return false;
-    //     }
-    //
-    //     for (auto i: this->members) {
-    //         auto j = rhs.members.find(i.first);
-    //         if ((j == rhs.members.end()) || !(*(i.second) == *(j->second))) {
-    //             return false;
-    //         }
-    //     }
-    //
-    //     return true;
-    // }
 
 } // namespace tango

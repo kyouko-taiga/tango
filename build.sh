@@ -13,6 +13,11 @@ c++ -c -std=c++11 \
     -I${SRC_ROOT} \
     ${SRC_ROOT}/tango/ast/ast.cc -o ${SRC_ROOT}/tango/ast/ast.o
 
+# Types sources
+c++ -c -std=c++11 \
+    -I${SRC_ROOT} \
+    ${SRC_ROOT}/tango/types/types.cc -o ${SRC_ROOT}/tango/types/types.o
+
 # Wrapper module
 c++ -c -std=c++11 \
     -I${PYTHON_INCLUDE} \
@@ -23,4 +28,7 @@ c++ -shared \
     -L${PYTHON_LIB} \
     -lpython3.6 \
     -lboost_python3 \
-    ${SRC_ROOT}/tango/ast/ast.o ${SRC_ROOT}/tango/wrapper.o -o ${SRC_ROOT}/tango/wrapper.so
+    ${SRC_ROOT}/tango/ast/ast.o \
+    ${SRC_ROOT}/tango/types/types.o \
+    ${SRC_ROOT}/tango/wrapper.o \
+    -o ${SRC_ROOT}/tango/wrapper.so
