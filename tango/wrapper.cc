@@ -1,10 +1,20 @@
 #include <memory>
 
 #include <boost/python.hpp>
+#include <boost/python/suite/indexing/map_indexing_suite.hpp>
 #include <boost/python/suite/indexing/vector_indexing_suite.hpp>
 
 #include "tango/ast/ast.hh"
 #include "tango/types/types.hh"
+
+
+namespace tango {
+
+    std::shared_ptr<BuiltinType> make_builtin_type(TypeFactory& factory, const std::string& name) {
+        return factory.make_type<BuiltinType>(name);
+    }
+
+} // namespace tango
 
 
 BOOST_PYTHON_MODULE(wrapper) {
@@ -20,17 +30,28 @@ BOOST_PYTHON_MODULE(wrapper) {
     class_<TypeBase, boost::noncopyable>("TypeBase", no_init)
         .add_property("is_primitive", make_function(&TypeBase::is_primitive))
         .add_property("is_generic",   make_function(&TypeBase::is_generic))
-        .add_property("is_reference", make_function(&TypeBase::is_reference));
+        .add_property("is_reference", make_function(&TypeBase::is_reference))
+        .def(self == self);
 
     class_<TypeList>("TypeList")
         .def(vector_indexing_suite<TypeList, true>());
+
+    class_<TypeMap>("TypeMap")
+        .def(map_indexing_suite<TypeMap, true>());
+
+    class_<TypeUnion, bases<TypeBase>, boost::noncopyable>(
+        "TypeUnion", init<>())
+        .def_readwrite("types",               &TypeUnion::types)
+        .def("add",                           &TypeUnion::add)
+        .def("replace_content",               &TypeUnion::replace_content)
+        .def("first",                         &TypeUnion::first);
 
     class_<ReferenceType, bases<TypeBase>, boost::noncopyable>(
         "ReferenceType", init<TypePtr>((arg("referred_type"))))
         .def_readwrite("referred_type",       &ReferenceType::referred_type);
 
     class_<FunctionType, bases<TypeBase>, boost::noncopyable>(
-        "FunctionType", init<TypeList, std::vector<std::string>, TypePtr>((
+        "FunctionType", init<optional<TypeList, std::vector<std::string>, TypePtr>>((
             arg("domain"),
             arg("labels"),
             arg("codomain"))))
@@ -40,10 +61,14 @@ BOOST_PYTHON_MODULE(wrapper) {
 
     class_<NominalType, bases<TypeBase>, boost::noncopyable>(
         "NominalType", no_init)
-        .def_readwrite("name",                &NominalType::name);
+        .def_readwrite("name",                &NominalType::name)
+        .def_readwrite("members",             &NominalType::members);
 
-    class_<BuiltinType, bases<NominalType>, boost::noncopyable>(
+    class_<BuiltinType, std::shared_ptr<BuiltinType>, bases<NominalType>, boost::noncopyable>(
         "BuiltinType", init<std::string>((arg("name"))));
+
+    class_<TypeFactory>("TypeFactory")
+        .def("make_builtin_type", &make_builtin_type);
 
     // -----------------------------------------------------------------------
 
