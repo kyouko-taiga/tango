@@ -4,9 +4,8 @@ from .ast import *
 from .builtin import Bool, Type
 from .errors import InferenceError
 from .scope import Scope
-from .types import TypeBase, FunctionType,NominalType, TypeName, TypeUnion
-# from .types import (
-#     TypeBase, EnumType, FunctionType, GenericType, NominalType, StructType, TypeName, TypeUnion)
+from .types import TypeBase, TypeVariable, TypeUnion, FunctionType, BuiltinType
+from .types import type_factory
 
 
 def infer_types(node, max_iter=100):
@@ -49,42 +48,6 @@ class TypesFinder(NodeVisitor):
         self.generic_visit(node)
 
 
-class TypeVariable(object):
-
-    next_id = 0
-
-    def __init__(self, id=None):
-        if id is None:
-            self.id = TypeVariable.next_id
-            TypeVariable.next_id += 1
-        elif isinstance(id, Node):
-            self.id = (id.__meta__['scope'], id.name)
-        else:
-            self.id = id
-
-    def is_generic(self, memo=None):
-
-        # NOTE We chose to always consider type variables non-generic. The
-        # consequence of this choice is that whenever we visit a generic type
-        # that has yet to be specialized, we have to type the expression that
-        # uses it with another fresh variable.
-        # Another approach would be to allow type variables to hold a
-        # specialization list as well. That way we could express "some type
-        # specialized with this". This would reduce the number of variables we
-        # have to create, but would also make matching and unification harder.
-
-        return False
-
-    def __hash__(self):
-        return hash(self.id)
-
-    def __eq__(self, other):
-        return (type(self) == type(other)) and (self.id == other.id)
-
-    def __str__(self):
-        return '$%i' % hash(self)
-
-
 class Substitution(object):
 
     def __init__(self, storage=None):
@@ -106,10 +69,9 @@ class Substitution(object):
     def unify(self, t, u, memo=None):
         if memo is None:
             memo = set()
-        key = (id(t), id(u))
-        if key in memo:
+        if (t, u) in memo:
             return
-        memo.add(key)
+        memo.add((t, u))
 
         a = self[t]
         b = self[u]
@@ -150,11 +112,11 @@ class Substitution(object):
         elif isinstance(b, TypeUnion) and isinstance(a, TypeBase):
             self.unify(b, a, memo)
 
-        elif isinstance(a, NominalType) and isinstance(b, NominalType):
-            if (a.name != b.name) or (a.members.keys() ^ b.members.keys()):
-                raise InferenceError("type '{}' does not match '{}'".format(a, b))
-            for it in a.members:
-                self.unify(a.members[it], b.members[it], memo)
+        # elif isinstance(a, NominalType) and isinstance(b, NominalType):
+        #     if (a.name != b.name) or (a.members.keys() ^ b.members.keys()):
+        #         raise InferenceError("type '{}' does not match '{}'".format(a, b))
+        #     for it in a.members:
+        #         self.unify(a.members[it], b.members[it], memo)
 
         elif isinstance(a, FunctionType) and isinstance(b, FunctionType):
             for ita, itb in zip(a.domain, b.domain):
@@ -182,10 +144,10 @@ class Substitution(object):
         if isinstance(u, TypeVariable):
             return True
 
-        if isinstance(t, TypeUnion):
-            return any(self.matches(it, u) for it in t)
-        if isinstance(u, TypeUnion):
-            return self.matches(u, t)
+        # if isinstance(t, TypeUnion):
+        #     return any(self.matches(it, u) for it in t)
+        # if isinstance(u, TypeUnion):
+        #     return self.matches(u, t)
 
         if isinstance(t, NominalType) and isinstance(u, NominalType):
             return ((t.name == u.name)
@@ -210,43 +172,31 @@ class Substitution(object):
     def deepwalk(self, t, memo=None):
         if memo is None:
             memo = {}
-        if id(t) in memo:
-            return memo[id(t)]
+        if t in memo:
+            return memo[t]
 
-        if isinstance(t, TypeUnion):
-            result = TypeUnion()
-            memo[id(t)] = result
-            result.types = TypeUnion(self.deepwalk(it, memo) for it in t).types
+        # if isinstance(t, TypeUnion):
+        #     result  = type_factory.make_union()
+        #     memo[t] = result
+        #     for u in t.types:
+        #         result.add(self.deepwalk(u, memo))
+        #
+        #     # Avoid creating singletons when there's only one candidate.
+        #     if len(result) == 1:
+        #         result = result.first()
+        #     return result
 
-            # Avoid creating singletons when there's only one candidate.
-            if len(result) == 1:
-                result = result.first()
-            return result
-
-        if isinstance(t, NominalType):
-            result = t.__class__(
-                name               = t.name,
-                scope              = t.scope,
-                inner_scope        = t.inner_scope,
-                generic_parameters = t.generic_parameters,
-                specializations    = t.specializations)
-            memo[id(t)] = result
-
-            result.members = {
-                name: self.deepwalk(member, memo)
-                for name, member in t.members.items()
-            }
-            return result
+        if isinstance(t, BuiltinType):
+            memo[t] = t
+            for name, member in t.members:
+                t.members[name] = self.deepwalk(member, memo)
+            return t
 
         if isinstance(t, FunctionType):
-            result = FunctionType(
-                labels     = t.labels,
-                attributes = t.attributes)
-            memo[id(t)] = result
-
-            result.domain = [self.deepwalk(p, memo) for p in t.domain]
-            result.codomain = self.deepwalk(t.codomain, memo)
-            return result
+            return type_factory.make_function(
+                domain   = [self.deepwalk(d, memo) for d in t.domain],
+                labels   = t.labels,
+                codomain = self.deepwalk(t.codomain, memo))
 
         if not isinstance(t, TypeVariable):
             return t
@@ -326,8 +276,9 @@ class TypeSolver(NodeVisitor):
                 if isinstance(symbol.type, TypeBase):
                     types.append(symbol.type)
             if types:
-                types = TypeUnion(types) if len(types) > 1 else types[0]
-                self.environment.unify(TypeVariable(id=(module_scope, name)), types)
+                self.environment.unify(
+                    type_factory.make_variable(id=(module_scope, name)),
+                    type_factory.make_union(types) if len(types) > 1 else types[0])
 
         self.visit(node.body)
 
@@ -337,9 +288,9 @@ class TypeSolver(NodeVisitor):
         # where a variable refers a type that has yet to be defined.
         scope = node.__meta__['scope']
         for symbol in node.__meta__['symbols']:
-            var = TypeVariable((scope, symbol))
+            var = type_factory.make_variable(id=(scope, symbol))
             if var not in self.environment:
-                self.environment[var] = TypeVariable()
+                self.environment[var] = type_factory.make_variable()
 
         # We also store a reference to all return statements within the block,
         # so we can later unify their types (e.g. for functions).
@@ -349,10 +300,16 @@ class TypeSolver(NodeVisitor):
             if isinstance(statement, Return):
                 node.__meta__['return_statements'].append(statement)
 
-    def visit_PropertyDecl(self, node):
-        # We simply use the type annotation to infer the type of the property.
-        inferred = self.read_type_reference(node.type_annotation)
-        self.environment.unify(TypeVariable(node), inferred)
+    def visit_PropDecl(self, node):
+        # If there isn't neither a type annotation, nor an initializing value,
+        # we can't infer any additional type information.
+        if not (node.type_annotation or node.initial_value):
+            return
+
+        # If there's a type annotation, we should infer its type first.
+        if node.type_annotation:
+            inferred = self.analyse(node.type_annotation)
+            self.environment.unify(varof(node), inferred)
 
         node.__meta__['type'] = inferred
 
@@ -540,31 +497,29 @@ class TypeSolver(NodeVisitor):
         self.read_type_instance(node.value)
 
     def analyse(self, node):
-        if isinstance(node, TypeBase):
-            return node
-
         # If the node is a dummy TypeNode, we should simply return the types
         # it represents.
-        if isinstance(node, TypeSolver.TypeNode):
-            return node.type
+        # if isinstance(node, TypeSolver.TypeNode):
+        #     return node.type
 
-        # If the node is a literal, its type should already have been inferred
-        # by the parser.
-        if isinstance(node, Literal):
+        # If the node is a simple literal, its type should have been inferred
+        # by the parser already.
+        if isinstance(node, IntLiteral):
             return node.__meta__['type']
 
         if isinstance(node, Identifier):
             # We get the identifier's type from the environment.
-            result = self.environment[TypeVariable(node)]
+            result = self.environment[varof(node)]
             node.__meta__['type'] = result
-
-            # We also have to determine the identifier's mutability.
-            node.__meta__['mutability'] = node.__meta__['scope'][node.name].mutability
-
             return result
 
+        if isinstance(node, TypeIdentifier):
+            # TODO
+
+        assert False, "no type inference for node '{}'".format(node.__class__.__name__)
+
         # If the node is a function signature, we should build a FunctionType.
-        if isinstance(node, FunctionSignature):
+        if isinstance(node, FunSign):
             domain = []
             for parameter in [node.parameter]:
                 type_annotation = self.read_type_reference(parameter.type_annotation)
@@ -1027,3 +982,7 @@ def specialize_from_annotation(unspecialized, type_annotation):
 
 def flatten(iterable):
     return (i for it in iterable for i in it)
+
+
+def varof(node):
+    return type_factory.make_variable((node.__info__['scope'], node.name))

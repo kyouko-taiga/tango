@@ -59,8 +59,4 @@ namespace tango {
         visitor.visit(*this);
     }
 
-    void BoolLiteral::accept(ASTNodeVisitor& visitor) {
-        visitor.visit(*this);
-    }
-
 }

@@ -64,7 +64,7 @@ sign_param     : (CST | MUT | SHD) NAME ":" type_ident
 
 type_ident     : type_modifier? _type_sign
 
-_type_sign     : ident | fun_sign | "(" type_ident ")"
+_type_sign     : ident | fun_sign | "(" _type_sign ")"
 
 !type_modifier : "&" | "!"
 

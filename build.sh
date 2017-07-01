@@ -15,6 +15,7 @@ c++ -c -std=c++11 \
 
 # Types sources
 c++ -c -std=c++11 \
+    -I${PYTHON_INCLUDE} \
     -I${SRC_ROOT} \
     ${SRC_ROOT}/tango/types/types.cc -o ${SRC_ROOT}/tango/types/types.o
 

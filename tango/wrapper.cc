@@ -10,7 +10,7 @@
 
 namespace tango {
 
-    std::shared_ptr<TypeUnion> make_union_type(
+    std::shared_ptr<TypeUnion> make_type_union(
         TypeFactory&        factory,
         boost::python::list py_types)
     {
@@ -24,6 +24,26 @@ namespace tango {
         }
 
         return factory.make<TypeUnion>(cc_types);
+    }
+
+    std::shared_ptr<TypeName> make_type_name(
+        TypeFactory&       factory,
+        const std::string& name,
+        TypePtr            type)
+    {
+        return factory.make<TypeName>(name, type);
+    }
+
+    std::shared_ptr<TypeVariable> make_type_variable(
+        TypeFactory&          factory,
+        boost::python::object id)
+    {
+        using namespace boost::python;
+
+        if (id == api::object()) {
+            id = str(factory.next_variable_id++);
+        }
+        return factory.make<TypeVariable>(id);
     }
 
     std::shared_ptr<ReferenceType> make_reference_type(
@@ -77,7 +97,8 @@ BOOST_PYTHON_MODULE(wrapper) {
         .add_property("is_primitive", make_function(&TypeBase::is_primitive))
         .add_property("is_generic",   make_function(&TypeBase::is_generic))
         .add_property("is_reference", make_function(&TypeBase::is_reference))
-        .def(self == self);
+        .def(self == self)
+        .def("__hash__", &TypeBase::hash);
 
     class_<TypeList>("TypeList")
         .def(vector_indexing_suite<TypeList, true>());
@@ -91,6 +112,15 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def("add",                           &TypeUnion::add)
         .def("replace_content",               &TypeUnion::replace_content)
         .def("first",                         &TypeUnion::first);
+
+    class_<TypeName, std::shared_ptr<TypeName>, bases<TypeBase>, boost::noncopyable>(
+        "TypeName", no_init)
+        .def_readonly("name",                 &TypeName::name)
+        .def_readonly("type",                 &TypeName::type);
+
+    class_<TypeVariable, std::shared_ptr<TypeVariable>, bases<TypeBase>, boost::noncopyable>(
+        "TypeVariable", no_init)
+        .def_readonly("id",                   &TypeVariable::id);
 
     class_<ReferenceType, std::shared_ptr<ReferenceType>, bases<TypeBase>, boost::noncopyable>(
         "ReferenceType", no_init)
@@ -112,8 +142,17 @@ BOOST_PYTHON_MODULE(wrapper) {
 
     class_<TypeFactory>("TypeFactory")
         // def make_union(self, types=[])
-        .def("make_union", &make_union_type,
+        .def("make_union", &make_type_union,
             (arg("types")=list()))
+
+        // def make_name(self, name, type)
+        .def("make_name", &make_type_name,
+            (arg("name"),
+             arg("type")))
+
+        // def make_variable(self, id=None)
+        .def("make_variable", &make_type_variable,
+            (arg("id")=api::object()))
 
         // def make_reference(self, referred_type)
         .def("make_reference", &make_reference_type,
@@ -171,13 +210,15 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def_readwrite("name",                &ModuleDecl::name);
 
     class_<PropDecl, bases<ASTNode>>(
-        "PropDecl", init<std::string, optional<IdentifierMutability, ASTNodePtr>>((
+        "PropDecl", init<std::string, optional<IdentifierMutability, ASTNodePtr, ASTNodePtr>>((
                 arg("name"),
                 arg("mutability"),
-                arg("type_annotation"))))
+                arg("type_annotation"),
+                arg("initial_value"))))
         .def_readwrite("name",                &PropDecl::name)
         .def_readwrite("mutability",          &PropDecl::mutability)
-        .def_readwrite("type_annotation",     &PropDecl::type_annotation);
+        .def_readwrite("type_annotation",     &PropDecl::type_annotation)
+        .def_readwrite("initial_value",       &PropDecl::initial_value);
 
     class_<ParamDecl, bases<ASTNode>>(
         "ParamDecl", init<std::string, optional<IdentifierMutability, ASTNodePtr>>((
@@ -260,9 +301,5 @@ BOOST_PYTHON_MODULE(wrapper) {
     class_<IntLiteral, bases<ASTNode>>(
         "IntLiteral", init<long>((arg("value"))))
         .def_readwrite("value",               &IntLiteral::value);
-
-    class_<BoolLiteral, bases<ASTNode>>(
-        "BoolLiteral", init<bool>((arg("value"))))
-        .def_readwrite("value",               &BoolLiteral::value);
 
 }

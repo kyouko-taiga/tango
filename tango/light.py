@@ -40,7 +40,7 @@ class TangoLightTransformer(Transformer):
             })
 
     def fun_decl(self, items):
-        return ast.FunctionDecl(
+        return ast.FunDecl(
             name        = items[1].value,
             parameter   = items[2],
             return_type = items[3],
@@ -166,10 +166,13 @@ class TangoLightTransformer(Transformer):
         if items[0].type == 'NUMBER':
             if ('.' in value) or ('e' in value) or ('E' in value):
                 node_class = ast.DoubleLiteral
+                node_type  = Double
             else:
                 node_class = ast.IntLiteral
+                node_type  = Int
         elif items[0].type == 'STRING':
             node_class = ast.StringLiteral
+            node_type  = String
             value = value[1:-1]
         else:
             assert False, 'unknown literal type: {}'.format(items[0].type)
@@ -179,6 +182,7 @@ class TangoLightTransformer(Transformer):
             meta  = {
                 'start': (items[0].line, items[0].column),
                 'end'  : (items[0].line, items[0].column + len(items[0].value)),
+                'type' : node_type,
             })
 
     def fun_sign(self, items):

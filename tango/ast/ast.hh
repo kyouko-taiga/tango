@@ -91,15 +91,17 @@ namespace tango {
     struct PropDecl: public ASTNode {
         PropDecl(
             const std::string&   name,
-            IdentifierMutability im = im_cst,
-            ASTNodePtr           type = ASTNodePtr())
-            : name(name), mutability(im), type_annotation(type) {}
+            IdentifierMutability im            = im_cst,
+            ASTNodePtr           type          = nullptr,
+            ASTNodePtr           initial_value = nullptr)
+            : name(name), mutability(im), type_annotation(type), initial_value(initial_value) {}
 
         void accept(ASTNodeVisitor& visitor);
 
         std::string          name;
         IdentifierMutability mutability;
         ASTNodePtr           type_annotation;
+        ASTNodePtr           initial_value;
     };
 
     // -----------------------------------------------------------------------
@@ -270,18 +272,6 @@ namespace tango {
 
     // -----------------------------------------------------------------------
 
-    /// AST node for boolean literals.
-    struct BoolLiteral: public ASTNode {
-        BoolLiteral(bool value)
-            : value(value) {}
-
-        void accept(ASTNodeVisitor& visitor);
-
-        bool value;
-    };
-
-    // -----------------------------------------------------------------------
-
     struct ASTNodeVisitor {
         virtual void visit(Block&          node) = 0;
         virtual void visit(ModuleDecl&     node) = 0;
@@ -297,7 +287,6 @@ namespace tango {
         virtual void visit(Identifier&     node) = 0;
         virtual void visit(TypeIdentifier& node) = 0;
         virtual void visit(IntLiteral&     node) = 0;
-        virtual void visit(BoolLiteral&    node) = 0;
     };
 
 } // namespace tango

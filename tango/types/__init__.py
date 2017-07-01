@@ -1,30 +1,31 @@
-from tango.wrapper import *
-
-__all__ = [
-    'TypeFactory', 'TypeBase', 'TypeUnion',
-    'ReferenceType',
-    'FunctionType',
-    'NominalType', 'BuiltinType',
-]
+from tango.wrapper import (
+    TypeFactory, TypeBase, TypeVariable, TypeUnion, ReferenceType, FunctionType, NominalType, BuiltinType)
 
 
-class TypeName(TypeBase):
-
-    def __init__(self, name, type):
-        self.name = name
-        self.type = type
-
-    def __str__(self):
-        return self.name
+type_factory = TypeFactory()
 
 
 # Following are some helper methods and properties we add by monkeypatching
 # the C++ classes, so as to have a nicer API to work with.
 
+def TypeVariable_str(self):
+    return '{}'.format(hex(hash(self)))
+
+TypeVariable.__str__ = TypeVariable_str
+
+
+def TypeUnion_iter(self):
+    return iter(self.types)
+
+def TypeUnion_len(self):
+    return len(self.types)
+
 def TypeUnion_str(self):
     return '[' + ' | '.join(map(str, self.types)) + ']'
 
-TypeUnion.__str__ = TypeUnion_str
+TypeUnion.__iter__ = TypeUnion_iter
+TypeUnion.__len__  = TypeUnion_len
+TypeUnion.__str__  = TypeUnion_str
 
 
 def ReferenceType_str(self):
@@ -40,10 +41,12 @@ def FunctionType_str(self):
 
     return '(%s) -> %s' % (', '.join(parameters), self.codomain)
 
-FunctionType.__str__ = FunctionType_str
+FunctionType.__str__  = FunctionType_str
+FunctionType.__repr__ = FunctionType_str
 
 
 def NominalType_str(self):
     return self.name
 
-NominalType.__str__ = NominalType_str
+NominalType.__str__  = NominalType_str
+NominalType.__repr__ = NominalType_str

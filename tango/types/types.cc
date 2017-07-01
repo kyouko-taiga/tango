@@ -1,8 +1,11 @@
-#include <iostream>
 #include "types.hh"
 
 
 namespace tango {
+
+    bool operator==(const TypeVariable& lhs, const TypeVariable& rhs) {
+        return lhs.id == rhs.id;
+    }
 
     bool operator==(const TypeUnion& lhs, const TypeUnion& rhs) {
         if (lhs.types.size() != rhs.types.size()) {
@@ -45,6 +48,12 @@ namespace tango {
     }
 
     bool deep_equals(const TypeBase& lhs, const TypeBase& rhs) {
+        if (auto lty = dynamic_cast<const TypeVariable*>(&lhs)) {
+            if (auto rty = dynamic_cast<const TypeVariable*>(&rhs)) {
+                return *lty == *rty;
+            }
+        }
+
         if (auto lty = dynamic_cast<const TypeUnion*>(&lhs)) {
             if (auto rty = dynamic_cast<const TypeUnion*>(&rhs)) {
                 return *lty == *rty;

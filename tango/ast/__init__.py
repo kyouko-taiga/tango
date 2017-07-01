@@ -2,12 +2,12 @@ from tango.wrapper import *
 
 __all__ = [
     'IdentifierMutability', 'TypeModifier', 'Operator',
-    'Node', 'NodeVisitor', 'NodeTransformer',
+    'Node', 'NodeList', 'NodeVisitor', 'NodeTransformer',
     'ModuleDecl', 'Block',
     'PropDecl', 'ParamDecl', 'FunDecl',
     'Assignment', 'If', 'Return',
     'CallArg', 'Call', 'BinaryExpr', 'Identifier', 'TypeIdentifier',
-    'IntLiteral', 'BoolLiteral',
+    'IntLiteral',
 ]
 
 
@@ -20,12 +20,12 @@ class NodeVisitor(object):
     def generic_visit(self, node):
         for attr in node._fields:
             value = getattr(node, attr)
-            if isinstance(value, list):
+            if isinstance(value, Node):
+                self.visit(value)
+            elif isinstance(value, NodeList):
                 for item in value:
                     if isinstance(item, Node):
                         self.visit(item)
-            elif isinstance(value, Node):
-                self.visit(value)
 
 
 class NodeTransformer(NodeVisitor):
@@ -239,8 +239,3 @@ TypeIdentifier.__str__ = TypeIdentifier_str
 monkeypatch_init(IntLiteral)
 IntLiteral._fields = ('value',)
 IntLiteral.__str__ = lambda self: str(self.value)
-
-
-monkeypatch_init(BoolLiteral)
-BoolLiteral._fields = ('value',)
-BoolLiteral.__str__ = lambda self: str(self.value)
