@@ -91,10 +91,13 @@ namespace tango {
     struct PropDecl: public ASTNode {
         PropDecl(
             const std::string&   name,
-            IdentifierMutability im            = im_cst,
-            ASTNodePtr           type          = nullptr,
-            ASTNodePtr           initial_value = nullptr)
-            : name(name), mutability(im), type_annotation(type), initial_value(initial_value) {}
+            IdentifierMutability im              = im_cst,
+            ASTNodePtr           type            = nullptr,
+            ASTNodePtr           initial_value   = nullptr,
+            Operator             initial_binding = o_cpy)
+            : name(name), mutability(im),
+              type_annotation(type),
+              initial_value(initial_value), initial_binding(initial_binding) {}
 
         void accept(ASTNodeVisitor& visitor);
 
@@ -102,6 +105,7 @@ namespace tango {
         IdentifierMutability mutability;
         ASTNodePtr           type_annotation;
         ASTNodePtr           initial_value;
+        Operator             initial_binding;
     };
 
     // -----------------------------------------------------------------------
@@ -142,7 +146,7 @@ namespace tango {
 
     // -----------------------------------------------------------------------
 
-    // AST node for assignments.
+    /// AST node for assignments.
     struct Assignment: public ASTNode {
         Assignment(
             ASTNodePtr lvalue,
@@ -159,7 +163,7 @@ namespace tango {
 
     // -----------------------------------------------------------------------
 
-    // AST node for conditional statements.
+    /// AST node for conditional statements.
     struct If: public ASTNode {
         If(
             ASTNodePtr condition,
@@ -205,7 +209,7 @@ namespace tango {
 
     // -----------------------------------------------------------------------
 
-    // AST node for call arguments.
+    /// AST node for call arguments.
     struct CallArg: public ASTNode {
         CallArg(
             const std::string& label,
@@ -272,6 +276,18 @@ namespace tango {
 
     // -----------------------------------------------------------------------
 
+    /// AST node for string literals.
+    struct StringLiteral: public ASTNode {
+        StringLiteral(const std::string& value)
+            : value(value) {}
+
+        void accept(ASTNodeVisitor& visitor);
+
+        std::string value;
+    };
+
+    // -----------------------------------------------------------------------
+
     struct ASTNodeVisitor {
         virtual void visit(Block&          node) = 0;
         virtual void visit(ModuleDecl&     node) = 0;
@@ -287,6 +303,7 @@ namespace tango {
         virtual void visit(Identifier&     node) = 0;
         virtual void visit(TypeIdentifier& node) = 0;
         virtual void visit(IntLiteral&     node) = 0;
+        virtual void visit(StringLiteral&  node) = 0;
     };
 
 } // namespace tango

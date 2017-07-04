@@ -6,6 +6,13 @@ from . import ast
 from .builtin import Int, Double, String
 
 
+operator_table = {
+    '=' : ast.Operator.o_cpy,
+    '&-': ast.Operator.o_ref,
+    '<-': ast.Operator.o_mov
+}
+
+
 grammar_filename = os.path.join(os.path.dirname(__file__), 'light.g')
 with open(grammar_filename) as f:
     parser = Lark(f, lexer='standard', start='module')
@@ -30,13 +37,36 @@ class TangoLightTransformer(Transformer):
         return items
 
     def prop_decl(self, items):
+        tail            = items[2:]
+        type_annotation = None
+        initial_value   = None
+        initial_binding = ast.Operator.o_cpy
+        end             = 0
+
+        # If the next item after the property's name is an AST node, it means
+        # the declation comes with a type annotation.
+        if tail and isinstance(tail[0], ast.Node):
+            type_annotation = tail[0]
+            end             = tail[0].__meta__['end']
+            tail.pop(0)
+
+        # If the next (next) item after the property's name starts with an
+        # assignment operator, it means the declaration comes with an initial
+        # value expression.
+        if tail:
+            initial_binding = operator_table[tail[0].children[0].value]
+            initial_value   = tail[1]
+            end             = tail[1].__meta__['end']
+
         return ast.PropDecl(
             mutability      = _mutability_modifier(items[0]),
             name            = items[1].value,
-            type_annotation = items[2],
+            type_annotation = type_annotation,
+            initial_binding = initial_binding,
+            initial_value   = initial_value,
             meta            = {
                 'start': (items[0].line, items[0].column),
-                'end'  : items[2].__meta__['end']
+                'end'  : end
             })
 
     def fun_decl(self, items):
@@ -162,18 +192,20 @@ class TangoLightTransformer(Transformer):
             })
 
     def literal(self, items):
-        value = items[0].value
         if items[0].type == 'NUMBER':
+            value = items[0].value
             if ('.' in value) or ('e' in value) or ('E' in value):
+                value      = float(value)
                 node_class = ast.DoubleLiteral
                 node_type  = Double
             else:
+                value      = int(value)
                 node_class = ast.IntLiteral
                 node_type  = Int
         elif items[0].type == 'STRING':
+            value      = (items[0].value[1:-1])
             node_class = ast.StringLiteral
             node_type  = String
-            value = value[1:-1]
         else:
             assert False, 'unknown literal type: {}'.format(items[0].type)
 

@@ -1,5 +1,6 @@
 from tango.wrapper import (
-    TypeFactory, TypeBase, TypeVariable, TypeUnion, ReferenceType, FunctionType, NominalType, BuiltinType)
+    TypeFactory, TypeBase, TypeName, TypeUnion, TypeVariable,
+    ReferenceType, FunctionType, NominalType, BuiltinType)
 
 
 type_factory = TypeFactory()

@@ -9,7 +9,7 @@ from tango.state_checker import CaptureFinder, StateChecker
 from tango.ast import Node
 from tango.scope import Scope
 from tango.types import TypeBase
-from tango.type_solver import TypeVariable
+from tango.type_solver import TypeBase, TypeVariable
 from json import dumps, JSONEncoder
 
 class ASTEncoder(JSONEncoder):
@@ -21,9 +21,7 @@ class ASTEncoder(JSONEncoder):
             return repr(obj)
         if isinstance(obj, Scope):
             return obj.qualified_name
-        if isinstance(obj, BaseType):
-            return str(obj)
-        if isinstance(obj, TypeVariable):
+        if isinstance(obj, TypeBase):
             return str(obj)
         return JSONEncoder.default(self, obj)
 
@@ -38,6 +36,7 @@ if __name__ == '__main__':
     transformer      = TangoLightTransformer()
     module_decl      = transformer.transform(parse_tree)
     module_decl.name = os.path.splitext(os.path.basename(filename))[0]
+    print(module_decl)
 
     # Annotate each scope-opening node with the symols it declares.
     symbols_extractor = SymbolsExtractor()
@@ -46,10 +45,12 @@ if __name__ == '__main__':
     # Bind all symbols of the module to their respective scope.
     scope_binder = ScopeBinder()
     scope_binder.visit(module_decl)
+    # print(dumps(module_decl.to_dict(), indent=2, sort_keys=True, cls=ASTEncoder))
 
     # Infer the types of all expressions.
     (module, environment) = infer_types(module_decl)
-    # environment.print_debug()
+    environment.print_debug()
+    exit()
 
     # Check the correctness of resource access.
     capture_finder = CaptureFinder()
@@ -58,4 +59,4 @@ if __name__ == '__main__':
     state_checker.visit(module_decl)
 
     # print(dumps(module_decl.to_dict(), indent=2, sort_keys=True, cls=ASTEncoder))
-    print(module_decl)
+    # print(module_decl)

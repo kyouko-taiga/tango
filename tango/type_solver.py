@@ -4,7 +4,7 @@ from .ast import *
 from .builtin import Bool, Type
 from .errors import InferenceError
 from .scope import Scope
-from .types import TypeBase, TypeVariable, TypeUnion, FunctionType, BuiltinType
+from .types import TypeBase, TypeName, TypeUnion, TypeVariable, BuiltinType, FunctionType
 from .types import type_factory
 
 
@@ -301,17 +301,37 @@ class TypeSolver(NodeVisitor):
                 node.__meta__['return_statements'].append(statement)
 
     def visit_PropDecl(self, node):
-        # If there isn't neither a type annotation, nor an initializing value,
-        # we can't infer any additional type information.
+        # If there isn't neither a type annotation, nor an initial value, we
+        # can't infer any additional type information.
         if not (node.type_annotation or node.initial_value):
             return
 
-        # If there's a type annotation, we should infer its type first.
-        if node.type_annotation:
-            inferred = self.analyse(node.type_annotation)
-            self.environment.unify(varof(node), inferred)
+        # If there's an initial value, we shoud infer its type first.
+        if node.initial_value:
+            initial_value_type = self.read_type_instance(node.initial_value)
 
-        node.__meta__['type'] = inferred
+            # If the binding operator is the reference assignment, we assume
+            # the property's type to be a reference type.
+            if node.initial_binding == Operator.o_ref:
+                initial_value_type = type_factory.make_reference(initial_value_type)
+
+            # If there's a type annotation as well, we should unify the type
+            # it denotes with that of the initial value.
+            if node.type_annotation:
+                annotation_type = self.read_type_reference(node.type_annotation)
+                self.environment.unify(annotation_type, initial_value_type)
+
+            inferred_type = initial_value_type
+
+        # If there isn't an initializing value, we should simply use the type
+        # annotation.
+        else:
+            inferred_type = self.read_type_reference(node.type_annotation)
+
+        # Finally, we should unify the inferred type with the type variable
+        # corresponding to the symbol under declaration.
+        self.environment.unify(varof(node), inferred_type)
+        node.__meta__['type'] = inferred_type
 
     def visit_FunctionDecl(self, node):
         # Function parameters always have a type annotation, so we can type
@@ -512,9 +532,6 @@ class TypeSolver(NodeVisitor):
             result = self.environment[varof(node)]
             node.__meta__['type'] = result
             return result
-
-        if isinstance(node, TypeIdentifier):
-            # TODO
 
         assert False, "no type inference for node '{}'".format(node.__class__.__name__)
 
@@ -796,7 +813,22 @@ class TypeSolver(NodeVisitor):
         return t
 
     def read_type_reference(self, node):
+        # If the node is a type identifier, we first build a type instance
+        # from the signature it represents.
+        if isinstance(node, TypeIdentifier):
+            t = self.read_type_reference(node.signature)
+
+            # If the type identifier is marked as a reference, we create a
+            # reference type. Otherwise we return the type instance directly.
+            if node.modifier == TypeModifier.tm_ref:
+                return type_factory.make_reference(referred_type=t)
+            return t
+
         t = self.analyse(node)
+
+        # If the node represents a typename, we return the referred type type
+        # rather than what's in the substitution table, otherwise we return
+        # the extracted type instance.
         if isinstance(t, TypeName):
             return t.type
         return t
@@ -985,4 +1017,4 @@ def flatten(iterable):
 
 
 def varof(node):
-    return type_factory.make_variable((node.__info__['scope'], node.name))
+    return type_factory.make_variable((node.__meta__['scope'], node.name))

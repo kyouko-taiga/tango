@@ -1,14 +1,11 @@
-from tango.wrapper import *
-
-__all__ = [
-    'IdentifierMutability', 'TypeModifier', 'Operator',
-    'Node', 'NodeList', 'NodeVisitor', 'NodeTransformer',
-    'ModuleDecl', 'Block',
-    'PropDecl', 'ParamDecl', 'FunDecl',
-    'Assignment', 'If', 'Return',
-    'CallArg', 'Call', 'BinaryExpr', 'Identifier', 'TypeIdentifier',
-    'IntLiteral',
-]
+from tango.wrapper import (
+    IdentifierMutability, TypeModifier, Operator,
+    Node, NodeMetadata, NodeList,
+    ModuleDecl, Block,
+    PropDecl, ParamDecl, FunDecl,
+    Assignment, If, Return,
+    CallArg, Call, BinaryExpr, Identifier, TypeIdentifier,
+    IntLiteral, StringLiteral)
 
 
 class NodeVisitor(object):
@@ -56,6 +53,36 @@ class NodeTransformer(NodeVisitor):
 # Following are some helper methods and properties we add by monkeypatching
 # the C++ classes, so as to have a nicer API to work with.
 
+operator_str = {
+    Operator.o_cpy: '=',
+    Operator.o_ref: '&-',
+    Operator.o_mov: '<-',
+}
+
+def Node_to_dict(self):
+    data = {'__meta__': self.__meta__._py_attrs}
+    data['__meta__']['type'] = self.__meta__.type
+
+    for attr in self._fields:
+        value = getattr(self, attr)
+        if isinstance(value, Node):
+            data[attr] = value.to_dict()
+        elif isinstance(value, NodeList):
+            values = []
+            for item in value:
+                if isinstance(item, Node):
+                    values.append(item.to_dict())
+                else:
+                    values.append(item)
+            data[attr] = values
+        else:
+            data[attr] = value
+
+    return {self.__class__.__name__: data}
+
+Node.to_dict = Node_to_dict
+
+
 def IdentifierMutability_str(self):
     if self == IdentifierMutability.im_cst:
         return 'cst'
@@ -86,14 +113,15 @@ def NodeMetadata_init(self, **kwargs):
 
 def NodeMetadata_contains(self, item):
     try:
-        res = hasattr(self, item)
+        return hasattr(self, item)
     except TypeError:
         return item in self._py_attrs
 
 def NodeMetadata_getitem(self, item):
-    if hasattr(self, item):
+    try:
         return object.__getattribute__(self, item)
-    return self._py_attrs[item]
+    except AttributeError:
+        return self._py_attrs[item]
 
 def NodeMetadata_setitem(self, item, value):
     if hasattr(self, item):
@@ -147,15 +175,23 @@ Block.__str__  = Block_str
 
 
 def PropDecl_str(self):
-    return '{} {}: {}'.format(self.mutability, self.name, self.type_annotation)
+    result = '{} {}'.format(self.mutability, self.name)
+    if self.type_annotation:
+        result += ': {}'.format(self.type_annotation)
+    if self.initial_value:
+        result += ' {} {}'.format(operator_str[self.initial_binding], self.initial_value)
+    return result
 
 monkeypatch_init(PropDecl)
-PropDecl._fields  = ('name', 'mutability', 'type_annotation',)
+PropDecl._fields  = ('name', 'mutability', 'type_annotation', 'initial_value', 'initial_binding',)
 PropDecl.__str__  = PropDecl_str
 
 
 def ParamDecl_str(self):
-    return '{} {}: {}'.format(self.mutability, self.name, self.type_annotation)
+    result = '{} {}: {}'.format(self.mutability, self.name, self.type_annotation)
+    if self.initial_value:
+        result += ' {} {}'.format(operator_str[self.initial_binding], self.initial_value)
+    return result
 
 monkeypatch_init(ParamDecl)
 ParamDecl._fields  = ('name', 'mutability', 'type_annotation',)
@@ -239,3 +275,8 @@ TypeIdentifier.__str__ = TypeIdentifier_str
 monkeypatch_init(IntLiteral)
 IntLiteral._fields = ('value',)
 IntLiteral.__str__ = lambda self: str(self.value)
+
+
+monkeypatch_init(StringLiteral)
+StringLiteral._fields = ('value',)
+StringLiteral.__str__ = lambda self: str(self.value)

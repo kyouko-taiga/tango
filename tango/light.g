@@ -15,7 +15,7 @@ _simple_stmt   : prop_decl
                | return_stmt
                | call_expr
 
-prop_decl      : (CST | MUT | SHD) NAME ":" type_ident
+prop_decl      : (CST | MUT | SHD) NAME (":" type_ident)? (assign_op _expr)?
 
 fun_decl       : FUN NAME "(" param_decls? ")" "->" type_ident block
 

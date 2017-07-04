@@ -1,6 +1,6 @@
 from .module import Module, Symbol
 from .scope import Scope
-from .types import type_factory
+from .types import type_factory, TypeName
 
 
 builtin_module = Module(name='Tango')
@@ -69,12 +69,19 @@ Bool           = type_factory.make_builtin('Bool')
 #     'or' : FunctionType(domain=[Bool, Bool], codomain=Bool),
 # }
 
-builtin_module.symbols['Nothing']  = Symbol(name='Nothing',  type=Type)
-builtin_module.symbols['Anything'] = Symbol(name='Anything', type=Type)
-builtin_module.symbols['Int']      = Symbol(name='Int',      type=Type)
-builtin_module.symbols['Double']   = Symbol(name='Double',   type=Type)
-builtin_module.symbols['String']   = Symbol(name='String',   type=Type)
-builtin_module.symbols['Bool']     = Symbol(name='Bool',     type=Type)
+def builtin_symbol(builtin_type):
+    return Symbol(
+        name = builtin_type.name,
+        type = type_factory.make_name(
+            name = builtin_type.name,
+            type = builtin_type))
+
+builtin_module.symbols['Nothing']  = builtin_symbol(Nothing)
+builtin_module.symbols['Anything'] = builtin_symbol(Anything)
+builtin_module.symbols['Int']      = builtin_symbol(Int)
+builtin_module.symbols['Double']   = builtin_symbol(Double)
+builtin_module.symbols['String']   = builtin_symbol(String)
+builtin_module.symbols['Bool']     = builtin_symbol(Bool)
 
 builtin_module.symbols['true']     = Symbol(name='true',     type=Bool)
 builtin_module.symbols['false']    = Symbol(name='false',    type=Bool)

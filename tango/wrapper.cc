@@ -184,9 +184,9 @@ BOOST_PYTHON_MODULE(wrapper) {
         .value("o_sub", o_sub)
         .value("o_mul", o_mul)
         .value("o_div", o_div)
-        .value("o_cpy", o_div)
-        .value("o_ref", o_div)
-        .value("o_mov", o_div);
+        .value("o_cpy", o_cpy)
+        .value("o_ref", o_ref)
+        .value("o_mov", o_mov);
 
     class_<ASTNodeMetadata>("NodeMetadata")
         .def_readwrite("_py_attrs",           &ASTNodeMetadata::_py_attrs)
@@ -210,21 +210,26 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def_readwrite("name",                &ModuleDecl::name);
 
     class_<PropDecl, bases<ASTNode>>(
-        "PropDecl", init<std::string, optional<IdentifierMutability, ASTNodePtr, ASTNodePtr>>((
-                arg("name"),
-                arg("mutability"),
-                arg("type_annotation"),
-                arg("initial_value"))))
+        "PropDecl", init<
+            std::string,
+            optional<IdentifierMutability, ASTNodePtr, ASTNodePtr, Operator>
+        >((
+            arg("name"),
+            arg("mutability"),
+            arg("type_annotation"),
+            arg("initial_value"),
+            arg("initial_binding"))))
         .def_readwrite("name",                &PropDecl::name)
         .def_readwrite("mutability",          &PropDecl::mutability)
         .def_readwrite("type_annotation",     &PropDecl::type_annotation)
-        .def_readwrite("initial_value",       &PropDecl::initial_value);
+        .def_readwrite("initial_value",       &PropDecl::initial_value)
+        .def_readwrite("initial_binding",     &PropDecl::initial_binding);
 
     class_<ParamDecl, bases<ASTNode>>(
         "ParamDecl", init<std::string, optional<IdentifierMutability, ASTNodePtr>>((
-                arg("name"),
-                arg("mutability"),
-                arg("type_annotation"))))
+            arg("name"),
+            arg("mutability"),
+            arg("type_annotation"))))
         .def_readwrite("name",                &ParamDecl::name)
         .def_readwrite("mutability",          &ParamDecl::mutability)
         .def_readwrite("type_annotation",     &ParamDecl::type_annotation);
@@ -301,5 +306,9 @@ BOOST_PYTHON_MODULE(wrapper) {
     class_<IntLiteral, bases<ASTNode>>(
         "IntLiteral", init<long>((arg("value"))))
         .def_readwrite("value",               &IntLiteral::value);
+
+    class_<StringLiteral, bases<ASTNode>>(
+        "StringLiteral", init<std::string>((arg("value"))))
+        .def_readwrite("value",               &StringLiteral::value);
 
 }
