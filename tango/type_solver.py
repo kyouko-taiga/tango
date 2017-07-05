@@ -219,15 +219,15 @@ class Substitution(object):
                 scope, name = symbol.id
                 if scope.name == 'Tango':
                     continue
-                print('{:25}{:15}{:}'.format(
-                    str(symbol),
+                print('{:20}{:15}{:}'.format(
                     scope.name + '.' + name,
-                    hex(id(inferred_type)) + ' ' + str(inferred_type)))
+                    hex(id(inferred_type)),
+                    inferred_type))
             else:
-                print('{:25}{:15}{:}'.format(
-                    str(symbol),
+                print('{:20}{:15}{:}'.format(
                     '-',
-                    hex(id(inferred_type)) + ' ' + str(inferred_type)))
+                    hex(id(inferred_type)),
+                    inferred_type))
 
 
 class TypeSolver(NodeVisitor):
@@ -274,6 +274,8 @@ class TypeSolver(NodeVisitor):
             types = []
             for symbol in module_scope.getlist(name):
                 if isinstance(symbol.type, TypeBase):
+                    types.append(symbol.type)
+                elif isinstance(symbol.type, TypeName):
                     types.append(symbol.type)
             if types:
                 self.environment.unify(
@@ -818,10 +820,18 @@ class TypeSolver(NodeVisitor):
         if isinstance(node, TypeIdentifier):
             t = self.read_type_reference(node.signature)
 
-            # If the type identifier is marked as a reference, we create a
-            # reference type. Otherwise we return the type instance directly.
-            if node.modifier == TypeModifier.tm_ref:
-                return type_factory.make_reference(referred_type=t)
+            # Apply the type modifiers.
+            if t.__class__ == BuiltinType:
+                return type_factory.make_builtin(
+                    modifiers = node.modifiers,
+                    name      = t.name)
+            elif t.__class__ == FunctionType:
+                return type_factory.make_function(
+                    modifiers = node.modifiers,
+                    domain    = t.domain,
+                    labels    = t.labels,
+                    codomain  = t.codomain)
+
             return t
 
         t = self.analyse(node)

@@ -1,5 +1,5 @@
 from tango.wrapper import (
-    IdentifierMutability, TypeModifier, Operator,
+    TypeModifier, Operator,
     Node, NodeMetadata, NodeList,
     ModuleDecl, Block,
     PropDecl, ParamDecl, FunDecl,
@@ -83,23 +83,14 @@ def Node_to_dict(self):
 Node.to_dict = Node_to_dict
 
 
-def IdentifierMutability_str(self):
-    if self == IdentifierMutability.im_cst:
-        return 'cst'
-    if self == IdentifierMutability.im_mut:
-        return 'mut'
-    return str(IdentifierMutability.im_mut)
-
-IdentifierMutability.__str__ = IdentifierMutability_str
-
-
 def TypeModifier_str(self):
-    if self == TypeModifier.tm_none:
-        return ''
-    if self == TypeModifier.tm_ref:
-        return '&'
-    if self == TypeModifier.tm_own:
-        return '!'
+    return ('@cst' if self == TypeModifier.tm_cst else
+            '@mut' if self == TypeModifier.tm_mut else
+            '@stk' if self == TypeModifier.tm_stk else
+            '@shd' if self == TypeModifier.tm_shd else
+            '@val' if self == TypeModifier.tm_val else
+            '@ref' if self == TypeModifier.tm_ref else
+            '@own' if self == TypeModifier.tm_own else '')
 
 TypeModifier.__str__ = TypeModifier_str
 
@@ -175,7 +166,7 @@ Block.__str__  = Block_str
 
 
 def PropDecl_str(self):
-    result = '{} {}'.format(self.mutability, self.name)
+    result = 'var {}'.format(self.name)
     if self.type_annotation:
         result += ': {}'.format(self.type_annotation)
     if self.initial_value:
@@ -183,18 +174,18 @@ def PropDecl_str(self):
     return result
 
 monkeypatch_init(PropDecl)
-PropDecl._fields  = ('name', 'mutability', 'type_annotation', 'initial_value', 'initial_binding',)
+PropDecl._fields  = ('name', 'type_annotation', 'initial_value', 'initial_binding',)
 PropDecl.__str__  = PropDecl_str
 
 
 def ParamDecl_str(self):
-    result = '{} {}: {}'.format(self.mutability, self.name, self.type_annotation)
+    result = '{}: {}'.format(self.name, self.type_annotation)
     if self.initial_value:
         result += ' {} {}'.format(operator_str[self.initial_binding], self.initial_value)
     return result
 
 monkeypatch_init(ParamDecl)
-ParamDecl._fields  = ('name', 'mutability', 'type_annotation',)
+ParamDecl._fields  = ('name', 'type_annotation',)
 ParamDecl.__str__  = ParamDecl_str
 
 
@@ -261,14 +252,25 @@ Identifier.__str__  = lambda self: self.name
 
 
 def TypeIdentifier_str(self):
-    if self.modifier == TypeModifier.tm_ref:
-        return '&' + str(self.signature)
-    if self.modifier == TypeModifier.tm_own:
-        return '!' + str(self.signature)
-    return str(self.signature)
+    result = str(self.signature)
+    if self.modifiers & TypeModifier.tm_own:
+        result = '@own ' + result
+    if self.modifiers & TypeModifier.tm_ref:
+        result = '@ref ' + result
+    if self.modifiers & TypeModifier.tm_val:
+        result = '@val ' + result
+    if self.modifiers & TypeModifier.tm_shd:
+        result = '@shd ' + result
+    if self.modifiers & TypeModifier.tm_stk:
+        result = '@stk ' + result
+    if self.modifiers & TypeModifier.tm_mut:
+        result = '@mut ' + result
+    if self.modifiers & TypeModifier.tm_cst:
+        result = '@cst ' + result
+    return str(result)
 
 monkeypatch_init(TypeIdentifier)
-TypeIdentifier._fields = ('signature', 'modifier',)
+TypeIdentifier._fields = ('signature', 'modifiers',)
 TypeIdentifier.__str__ = TypeIdentifier_str
 
 

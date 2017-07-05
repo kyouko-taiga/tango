@@ -16,16 +16,6 @@ namespace tango {
     // Forward declarations.
     struct ASTNodeVisitor;
 
-    // Identifier attributes.
-    enum IdentifierMutability {
-        im_cst, im_mut,
-    };
-
-    // Type identifier attributes.
-    enum TypeModifier {
-        tm_none, tm_ref, tm_own,
-    };
-
     // Enumerations of operators.
     enum Operator {
         o_add, o_sub, o_mul, o_div,
@@ -91,18 +81,16 @@ namespace tango {
     struct PropDecl: public ASTNode {
         PropDecl(
             const std::string&   name,
-            IdentifierMutability im              = im_cst,
             ASTNodePtr           type            = nullptr,
             ASTNodePtr           initial_value   = nullptr,
             Operator             initial_binding = o_cpy)
-            : name(name), mutability(im),
+            : name(name),
               type_annotation(type),
               initial_value(initial_value), initial_binding(initial_binding) {}
 
         void accept(ASTNodeVisitor& visitor);
 
         std::string          name;
-        IdentifierMutability mutability;
         ASTNodePtr           type_annotation;
         ASTNodePtr           initial_value;
         Operator             initial_binding;
@@ -114,14 +102,13 @@ namespace tango {
     struct ParamDecl: public ASTNode {
         ParamDecl(
             const std::string&   name,
-            IdentifierMutability im = im_cst,
             ASTNodePtr           type = ASTNodePtr())
-            : name(name), mutability(im), type_annotation(type) {}
+            : name(name),
+              type_annotation(type) {}
 
         void accept(ASTNodeVisitor& visitor);
 
         std::string          name;
-        IdentifierMutability mutability;
         ASTNodePtr           type_annotation;
     };
 
@@ -253,13 +240,13 @@ namespace tango {
 
     /// AST node for type signatures.
     struct TypeIdentifier: public ASTNode {
-        TypeIdentifier(ASTNodePtr signature, TypeModifier modifier)
-            : signature(signature), modifier(modifier) {}
+        TypeIdentifier(ASTNodePtr signature, uint8_t modifiers)
+            : signature(signature), modifiers(modifiers) {}
 
         void accept(ASTNodeVisitor& visitor);
 
-        ASTNodePtr   signature;
-        TypeModifier modifier;
+        ASTNodePtr signature;
+        uint8_t    modifiers;
     };
 
     // -----------------------------------------------------------------------

@@ -86,9 +86,6 @@ class ScopeBinder(NodeVisitor):
         symbol.code = node
         node.__meta__['scope'] = self.current_scope
 
-        # Set the symbol's mutability.
-        symbol.mutability = node.mutability
-
         # Bind the scopes of the container's type annotation and initializer.
         self.under_declaration[self.current_scope].add(node.name)
         self.generic_visit(node)

@@ -9,8 +9,20 @@ from .builtin import Int, Double, String
 operator_table = {
     '=' : ast.Operator.o_cpy,
     '&-': ast.Operator.o_ref,
-    '<-': ast.Operator.o_mov
+    '<-': ast.Operator.o_mov,
 }
+
+type_modifier_table = {
+    'CST': ast.TypeModifier.tm_cst,
+    'MUT': ast.TypeModifier.tm_mut,
+    'STK': ast.TypeModifier.tm_stk,
+    'SHD': ast.TypeModifier.tm_shd,
+    'VAL': ast.TypeModifier.tm_val,
+    'REF': ast.TypeModifier.tm_ref,
+    'OWN': ast.TypeModifier.tm_own,
+}
+
+default_type_modifier = ast.TypeModifier.tm_cst | ast.TypeModifier.tm_stk | ast.TypeModifier.tm_val
 
 
 grammar_filename = os.path.join(os.path.dirname(__file__), 'light.g')
@@ -59,7 +71,6 @@ class TangoLightTransformer(Transformer):
             end             = tail[1].__meta__['end']
 
         return ast.PropDecl(
-            mutability      = _mutability_modifier(items[0]),
             name            = items[1].value,
             type_annotation = type_annotation,
             initial_binding = initial_binding,
@@ -82,12 +93,11 @@ class TangoLightTransformer(Transformer):
 
     def param_decl(self, items):
         return ast.FunctionParameter(
-            mutability      = items[0].value,
-            name            = items[1].value,
-            type_annotation = items[2],
+            name            = items[0].value,
+            type_annotation = items[1],
             meta            = {
                 'start': (items[0].line, items[0].column),
-                'end'  : items[2].__meta__['end']
+                'end'  : items[1].__meta__['end']
             })
 
     def assign_stmt(self, items):
@@ -160,28 +170,26 @@ class TangoLightTransformer(Transformer):
             })
 
     def type_ident(self, items):
-        modifier = ast.TypeModifier.tm_none
         if len(items) > 1:
+            modifiers = items[0]
             signature = items[1]
-            modifier  = (
-                ast.TypeModifier.tm_ref if items[0].children[0] == '&' else
-                ast.TypeModifier.tm_own if items[0].children[0] == '!' else
-                ast.TypeModifier.tm_none)
-            start     = (items[0].children[0].line, items[0].children[0].column)
-            end       = items[1].__meta__['end']
         else:
+            modifiers = default_type_modifier
             signature = items[0]
-            modifier  = ast.TypeModifier.tm_none
-            start     = items[0].__meta__['start']
-            end       = items[0].__meta__['end']
 
         return ast.TypeIdentifier(
+            modifiers = modifiers,
             signature = signature,
-            modifier  = modifier,
             meta      = {
-                'start': start,
-                'end'  : end
+                'start': signature.__meta__['start'],
+                'end'  : signature.__meta__['end']
             })
+
+    def type_modifier(self, items):
+        modifiers = 0
+        for token in items:
+            modifiers |= type_modifier_table[token.type]
+        return modifiers
 
     def ident(self, items):
         return ast.Identifier(

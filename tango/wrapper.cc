@@ -10,20 +10,24 @@
 
 namespace tango {
 
-    std::shared_ptr<TypeUnion> make_type_union(
-        TypeFactory&        factory,
-        boost::python::list py_types)
-    {
+    boost::python::list get_type_union_content(TypeUnion& u) {
         using namespace boost::python;
 
-        TypeList cc_types;
+        list result;
+        for (auto t: u.types) {
+            result.append(t);
+        }
+        return result;
+    }
+
+    void set_type_union_content(TypeUnion& u, boost::python::list py_types) {
+        using namespace boost::python;
 
         int length = extract<int>(py_types.attr("__len__")());
+        u.types.clear();
         for (std::size_t i = 0; i < length; ++i) {
-            cc_types.push_back(extract<TypePtr>(py_types[i]));
+            u.add(extract<TypePtr>(py_types[i]));
         }
-
-        return factory.make<TypeUnion>(cc_types);
     }
 
     std::shared_ptr<TypeName> make_type_name(
@@ -46,15 +50,9 @@ namespace tango {
         return factory.make<TypeVariable>(id);
     }
 
-    std::shared_ptr<ReferenceType> make_reference_type(
-        TypeFactory& factory,
-        TypePtr      referred_type)
-    {
-        return factory.make<ReferenceType>(referred_type);
-    }
-
     std::shared_ptr<FunctionType> make_function_type(
         TypeFactory&        factory,
+        uint8_t             modifiers,
         boost::python::list py_domain,
         boost::python::list py_labels,
         TypePtr             codomain)
@@ -70,14 +68,15 @@ namespace tango {
             cc_labels.push_back(extract<std::string>(py_labels[i]));
         }
 
-        return factory.make<FunctionType>(cc_domain, cc_labels, codomain);
+        return factory.make<FunctionType>(modifiers, cc_domain, cc_labels, codomain);
     }
 
     std::shared_ptr<BuiltinType> make_builtin_type(
         TypeFactory&       factory,
+        uint8_t            modifiers,
         const std::string& name)
     {
-        return factory.make<BuiltinType>(name);
+        return factory.make<BuiltinType>(modifiers, name);
     }
 
 } // namespace tango
@@ -93,12 +92,20 @@ BOOST_PYTHON_MODULE(wrapper) {
 
     // -----------------------------------------------------------------------
 
+    enum_<TypeModifier>("TypeModifier")
+        .value("tm_cst",  tm_cst)
+        .value("tm_mut",  tm_mut)
+        .value("tm_stk",  tm_stk)
+        .value("tm_shd",  tm_shd)
+        .value("tm_val",  tm_val)
+        .value("tm_ref",  tm_ref)
+        .value("tm_own",  tm_own);
+
     class_<TypeBase, boost::noncopyable>("TypeBase", no_init)
         .add_property("is_primitive", make_function(&TypeBase::is_primitive))
         .add_property("is_generic",   make_function(&TypeBase::is_generic))
-        .add_property("is_reference", make_function(&TypeBase::is_reference))
-        .def(self == self)
-        .def("__hash__", &TypeBase::hash);
+        .def_readonly("modifiers",                  &TypeBase::modifiers)
+        .def(self == self);
 
     class_<TypeList>("TypeList")
         .def(vector_indexing_suite<TypeList, true>());
@@ -106,25 +113,19 @@ BOOST_PYTHON_MODULE(wrapper) {
     class_<TypeMap>("TypeMap")
         .def(map_indexing_suite<TypeMap, true>());
 
-    class_<TypeUnion, std::shared_ptr<TypeUnion>, bases<TypeBase>, boost::noncopyable>(
-        "TypeUnion", no_init)
-        .def_readwrite("types",               &TypeUnion::types)
-        .def("add",                           &TypeUnion::add)
-        .def("replace_content",               &TypeUnion::replace_content)
-        .def("first",                         &TypeUnion::first);
-
     class_<TypeName, std::shared_ptr<TypeName>, bases<TypeBase>, boost::noncopyable>(
         "TypeName", no_init)
         .def_readonly("name",                 &TypeName::name)
         .def_readonly("type",                 &TypeName::type);
 
+    class_<TypeUnion, std::shared_ptr<TypeUnion>, bases<TypeBase>, boost::noncopyable>(
+        "TypeUnion", init<>())
+        .add_property("types",                &get_type_union_content, &set_type_union_content)
+        .def("add",                           &TypeUnion::add);
+
     class_<TypeVariable, std::shared_ptr<TypeVariable>, bases<TypeBase>, boost::noncopyable>(
         "TypeVariable", no_init)
         .def_readonly("id",                   &TypeVariable::id);
-
-    class_<ReferenceType, std::shared_ptr<ReferenceType>, bases<TypeBase>, boost::noncopyable>(
-        "ReferenceType", no_init)
-        .def_readwrite("referred_type",       &ReferenceType::referred_type);
 
     class_<FunctionType, std::shared_ptr<FunctionType>, bases<TypeBase>, boost::noncopyable>(
         "FunctionType", no_init)
@@ -141,10 +142,6 @@ BOOST_PYTHON_MODULE(wrapper) {
         "BuiltinType", no_init);
 
     class_<TypeFactory>("TypeFactory")
-        // def make_union(self, types=[])
-        .def("make_union", &make_type_union,
-            (arg("types")=list()))
-
         // def make_name(self, name, type)
         .def("make_name", &make_type_name,
             (arg("name"),
@@ -154,30 +151,19 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def("make_variable", &make_type_variable,
             (arg("id")=api::object()))
 
-        // def make_reference(self, referred_type)
-        .def("make_reference", &make_reference_type,
-            (arg("referred_type")))
-
-        // def make_function(self, domain=[], labels=[], codomain)
+        // def make_function(self, modifiers=0, domain=[], labels=[], codomain)
         .def("make_function", &make_function_type,
-            (arg("domain")=list(),
+            (arg("modifiers")=0,
+             arg("domain")=list(),
              arg("labels")=list(),
              arg("codomain")))
 
-        // def make_function(self, name)
+        // def make_builtin(self, modifiers=0, name)
         .def("make_builtin", &make_builtin_type,
-            (arg("name")));
+            (arg("modifiers")=0,
+             arg("name")));
 
     // -----------------------------------------------------------------------
-
-    enum_<IdentifierMutability>("IdentifierMutability")
-        .value("im_cst", im_cst)
-        .value("im_mut", im_mut);
-
-    enum_<TypeModifier>("TypeModifier")
-        .value("tm_none", tm_none)
-        .value("tm_ref",  tm_ref)
-        .value("tm_own",  tm_own);
 
     enum_<Operator>("Operator")
         .value("o_add", o_add)
@@ -212,26 +198,22 @@ BOOST_PYTHON_MODULE(wrapper) {
     class_<PropDecl, bases<ASTNode>>(
         "PropDecl", init<
             std::string,
-            optional<IdentifierMutability, ASTNodePtr, ASTNodePtr, Operator>
+            optional<ASTNodePtr, ASTNodePtr, Operator>
         >((
             arg("name"),
-            arg("mutability"),
             arg("type_annotation"),
             arg("initial_value"),
             arg("initial_binding"))))
         .def_readwrite("name",                &PropDecl::name)
-        .def_readwrite("mutability",          &PropDecl::mutability)
         .def_readwrite("type_annotation",     &PropDecl::type_annotation)
         .def_readwrite("initial_value",       &PropDecl::initial_value)
         .def_readwrite("initial_binding",     &PropDecl::initial_binding);
 
     class_<ParamDecl, bases<ASTNode>>(
-        "ParamDecl", init<std::string, optional<IdentifierMutability, ASTNodePtr>>((
+        "ParamDecl", init<std::string, optional<ASTNodePtr>>((
             arg("name"),
-            arg("mutability"),
             arg("type_annotation"))))
         .def_readwrite("name",                &ParamDecl::name)
-        .def_readwrite("mutability",          &ParamDecl::mutability)
         .def_readwrite("type_annotation",     &ParamDecl::type_annotation);
 
     class_<FunDecl, bases<ASTNode>>(
@@ -297,11 +279,11 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def_readwrite("name",                &Identifier::name);
 
     class_<TypeIdentifier, bases<ASTNode>>(
-        "TypeIdentifier", init<ASTNodePtr, TypeModifier>((
+        "TypeIdentifier", init<ASTNodePtr, uint8_t>((
             arg("signature"),
-            arg("modifier"))))
+            arg("modifiers"))))
         .def_readwrite("signature",           &TypeIdentifier::signature)
-        .def_readwrite("modifier",            &TypeIdentifier::modifier);
+        .def_readwrite("modifiers",           &TypeIdentifier::modifiers);
 
     class_<IntLiteral, bases<ASTNode>>(
         "IntLiteral", init<long>((arg("value"))))
