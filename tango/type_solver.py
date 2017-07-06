@@ -4,8 +4,11 @@ from .ast import *
 from .builtin import Bool, Type
 from .errors import InferenceError
 from .scope import Scope
-from .types import TypeBase, TypeName, TypeUnion, TypeVariable, BuiltinType, FunctionType
-from .types import type_factory
+from .types import (
+    TypeModifier as TM,
+    TypeBase, TypeName, TypeUnion, TypeVariable,
+    BuiltinType, NominalType, FunctionType,
+    type_factory)
 
 
 def infer_types(node, max_iter=100):
@@ -27,6 +30,9 @@ def infer_types(node, max_iter=100):
         if i > max_iter:
             raise InferenceError(
                 'could not reach a fixed point after {} iterations'.format(max_iter))
+
+    # TODO: Restrict unions of type variants to the most restricted set of
+    # modifiers.
 
     return (node, type_solver.environment.reified())
 
@@ -93,14 +99,14 @@ class Substitution(object):
 
             if not results:
                 raise InferenceError("no types in '{}' matches a type in '{}'".format(a, b))
-            a.replace_content(results)
-            b.replace_content(results)
+            a.types = results
+            b.types = results
 
         elif isinstance(a, TypeUnion) and isinstance(b, TypeBase):
             for it in a:
                 if self.matches(it, b):
                     self.unify(it, b, memo)
-                    a.replace_content((it,))
+                    a.types = [it]
                     break
             else:
                 raise InferenceError("no type in '{}' matches '{}'".format(a, b))
@@ -112,11 +118,11 @@ class Substitution(object):
         elif isinstance(b, TypeUnion) and isinstance(a, TypeBase):
             self.unify(b, a, memo)
 
-        # elif isinstance(a, NominalType) and isinstance(b, NominalType):
-        #     if (a.name != b.name) or (a.members.keys() ^ b.members.keys()):
-        #         raise InferenceError("type '{}' does not match '{}'".format(a, b))
-        #     for it in a.members:
-        #         self.unify(a.members[it], b.members[it], memo)
+        elif isinstance(a, NominalType) and isinstance(b, NominalType):
+            if (a.name != b.name) or (set(a.members.keys()) ^ set(b.members.keys())):
+                raise InferenceError("type '{}' does not match '{}'".format(a, b))
+            for it in a.members.keys():
+                self.unify(a.members[it], b.members[it], memo)
 
         elif isinstance(a, FunctionType) and isinstance(b, FunctionType):
             for ita, itb in zip(a.domain, b.domain):
@@ -150,10 +156,10 @@ class Substitution(object):
         #     return self.matches(u, t)
 
         if isinstance(t, NominalType) and isinstance(u, NominalType):
-            return ((t.name == u.name)
-                    and (t.scope == u.scope)
-                    and not (t.members.keys() ^ u.members.keys())
-                    and all(self.matches(t.members[it], u.members[it]) for it in t.members))
+            return (t.modifiers == u.modifiers
+                    and t.name == u.name
+                    and not (set(t.members.keys()) ^ set(u.members.keys()))
+                    and all(self.matches(t.members[it], u.members[it]) for it in t.members.keys()))
 
         # Note that unification of function types is stricter than what `matches`
         # checks, requiring `t` and `u` to be equal under `__eq__`. Relaxing the
@@ -175,16 +181,16 @@ class Substitution(object):
         if t in memo:
             return memo[t]
 
-        # if isinstance(t, TypeUnion):
-        #     result  = type_factory.make_union()
-        #     memo[t] = result
-        #     for u in t.types:
-        #         result.add(self.deepwalk(u, memo))
-        #
-        #     # Avoid creating singletons when there's only one candidate.
-        #     if len(result) == 1:
-        #         result = result.first()
-        #     return result
+        if isinstance(t, TypeUnion):
+            result  = TypeUnion()
+            memo[t] = result
+            for u in t.types:
+                result.add(self.deepwalk(u, memo))
+
+            # Avoid creating singletons when there's only one candidate.
+            if len(result) == 1:
+                result = result.types[0]
+            return result
 
         if isinstance(t, BuiltinType):
             memo[t] = t
@@ -312,10 +318,30 @@ class TypeSolver(NodeVisitor):
         if node.initial_value:
             initial_value_type = self.read_type_instance(node.initial_value)
 
-            # If the binding operator is the reference assignment, we assume
-            # the property's type to be a reference type.
-            if node.initial_binding == Operator.o_ref:
-                initial_value_type = type_factory.make_reference(initial_value_type)
+            # If the inferred type of the initial value isn't a TypeVariable,
+            # we've to change its modifiers so they match the possible return
+            # types of the binding operator.
+            if not isinstance(initial_value_type, TypeVariable):
+                ts = (initial_value_type.types if isinstance(initial_value_type, TypeUnion)
+                      else [ts])
+
+                # A copy or move assignment produces an `@val` type, while a
+                # reference assignement produces an `@ref` type.
+                if node.initial_binding in (Operator.o_cpy, Operator.o_mov):
+                    ts = [
+                        type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_ref | TM.tm_val)
+                        for t in ts
+                    ]
+                else:
+                    ts = [
+                        type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_val | TM.tm_ref)
+                        for t in ts
+                    ]
+
+                initial_value_type = TypeUnion()
+                initial_value_type.types = ts
+                if len(initial_value_type) == 1:
+                    initial_value_type = initial_value_type.types[0]
 
             # If there's a type annotation as well, we should unify the type
             # it denotes with that of the initial value.
@@ -811,36 +837,48 @@ class TypeSolver(NodeVisitor):
     def read_type_instance(self, node):
         t = self.analyse(node)
         if isinstance(t, TypeName):
-            return Type
+            t = Type
+
+        # If the type isn't an union or a variable, and doesn't specify any
+        # modifier, we return an union of all possible combinations of type
+        # modifiers so that we can infer them later, by elimination.
+        if not isinstance(t, (TypeUnion, TypeVariable)) and (t.modifiers == 0):
+            return type_factory.make_variants(t)
         return t
 
     def read_type_reference(self, node):
         # If the node is a type identifier, we first build a type instance
         # from the signature it represents.
         if isinstance(node, TypeIdentifier):
-            t = self.read_type_reference(node.signature)
+            t = self.analyse(node.signature)
 
-            # Apply the type modifiers.
-            if t.__class__ == BuiltinType:
-                return type_factory.make_builtin(
-                    modifiers = node.modifiers,
-                    name      = t.name)
-            elif t.__class__ == FunctionType:
-                return type_factory.make_function(
-                    modifiers = node.modifiers,
-                    domain    = t.domain,
-                    labels    = t.labels,
-                    codomain  = t.codomain)
+            # The signature of a TypeIdentifier is either a name referring to
+            # a nominal type or a structural type (e.g. a function signature).
+            # In the former case, we've to use the denoted type rather than
+            # that of the symbol.
+            if isinstance(t, TypeName):
+                t = t.type
 
-            return t
+            # The signature of a TypeIdentifier should never be a TypeUnion,
+            # nor a TypeVariable.
+            assert not isinstance(t, (TypeUnion, TypeVariable))
+
+            # Finally we have to apply the type modifiers, as specified by the
+            # type identifier.
+            return type_factory.updating(t, modifiers=node.modifiers)
 
         t = self.analyse(node)
 
-        # If the node represents a typename, we return the referred type type
-        # rather than what's in the substitution table, otherwise we return
-        # the extracted type instance.
+        # If the node represents a typename, we've to use the denoted type
+        # rather than that of the symbol.
         if isinstance(t, TypeName):
-            return t.type
+            t = t.type
+
+        # If the type isn't an union or a variable, and doesn't specify any
+        # modifier, we return an union of all possible combinations of type
+        # modifiers so that we can infer them later, by elimination.
+        if not isinstance(t, (TypeUnion, TypeVariable)) and (t.modifiers == 0):
+            return type_factory.make_variants(t)
         return t
 
     def is_typename(self, node):

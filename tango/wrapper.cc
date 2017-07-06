@@ -10,6 +10,16 @@
 
 namespace tango {
 
+    boost::python::list get_typemap_keys(TypeMap& m) {
+        using namespace boost::python;
+
+        list result;
+        for (auto it: m) {
+            result.append(it.first);
+        }
+        return result;
+    }
+
     boost::python::list get_type_union_content(TypeUnion& u) {
         using namespace boost::python;
 
@@ -111,7 +121,8 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def(vector_indexing_suite<TypeList, true>());
 
     class_<TypeMap>("TypeMap")
-        .def(map_indexing_suite<TypeMap, true>());
+        .def(map_indexing_suite<TypeMap, true>())
+        .def("keys",                          &get_typemap_keys);
 
     class_<TypeName, std::shared_ptr<TypeName>, bases<TypeBase>, boost::noncopyable>(
         "TypeName", no_init)

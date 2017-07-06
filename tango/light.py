@@ -4,6 +4,7 @@ from lark import Lark, Transformer
 
 from . import ast
 from .builtin import Int, Double, String
+from .types import TypeModifier as TM
 
 
 operator_table = {
@@ -13,16 +14,16 @@ operator_table = {
 }
 
 type_modifier_table = {
-    'CST': ast.TypeModifier.tm_cst,
-    'MUT': ast.TypeModifier.tm_mut,
-    'STK': ast.TypeModifier.tm_stk,
-    'SHD': ast.TypeModifier.tm_shd,
-    'VAL': ast.TypeModifier.tm_val,
-    'REF': ast.TypeModifier.tm_ref,
-    'OWN': ast.TypeModifier.tm_own,
+    'CST': TM.tm_cst,
+    'MUT': TM.tm_mut,
+    'STK': TM.tm_stk,
+    'SHD': TM.tm_shd,
+    'VAL': TM.tm_val,
+    'REF': TM.tm_ref,
+    'OWN': TM.tm_own,
 }
 
-default_type_modifier = ast.TypeModifier.tm_cst | ast.TypeModifier.tm_stk | ast.TypeModifier.tm_val
+default_type_modifier = TM.tm_cst | TM.tm_stk | TM.tm_val
 
 
 grammar_filename = os.path.join(os.path.dirname(__file__), 'light.g')
@@ -174,8 +175,16 @@ class TangoLightTransformer(Transformer):
             modifiers = items[0]
             signature = items[1]
         else:
-            modifiers = default_type_modifier
+            modifiers = 0
             signature = items[0]
+
+        # Set implicit type modifiers.
+        if not ((modifiers & TM.tm_cst) or (modifiers & TM.tm_mut)):
+            modifiers |= TM.tm_cst
+        if not ((modifiers & TM.tm_stk) or (modifiers & TM.tm_shd)):
+            modifiers |= TM.tm_stk
+        if not ((modifiers & TM.tm_val) or (modifiers & TM.tm_ref)):
+            modifiers |= TM.tm_val
 
         return ast.TypeIdentifier(
             modifiers = modifiers,

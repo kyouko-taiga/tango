@@ -4,19 +4,6 @@ from tango.wrapper import (
 
 
 type_factory   = TypeFactory()
-type_modifiers = []
-
-for mutability in (TypeModifier.tm_cst, TypeModifier.tm_mut):
-    for allocation in (TypeModifier.tm_stk, TypeModifier.tm_shd):
-        for store_type in (TypeModifier.tm_val, TypeModifier.tm_ref):
-            type_modifiers.append(mutability | allocation | store_type)
-
-def make_type_variants(make_fun, **kwargs):
-    result = TypeUnion()
-    for m in type_modifiers:
-        kwargs['modifiers'] = m
-        result.add(make_fun(**kwargs))
-    return result
 
 
 # Following are some helper methods and properties we add by monkeypatching
@@ -88,4 +75,34 @@ NominalType.__str__  = NominalType_str
 NominalType.__repr__ = NominalType_str
 
 
-TypeFactory.make_variants = staticmethod(make_type_variants)
+def TypeFactory_updating(self, ty, **kwargs):
+    if isinstance(ty, BuiltinType):
+        return self.make_builtin(**{
+            'name'     : kwargs.get('name',      ty.name),
+            'modifiers': kwargs.get('modifiers', ty.modifiers),
+        })
+
+    if isinstance(ty, FunctionType):
+        return self.make_function(**{
+            'domain'   : kwargs.get('domain',    ty.domain),
+            'labels'   : kwargs.get('labels',    ty.labels),
+            'modifiers': kwargs.get('modifiers', ty.modifiers),
+        })
+
+    assert False, 'cannot update instances of {}'.format(ty.__class__.__name__)
+
+modifiers_combinations = []
+for mutability in (TypeModifier.tm_cst, TypeModifier.tm_mut):
+    # for allocation in (TypeModifier.tm_stk, TypeModifier.tm_shd):
+    for allocation in (TypeModifier.tm_stk,):
+        for store_type in (TypeModifier.tm_val, TypeModifier.tm_ref):
+            modifiers_combinations.append(mutability | allocation | store_type)
+
+def TypeFactory_make_variants(self, ty):
+    result = TypeUnion()
+    for modifiers in modifiers_combinations:
+        result.add(self.updating(ty, modifiers=modifiers))
+    return result
+
+TypeFactory.updating      = TypeFactory_updating
+TypeFactory.make_variants = TypeFactory_make_variants
