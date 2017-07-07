@@ -4,8 +4,11 @@ from tango.wrapper import (
     ModuleDecl, Block,
     PropDecl, ParamDecl, FunDecl,
     Assignment, If, Return,
-    CallArg, Call, BinaryExpr, Identifier, TypeIdentifier,
+    CallArg, Call, BinaryExpr,
+    Identifier, TypeIdentifier, FunSignParam, FunSign,
     IntLiteral, StringLiteral)
+
+from tango.types import modifiers_to_str
 
 
 class NodeVisitor(object):
@@ -54,6 +57,10 @@ class NodeTransformer(NodeVisitor):
 # the C++ classes, so as to have a nicer API to work with.
 
 operator_str = {
+    Operator.o_add: '+',
+    Operator.o_sub: '-',
+    Operator.o_mul: '*',
+    Operator.o_div: '/',
     Operator.o_cpy: '=',
     Operator.o_ref: '&-',
     Operator.o_mov: '<-',
@@ -143,9 +150,12 @@ def monkeypatch_init(class_):
     class_.__init__ = new_class_initializer
 
 
+def ModuleDecl_str(self):
+    return '\n'.join(map(str, self.body.statements))
+
 monkeypatch_init(ModuleDecl)
 ModuleDecl._fields = ('body', 'name',)
-ModuleDecl.__str__ = lambda self: str(self.body)
+ModuleDecl.__str__ = ModuleDecl_str
 
 
 Block_initializer = Block.__init__
@@ -179,27 +189,29 @@ PropDecl.__str__  = PropDecl_str
 
 
 def ParamDecl_str(self):
-    result = '{}: {}'.format(self.name, self.type_annotation)
-    if self.initial_value:
-        result += ' {} {}'.format(operator_str[self.initial_binding], self.initial_value)
-    return result
+    return '{}: {}'.format(self.name, self.type_annotation)
 
 monkeypatch_init(ParamDecl)
 ParamDecl._fields  = ('name', 'type_annotation',)
 ParamDecl.__str__  = ParamDecl_str
 
 
+FunDecl_initializer = FunDecl.__init__
+def FunDecl_init(self, parameters=None, meta=None, **kwargs):
+    FunDecl_initializer(self, parameters=NodeList(parameters), **kwargs)
+    self.__meta__ = NodeMetadata(**(meta or {}))
+
 def FunDecl_str(self):
         return 'fun {} ({}) -> {} {}'.format(
-            self.name, self.parameter, self.codomain_annotation, self.body)
+            self.name, ', '.join(map(str, self.parameters)), self.codomain_annotation, self.body)
 
-monkeypatch_init(FunDecl)
-FunDecl._fields = ('name', 'parameter', 'codomain_annotation', 'body',)
-FunDecl.__str__ = FunDecl_str
+FunDecl._fields  = ('name', 'parameters', 'codomain_annotation', 'body',)
+FunDecl.__init__ = FunDecl_init
+FunDecl.__str__  = FunDecl_str
 
 
 def Assignment_str(self):
-    return '{} {} {}'.format(self.lvalue, self.operator, self.rvalue)
+    return '{} {} {}'.format(self.lvalue, operator_str[self.operator], self.rvalue)
 
 monkeypatch_init(Assignment)
 Assignment._fields = ('lvalue', 'operator', 'rvalue',)
@@ -231,19 +243,24 @@ BinaryExpr.__str__ = BinaryExpr_str
 
 
 def CallArg_str(self):
-    return '{} {} {}'.format(self.label, self.operator, self.value)
+    return '{} {} {}'.format(self.label, operator_str[self.operator], self.value)
 
 monkeypatch_init(CallArg)
 CallArg._fields = ('label', 'operator', 'value',)
 CallArg.__str__ = CallArg_str
 
 
+Call_initializer = Call.__init__
+def Call_init(self, arguments=None, meta=None, **kwargs):
+    Call_initializer(self, arguments=NodeList(arguments), **kwargs)
+    self.__meta__ = NodeMetadata(**(meta or {}))
+
 def Call_str(self):
     return '{}({})'.format(self.callee, ', '.join(map(str, self.arguments)))
 
-monkeypatch_init(Call)
-Call._fields = ('callee', 'arguments',)
-Call.__str__ = Call_str
+Call._fields  = ('callee', 'arguments',)
+Call.__init__ = Call_init
+Call.__str__  = Call_str
 
 
 monkeypatch_init(Identifier)
@@ -252,26 +269,32 @@ Identifier.__str__  = lambda self: self.name
 
 
 def TypeIdentifier_str(self):
-    result = str(self.signature)
-    if self.modifiers & TypeModifier.tm_own:
-        result = '@own ' + result
-    if self.modifiers & TypeModifier.tm_ref:
-        result = '@ref ' + result
-    if self.modifiers & TypeModifier.tm_val:
-        result = '@val ' + result
-    if self.modifiers & TypeModifier.tm_shd:
-        result = '@shd ' + result
-    if self.modifiers & TypeModifier.tm_stk:
-        result = '@stk ' + result
-    if self.modifiers & TypeModifier.tm_mut:
-        result = '@mut ' + result
-    if self.modifiers & TypeModifier.tm_cst:
-        result = '@cst ' + result
-    return str(result)
+    modifiers = modifiers_to_str(self.modifiers)
+    if modifiers:
+        if self.signature:
+            return modifiers + ' ' + str(self.signature)
+        return modifiers
+    return str(self.signature)
 
 monkeypatch_init(TypeIdentifier)
 TypeIdentifier._fields = ('signature', 'modifiers',)
 TypeIdentifier.__str__ = TypeIdentifier_str
+
+
+monkeypatch_init(FunSignParam)
+FunSignParam._fields = ('label', 'type_annotation',)
+FunSignParam.__str__  = lambda self: '{}: {}'.format(self.label, self.type_annotation)
+
+
+FunSign_initializer = FunSign.__init__
+def FunSign_init(self, parameters=None, meta=None, **kwargs):
+    FunSign_initializer(self, parameters=NodeList(parameters), **kwargs)
+    self.__meta__ = NodeMetadata(**(meta or {}))
+
+FunSign._fields  = ('parameters', 'codomain_annotation',)
+FunSign.__init__ = FunSign_init
+FunSign.__str__  = lambda self: '({}) -> {}'.format(
+    ','.join(map(str, self.parameters)), self.codomain_annotation)
 
 
 monkeypatch_init(IntLiteral)

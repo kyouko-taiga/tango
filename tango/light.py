@@ -3,14 +3,18 @@ import os
 from lark import Lark, Transformer
 
 from . import ast
-from .builtin import Int, Double, String
+from .builtin import Int, Double, String, Nothing
 from .types import TypeModifier as TM
 
 
 operator_table = {
-    '=' : ast.Operator.o_cpy,
-    '&-': ast.Operator.o_ref,
-    '<-': ast.Operator.o_mov,
+    '+'  : ast.Operator.o_add,
+    '-'  : ast.Operator.o_sub,
+    '*'  : ast.Operator.o_mul,
+    '/'  : ast.Operator.o_div,
+    '='  : ast.Operator.o_cpy,
+    '&-' : ast.Operator.o_ref,
+    '<-' : ast.Operator.o_mov,
 }
 
 type_modifier_table = {
@@ -22,8 +26,6 @@ type_modifier_table = {
     'REF': TM.tm_ref,
     'OWN': TM.tm_own,
 }
-
-default_type_modifier = TM.tm_cst | TM.tm_stk | TM.tm_val
 
 
 grammar_filename = os.path.join(os.path.dirname(__file__), 'light.g')
@@ -82,18 +84,24 @@ class TangoLightTransformer(Transformer):
             })
 
     def fun_decl(self, items):
+        parameters          = items[2]  if isinstance(items[2], list) else None
+        codomain_annotation = items[-2] if isinstance(items[-2], ast.TypeIdentifier) else None
+
         return ast.FunDecl(
-            name        = items[1].value,
-            parameter   = items[2],
-            return_type = items[3],
-            body        = items[4],
-            meta        = {
+            name                = items[1].value,
+            parameters          = parameters,
+            codomain_annotation = codomain_annotation,
+            body                = items[-1],
+            meta                = {
                 'start': (items[0].line, items[0].column),
-                'end'  : items[4].__meta__['end']
+                'end'  : items[-1].__meta__['end']
             })
 
+    def param_decls(self, items):
+        return items
+
     def param_decl(self, items):
-        return ast.FunctionParameter(
+        return ast.ParamDecl(
             name            = items[0].value,
             type_annotation = items[1],
             meta            = {
@@ -104,7 +112,7 @@ class TangoLightTransformer(Transformer):
     def assign_stmt(self, items):
         return ast.Assignment(
             lvalue   = items[0],
-            operator = items[1].children[0].value,
+            operator = operator_table[items[1].children[0].value],
             rvalue   = items[2],
             meta     = {
                 'start': items[0].__meta__['start'],
@@ -131,9 +139,9 @@ class TangoLightTransformer(Transformer):
     def binary_expr(self, items):
         if len(items) == 1:
             return items[0]
-        return ast.BinaryExpression(
+        return ast.BinaryExpr(
             left     = items[0],
-            operator = items[1].children[0].value,
+            operator = operator_table[items[1].children[0].value],
             right    = self.binary_expr(items[2:]),
             meta     = {
                 'start': items[0].__meta__['start'],
@@ -154,16 +162,19 @@ class TangoLightTransformer(Transformer):
     def call_expr(self, items):
         return ast.Call(
             callee    = items[0],
-            arguments = [items[2]],
+            arguments = items[2] if isinstance(items[2], list) else None,
             meta      = {
                 'start': items[0].__meta__['start'],
-                'end'  : (items[3].line, items[3].column),
+                'end'  : (items[-1].line, items[-1].column),
             })
 
+    def call_args(self, items):
+        return items
+
     def call_arg(self, items):
-        return ast.CallArgument(
+        return ast.CallArg(
             label    = items[0].value,
-            operator = items[1].children[0].value,
+            operator = operator_table[items[1].children[0].value],
             value    = items[2],
             meta     = {
                 'start': (items[0].line, items[0].column),
@@ -171,34 +182,63 @@ class TangoLightTransformer(Transformer):
             })
 
     def type_ident(self, items):
+        # type modifiers + type signature
         if len(items) > 1:
-            modifiers = items[0]
+            modifiers = items[0][0]
             signature = items[1]
-        else:
+            meta      = {
+                'start': items[0][1]['start'],
+                'end'  : signature.__meta__['end']
+            }
+
+        # type signature only
+        elif isinstance(items[0], ast.Node):
             modifiers = 0
             signature = items[0]
+            meta      = {
+                'start': signature.__meta__['start'],
+                'end'  : signature.__meta__['end']
+            }
+
+        # type modifiers only
+        else:
+            modifiers = items[0][0]
+            signature = None
+            meta      = items[0][1]
+
+        # Check type modifiers combinations.
+        if (modifiers & TM.tm_cst) and (modifiers & TM.tm_mut):
+            raise SyntaxError("'@cst' modifier cannot be used together with '@mut'")
+        if (modifiers & TM.tm_cst) and (modifiers & TM.tm_shd):
+            raise SyntaxError("'@cst' modifier cannot be used together with '@shd'")
+        if (modifiers & TM.tm_stk) and (modifiers & TM.tm_shd):
+            raise SyntaxError("'@stk' modifier cannot be used together with '@shd'")
+        if (modifiers & TM.tm_shd) and (modifiers & TM.tm_ref):
+            raise SyntaxError("'@shd' modifier cannot be used together with '@ref'")
+        if (modifiers & TM.tm_val) and (modifiers & TM.tm_ref):
+            raise SyntaxError("'@val' modifier cannot be used together with '@ref'")
 
         # Set implicit type modifiers.
-        if not ((modifiers & TM.tm_cst) or (modifiers & TM.tm_mut)):
+        if not (modifiers & TM.tm_mut):
             modifiers |= TM.tm_cst
-        if not ((modifiers & TM.tm_stk) or (modifiers & TM.tm_shd)):
+        if not (modifiers & TM.tm_shd):
             modifiers |= TM.tm_stk
-        if not ((modifiers & TM.tm_val) or (modifiers & TM.tm_ref)):
+        if not (modifiers & TM.tm_ref):
             modifiers |= TM.tm_val
 
         return ast.TypeIdentifier(
             modifiers = modifiers,
             signature = signature,
-            meta      = {
-                'start': signature.__meta__['start'],
-                'end'  : signature.__meta__['end']
-            })
+            meta      = meta)
 
     def type_modifier(self, items):
         modifiers = 0
         for token in items:
             modifiers |= type_modifier_table[token.type]
-        return modifiers
+        return (modifiers, {
+                'start': (items[0].line,  items[0].column),
+                'end':   (items[-1].line, items[-1].column + len(items[-1].value))
+            })
 
     def ident(self, items):
         return ast.Identifier(
@@ -206,6 +246,28 @@ class TangoLightTransformer(Transformer):
             meta = {
                 'start': (items[0].line, items[0].column),
                 'end'  : (items[0].line, items[0].column + len(items[0].value))
+            })
+
+    def fun_sign(self, items):
+        parameters = items[1] if isinstance(items[1], list) else None
+        return ast.FunSign(
+            parameters          = parameters,
+            codomain_annotation = items[-1],
+            meta                = {
+                'start': (items[0].line, items[0].column),
+                'end'  : items[-1].__meta__['end']
+            })
+
+    def sign_params(sefl, items):
+        return items
+
+    def sign_param(self, items):
+        return ast.FunSignParam(
+            label           = items[0].value,
+            type_annotation = items[1],
+            meta = {
+                'start': (items[0].line, items[0].column),
+                'end'  : items[1].__meta__['end']
             })
 
     def literal(self, items):
@@ -233,30 +295,3 @@ class TangoLightTransformer(Transformer):
                 'end'  : (items[0].line, items[0].column + len(items[0].value)),
                 'type' : node_type,
             })
-
-    def fun_sign(self, items):
-        return ast.FunctionSignature(
-            parameter   = items[1],
-            return_type = items[4],
-            meta        = {
-                'start': (items[0].line, items[0].column),
-                'end'  : items[4].__meta__['end']
-            })
-
-    def sign_param(self, items):
-        return ast.SignatureParameter(
-            mutability      = items[0].value,
-            label           = items[1].value,
-            type_annotation = items[2],
-            meta = {
-                'start': (items[0].line, items[0].column),
-                'end'  : items[2].__meta__['end']
-            })
-
-
-def _mutability_modifier(token):
-    if token.type == 'CST':
-        return ast.IdentifierMutability.im_cst
-    if token.type == 'MUT':
-        return IdentifierMutability.im_mut
-    assert False, 'unsupported identifier mutability {}'.format(token.type)

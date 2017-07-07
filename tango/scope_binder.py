@@ -118,23 +118,25 @@ class ScopeBinder(NodeVisitor):
         self.push_scope()
         node.body.__meta__['scope'] = self.current_scope
 
-        # Visit the type annotation of the function parameter.
-        self.visit(node.parameter.type_annotation)
+        # Visit the type annotation of the function parameters.
+        for parameter in node.parameters:
+            self.visit(parameter.type_annotation)
 
-        # Visit the return type of the function.
-        self.visit(node.return_type)
+        # Visit the codomain annotation of the function.
+        self.visit(node.codomain_annotation)
 
-        # Add the parameter name to the function's scope.
-        if node.parameter.name in self.current_scope:
-            raise DuplicateDeclaration(
-                "{}:{}: duplicate declaration of '{}'".format(
-                    node.parameter.__meta__['start'][0],
-                    node.parameter.__meta__['start'][1],
-                    node.parameter.name
-                ))
+        # Add the parameter names to the function's scope.
+        for parameter in node.parameters:
+            if parameter.name in self.current_scope:
+                raise DuplicateDeclaration(
+                    "{}:{}: duplicate declaration of '{}'".format(
+                        parameter.__meta__['start'][0],
+                        parameter.__meta__['start'][1],
+                        parameter.name
+                    ))
 
-        self.current_scope.add(Symbol(name=node.parameter.name, code=node.parameter))
-        node.parameter.__meta__['scope'] = self.current_scope
+            self.current_scope.add(Symbol(name=parameter.name, code=parameter))
+            parameter.__meta__['scope'] = self.current_scope
 
         # Insert the symbols declared within the function's block into the
         # current scope.

@@ -238,6 +238,8 @@ namespace tango {
         std::string name;
     };
 
+    // -----------------------------------------------------------------------
+
     /// AST node for type signatures.
     struct TypeIdentifier: public ASTNode {
         TypeIdentifier(ASTNodePtr signature, uint8_t modifiers)
@@ -247,6 +249,32 @@ namespace tango {
 
         ASTNodePtr signature;
         uint8_t    modifiers;
+    };
+
+    // -----------------------------------------------------------------------
+
+    /// AST node for parameters of function signatures.
+    struct FunSignParam: public ASTNode {
+        FunSignParam(const std::string& label, ASTNodePtr type_annotation)
+            : label(label), type_annotation(type_annotation) {}
+
+        void accept(ASTNodeVisitor& visitor);
+
+        std::string label;
+        ASTNodePtr  type_annotation;
+    };
+
+    // -----------------------------------------------------------------------
+
+    /// AST node for function signatures.
+    struct FunSign: public ASTNode {
+        FunSign(const ASTNodeList& parameters, ASTNodePtr codomain)
+            : parameters(parameters), codomain_annotation(codomain) {}
+
+        void accept(ASTNodeVisitor& visitor);
+
+        ASTNodeList parameters;
+        ASTNodePtr  codomain_annotation;
     };
 
     // -----------------------------------------------------------------------
@@ -289,6 +317,8 @@ namespace tango {
         virtual void visit(Call&           node) = 0;
         virtual void visit(Identifier&     node) = 0;
         virtual void visit(TypeIdentifier& node) = 0;
+        virtual void visit(FunSignParam&   node) = 0;
+        virtual void visit(FunSign&        node) = 0;
         virtual void visit(IntLiteral&     node) = 0;
         virtual void visit(StringLiteral&  node) = 0;
     };

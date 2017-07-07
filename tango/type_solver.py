@@ -1,7 +1,7 @@
 from itertools import chain, product
 
 from .ast import *
-from .builtin import Bool, Type
+from .builtin import Bool, Nothing, Type
 from .errors import InferenceError
 from .scope import Scope
 from .types import (
@@ -85,11 +85,6 @@ class Substitution(object):
         if a == b:
             return
 
-        if isinstance(a, TypeVariable):
-            self.storage[a] = b
-        elif isinstance(b, TypeVariable):
-            self.storage[b] = a
-
         elif isinstance(a, TypeUnion) and isinstance(b, TypeUnion):
             results = []
             for ita, itb in product(a, b):
@@ -118,11 +113,19 @@ class Substitution(object):
         elif isinstance(b, TypeUnion) and isinstance(a, TypeBase):
             self.unify(b, a, memo)
 
+        if isinstance(a, TypeVariable):
+            self.storage[a] = b
+        elif isinstance(b, TypeVariable):
+            self.storage[b] = a
+
         elif isinstance(a, NominalType) and isinstance(b, NominalType):
             if (a.name != b.name) or (set(a.members.keys()) ^ set(b.members.keys())):
                 raise InferenceError("type '{}' does not match '{}'".format(a, b))
             for it in a.members.keys():
                 self.unify(a.members[it], b.members[it], memo)
+
+            # FIXME Should we unify defining scopes too?
+            # FIXME How to handle type modifiers?
 
         elif isinstance(a, FunctionType) and isinstance(b, FunctionType):
             for ita, itb in zip(a.domain, b.domain):
@@ -145,21 +148,21 @@ class Substitution(object):
         if a == b:
             return True
 
-        if isinstance(t, TypeVariable):
-            return True
-        if isinstance(u, TypeVariable):
-            return True
+        if isinstance(a, TypeVariable) or isinstance(b, TypeVariable):
+            return (a.modifiers == b.modifiers
+                    or a.modifiers == 0
+                    or b.modifiers == 0)
 
-        # if isinstance(t, TypeUnion):
-        #     return any(self.matches(it, u) for it in t)
-        # if isinstance(u, TypeUnion):
-        #     return self.matches(u, t)
+        if isinstance(a, TypeUnion):
+            return any(self.matches(it, b) for it in a)
+        if isinstance(b, TypeUnion):
+            return self.matches(u, a)
 
-        if isinstance(t, NominalType) and isinstance(u, NominalType):
-            return (t.modifiers == u.modifiers
-                    and t.name == u.name
-                    and not (set(t.members.keys()) ^ set(u.members.keys()))
-                    and all(self.matches(t.members[it], u.members[it]) for it in t.members.keys()))
+        if isinstance(a, NominalType) and isinstance(b, NominalType):
+            return (a.modifiers == b.modifiers
+                    and a.name == b.name
+                    and not (set(a.members.keys()) ^ set(b.members.keys()))
+                    and all(self.matches(a.members[it], b.members[it]) for it in a.members.keys()))
 
         # Note that unification of function types is stricter than what `matches`
         # checks, requiring `t` and `u` to be equal under `__eq__`. Relaxing the
@@ -167,13 +170,14 @@ class Substitution(object):
         # specialization when visiting Call nodes. However, we normally only unify
         # generic signatures with themselves in FunctionDecl nodes, so having a
         # more relaxed match function shouldn't cause any issue.
-        if isinstance(t, FunctionType) and isinstance(u, FunctionType):
-            return (len(t.domain) == len(u.domain)
-                    and all(self.matches(t.domain[i], u.domain[i]) for i in range(len(t.domain)))
-                    and self.matches(t.codomain, u.codomain)
-                    and self.matches(t.labels, u.labels))
+        if isinstance(a, FunctionType) and isinstance(b, FunctionType):
+            return (a.modifiers == b.modifiers
+                    and len(a.domain) == len(b.domain)
+                    and all(self.matches(a.domain[i], b.domain[i]) for i in range(len(a.domain)))
+                    and self.matches(a.codomain, b.codomain)
+                    and self.matches(a.labels, b.labels))
 
-        return t == u
+        return False
 
     def deepwalk(self, t, memo=None):
         if memo is None:
@@ -200,9 +204,10 @@ class Substitution(object):
 
         if isinstance(t, FunctionType):
             return type_factory.make_function(
-                domain   = [self.deepwalk(d, memo) for d in t.domain],
-                labels   = t.labels,
-                codomain = self.deepwalk(t.codomain, memo))
+                modifiers = t.modifiers,
+                domain    = [self.deepwalk(d, memo) for d in t.domain],
+                labels    = list(t.labels),
+                codomain  = self.deepwalk(t.codomain, memo))
 
         if not isinstance(t, TypeVariable):
             return t
@@ -314,34 +319,50 @@ class TypeSolver(NodeVisitor):
         if not (node.type_annotation or node.initial_value):
             return
 
-        # If there's an initial value, we shoud infer its type first.
+        # First, we need to infer the modifiers of the property's type. If it
+        # has a type annotation, we can simply copy them, otherwise we default
+        # to `@cst @stk @val`.
+        if node.type_annotation:
+            type_modifiers = node.type_annotation.modifiers
+        else:
+            node.type_annotation.modifiers = TM.tm_cst | TM.tm_stk | TM.tm_val
+
+        # If there's an initial value, we shoud infer its type.
         if node.initial_value:
             initial_value_type = self.read_type_instance(node.initial_value)
 
-            # If the inferred type of the initial value isn't a TypeVariable,
-            # we've to change its modifiers so they match the possible return
-            # types of the binding operator.
-            if not isinstance(initial_value_type, TypeVariable):
-                ts = (initial_value_type.types if isinstance(initial_value_type, TypeUnion)
-                      else [ts])
+            # Depending on the binding operator, we may have to override the
+            # modifiers of the initial value's type, so they match the return
+            # type of the binding operator.
+            ts = (initial_value_type.types if isinstance(initial_value_type, TypeUnion)
+                  else [initial_value_type])
 
-                # A copy or move assignment produces an `@val` type, while a
-                # reference assignement produces an `@ref` type.
-                if node.initial_binding in (Operator.o_cpy, Operator.o_mov):
-                    ts = [
-                        type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_ref | TM.tm_val)
-                        for t in ts
-                    ]
-                else:
-                    ts = [
-                        type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_val | TM.tm_ref)
-                        for t in ts
-                    ]
+            # NOTE: If the initial value is a `@ref` type, we could forbid the
+            # use of a move binding operator here. But for now we'll let that
+            # error be detected and raised by the reference checker.
 
-                initial_value_type = TypeUnion()
-                initial_value_type.types = ts
-                if len(initial_value_type) == 1:
-                    initial_value_type = initial_value_type.types[0]
+            # A copy or move binding always produces `@val` types.
+            if node.initial_binding in (Operator.o_cpy, Operator.o_mov):
+                ts = [
+                    type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_ref | TM.tm_val)
+                    for t in ts
+                ]
+
+            # NOTE: The statement `let x: @ref = y` will fail type inference,
+            # because `x` cannot possibly already refer to a valid variable.
+            # As a result, contrary to copy assignment statements, initial
+            # copy bindings can be assumed to always produce a `@val` type.
+
+            # A reference binding always produces `@ref` types.
+            if node.initial_binding == Operator.o_ref:
+                ts = [
+                    type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_val | TM.tm_ref)
+                    for t in ts
+                ]
+
+            initial_value_type = TypeUnion(ts)
+            if len(initial_value_type) == 1:
+                initial_value_type = initial_value_type.types[0]
 
             # If there's a type annotation as well, we should unify the type
             # it denotes with that of the initial value.
@@ -361,39 +382,47 @@ class TypeSolver(NodeVisitor):
         self.environment.unify(varof(node), inferred_type)
         node.__meta__['type'] = inferred_type
 
-    def visit_FunctionDecl(self, node):
-        # Function parameters always have a type annotation, so we can type
-        # them directly.
-        type_annotation = self.read_type_reference(node.parameter.type_annotation)
+    def visit_FunDecl(self, node):
+        # Unlike variables, function parameters are always declared with a
+        # type annotation, so we can type them directly.
+        parameter_types = []
+        parameter_names = []
+        for parameter in node.parameters:
+            type_annotation = self.read_type_reference(parameter.type_annotation)
 
-        # We should unify the type we read from the annotations with the type
-        # variable corresponding to the parameter name, so that it'll be typed
-        # in the function's body.
-        parameter_type = TypeVariable(node.parameter)
-        self.environment.unify(parameter_type, type_annotation)
-        node.parameter.__meta__['type'] = type_annotation
+            # We should unify the type we read from the annotations with the
+            # type variable corresponding to the parameter name, so that it'll
+            # be typed in the function's body.
+            parameter_type = varof(parameter)
+            self.environment.unify(parameter_type, type_annotation)
+            parameter.__meta__['type'] = type_annotation
 
-        # The return type is simply a type signature we've to evaluate.
-        return_type = self.read_type_reference(node.return_type)
+            parameter_types.append(type_annotation)
+            parameter_names.append(parameter.name)
+
+        # The type of the codomain is either a type identifier, or Nothing.
+        if node.codomain_annotation:
+            codomain = self.read_type_reference(node.codomain_annotation)
+        else:
+            codomain = Nothing
 
         # Once we've computed the function signature, we can create a type
         # for the function itself.
-        function_type = FunctionType(
-            domain             = [parameter_type],
-            codomain           = return_type,
-            labels             = [node.parameter.name],
-            attributes         = [set((node.parameter.mutability,))],
-            generic_parameters = [])
+        function_type = type_factory.make_function(
+            modifiers = TM.tm_cst | TM.tm_stk | TM.tm_val,
+            domain    = parameter_types,
+            labels    = parameter_names,
+            codomain  = codomain)
 
         # As functions may be overloaded, we can't unify the function type
         # we've created with the function's name directly. Instead, we should
         # put it in a TypeUnion to potentially include the signature of the
         # function's overloads, as we find them.
-        walked = self.environment[TypeVariable(node)]
+        walked = self.environment[varof(node)]
         if isinstance(walked, TypeVariable):
-            overload_set = TypeUnion((function_type,))
+            overload_set = TypeUnion([function_type])
             self.environment.unify(walked, overload_set)
-        elif isinstance(walked, TypeUnion) and isinstance(walked.first(), FunctionType):
+        elif isinstance(walked, TypeUnion) and isinstance(walked.types[0], FunctionType):
             overload_set = walked
             overload_set.add(function_type)
         else:
@@ -561,69 +590,68 @@ class TypeSolver(NodeVisitor):
             node.__meta__['type'] = result
             return result
 
-        assert False, "no type inference for node '{}'".format(node.__class__.__name__)
-
         # If the node is a function signature, we should build a FunctionType.
         if isinstance(node, FunSign):
             domain = []
-            for parameter in [node.parameter]:
+            labels = []
+            for parameter in node.parameters:
                 type_annotation = self.read_type_reference(parameter.type_annotation)
                 domain.append(type_annotation)
+                labels.append(parameter.label)
 
-            codomain = self.read_type_reference(node.return_type)
+            codomain = self.read_type_reference(node.codomain_annotation)
 
-            function_type = FunctionType(
+            function_type = type_factory.make_function(
                 domain     = domain,
-                codomain   = codomain,
-                labels     = [node.parameter.label],
-                attributes = [set((node.parameter.mutability,))])
+                labels     = labels,
+                codomain   = codomain)
 
             node.__meta__['type'] = function_type
             return function_type
 
-        if isinstance(node, PrefixExpression):
-            # First, we have to infer the type of the operand.
-            operand_type = self.read_type_instance(node.operand)
-
-            # Then, we can get the available signatures for the operator.
-            candidates = self.find_operator_candidates(operand_type, node.operator)
-            if len(candidates) == 0:
-                raise InferenceError(
-                    "{} has a no member '{}'".format(operand_type, node.operator))
-
-            # Once we've got those operator signatures, we should create a
-            # temporary Call node to fallback on the usual analysis of
-            # function call return types.
-            call_node = Call(
-                callee = TypeSolver.TypeNode(TypeUnion(candidates)),
-                arguments = [CallArgument(node.operand)])
-            result = self.analyse(call_node)
-
-            node.__meta__['type'] = result
-            node.__meta__['function_call_type'] = call_node.__meta__['function_call_type']
-            return result
-
-        if isinstance(node, BinaryExpression):
-            # First, we have to infer the type of the left operand.
-            left_type = self.read_type_instance(node.left)
-
-            # Then, we can get the available signatures for the operator.
-            candidates = self.find_operator_candidates(left_type, node.operator)
-            if len(candidates) == 0:
-                raise InferenceError(
-                    "{} has a no member '{}'".format(left_type, node.operator))
-
-            # Once we've got those operator signatures, we should create a
-            # temporary Call node to fallback on the usual analysis of
-            # function call return types.
-            call_node = Call(
-                callee = TypeSolver.TypeNode(TypeUnion(candidates)),
-                arguments = [CallArgument(node.left), CallArgument(node.right)])
-            result = self.analyse(call_node)
-
-            node.__meta__['type'] = result
-            node.__meta__['function_call_type'] = call_node.__meta__['function_call_type']
-            return result
+        # if isinstance(node, PrefixExpression):
+        #     # First, we have to infer the type of the operand.
+        #     operand_type = self.read_type_instance(node.operand)
+        #
+        #     # Then, we can get the available signatures for the operator.
+        #     candidates = self.find_operator_candidates(operand_type, node.operator)
+        #     if len(candidates) == 0:
+        #         raise InferenceError(
+        #             "{} has a no member '{}'".format(operand_type, node.operator))
+        #
+        #     # Once we've got those operator signatures, we should create a
+        #     # temporary Call node to fallback on the usual analysis of
+        #     # function call return types.
+        #     call_node = Call(
+        #         callee = TypeSolver.TypeNode(TypeUnion(candidates)),
+        #         arguments = [CallArgument(node.operand)])
+        #     result = self.analyse(call_node)
+        #
+        #     node.__meta__['type'] = result
+        #     node.__meta__['function_call_type'] = call_node.__meta__['function_call_type']
+        #     return result
+        #
+        # if isinstance(node, BinaryExpression):
+        #     # First, we have to infer the type of the left operand.
+        #     left_type = self.read_type_instance(node.left)
+        #
+        #     # Then, we can get the available signatures for the operator.
+        #     candidates = self.find_operator_candidates(left_type, node.operator)
+        #     if len(candidates) == 0:
+        #         raise InferenceError(
+        #             "{} has a no member '{}'".format(left_type, node.operator))
+        #
+        #     # Once we've got those operator signatures, we should create a
+        #     # temporary Call node to fallback on the usual analysis of
+        #     # function call return types.
+        #     call_node = Call(
+        #         callee = TypeSolver.TypeNode(TypeUnion(candidates)),
+        #         arguments = [CallArgument(node.left), CallArgument(node.right)])
+        #     result = self.analyse(call_node)
+        #
+        #     node.__meta__['type'] = result
+        #     node.__meta__['function_call_type'] = call_node.__meta__['function_call_type']
+        #     return result
 
         if isinstance(node, Call):
             # First, we get the possible types of the callee.
@@ -645,13 +673,13 @@ class TypeSolver(NodeVisitor):
                     # If the signature is a variable, but the callee is an
                     # implicit select, we know that the codomain is that of
                     # the callee's owner.
-                    if isinstance(node.callee, ImplicitSelect):
-                        selected_codomains.append(signature)
-                        continue
+                    # if isinstance(node.callee, ImplicitSelect):
+                    #     selected_codomains.append(signature)
+                    #     continue
 
                     # Otherwise, we can't know the codomain yet, and we add a
                     # fresh variable to the set of pre-selected codomains.
-                    selected_codomains.append(TypeVariable())
+                    selected_codomains.append(type_factory.make_variable())
                     continue
 
                 # If the signature is a non-function type, it may designate a
@@ -707,12 +735,13 @@ class TypeSolver(NodeVisitor):
             # Then, we have to infer the type of each argument.
             argument_types = []
             for argument in node.arguments:
+                # FIXME read the type of the whole CallArg (for binding policy)
                 argument_type = self.read_type_instance(argument.value)
                 argument_types.append(argument_type)
 
             # Either the return type was already inferred in a previous pass,
             # or create a new variable for it.
-            return_type = node.__meta__.get('type', TypeVariable())
+            return_type = node.__meta__['type'] or type_factory.make_variable()
 
             # Once we've got signature candidates and argument types, we can
             # filter out signatures that aren't compatible with the argument
@@ -751,7 +780,11 @@ class TypeSolver(NodeVisitor):
 
             specialized_candidates = []
             for types in product(*choices):
-                specializer = FunctionType(domain=types[0:-1], codomain=types[-1])
+                specializer = type_factory.make_function(
+                    domain   = list(types[0:-1]),
+                    labels   = ['' for _ in range(len(types) - 1)],
+                    codomain = types[-1])
+
                 specialized_candidates.extend(flatten(
                     specialize_with_pattern(
                         self.environment.deepwalk(candidate), specializer, node)
@@ -805,7 +838,7 @@ class TypeSolver(NodeVisitor):
                     # to avoid introducing circular substitutions in the
                     # environment. This could happen if `candidate_domains`
                     # references `argument_type` somewhere in the hierarchy.
-                    candidate_domains = candidate_domains.copy()
+                    candidate_domains = TypeUnion(candidate_domains.types)
                     self.environment.unify(candidate_domains, argument_type)
 
             result = TypeUnion()
@@ -817,7 +850,7 @@ class TypeSolver(NodeVisitor):
 
             # Avoid creating singletons when there's only one candidate.
             if len(result) == 1:
-                result = result.first()
+                result = result.types[0]
                 selected_candidates = selected_candidates[0]
 
             node.__meta__['type'] = result
@@ -850,12 +883,21 @@ class TypeSolver(NodeVisitor):
         # If the node is a type identifier, we first build a type instance
         # from the signature it represents.
         if isinstance(node, TypeIdentifier):
+            # If the node doesn't have a signature (i.e. it only specifies
+            # type attributes), we create a type variable.
+            if node.signature is None:
+                return type_factory.make_variable(
+                    id        = hex(id(node)),
+                    modifiers = node.modifiers)
+
+                # FIXME: Do we need a better variable ID?
+
             t = self.analyse(node.signature)
 
-            # The signature of a TypeIdentifier is either a name referring to
-            # a nominal type or a structural type (e.g. a function signature).
-            # In the former case, we've to use the denoted type rather than
-            # that of the symbol.
+            # If provided, the signature of a TypeIdentifier is either a name
+            # referring to a nominal type or a structural type (e.g. a
+            # function signature). In the former case, we've to use the
+            # denoted type rather than that of the symbol.
             if isinstance(t, TypeName):
                 t = t.type
 
@@ -971,7 +1013,7 @@ def specialize(signature, specializations):
 
 
 def specialize_with_pattern(unspecialized, specializer, call_node, specializations=None):
-    if not unspecialized.is_generic():
+    if not unspecialized.is_generic:
         yield unspecialized
         return
 
@@ -1065,4 +1107,4 @@ def flatten(iterable):
 
 
 def varof(node):
-    return type_factory.make_variable((node.__meta__['scope'], node.name))
+    return type_factory.make_variable(id=(node.__meta__['scope'], node.name))

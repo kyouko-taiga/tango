@@ -50,6 +50,7 @@ namespace tango {
 
     std::shared_ptr<TypeVariable> make_type_variable(
         TypeFactory&          factory,
+        uint8_t               modifiers,
         boost::python::object id)
     {
         using namespace boost::python;
@@ -57,7 +58,7 @@ namespace tango {
         if (id == api::object()) {
             id = str(factory.next_variable_id++);
         }
-        return factory.make<TypeVariable>(id);
+        return factory.make<TypeVariable>(modifiers, id);
     }
 
     std::shared_ptr<FunctionType> make_function_type(
@@ -140,14 +141,14 @@ BOOST_PYTHON_MODULE(wrapper) {
 
     class_<FunctionType, std::shared_ptr<FunctionType>, bases<TypeBase>, boost::noncopyable>(
         "FunctionType", no_init)
-        .def_readwrite("domain",              &FunctionType::domain)
-        .def_readwrite("labels",              &FunctionType::labels)
-        .def_readwrite("codomain",            &FunctionType::codomain);
+        .def_readonly("domain",               &FunctionType::domain)
+        .def_readonly("labels",               &FunctionType::labels)
+        .def_readonly("codomain",             &FunctionType::codomain);
 
     class_<NominalType, bases<TypeBase>, boost::noncopyable>(
         "NominalType", no_init)
-        .def_readwrite("name",                &NominalType::name)
-        .def_readwrite("members",             &NominalType::members);
+        .def_readonly("name",                 &NominalType::name)
+        .def_readonly("members",              &NominalType::members);
 
     class_<BuiltinType, std::shared_ptr<BuiltinType>, bases<NominalType>, boost::noncopyable>(
         "BuiltinType", no_init);
@@ -160,7 +161,8 @@ BOOST_PYTHON_MODULE(wrapper) {
 
         // def make_variable(self, id=None)
         .def("make_variable", &make_type_variable,
-            (arg("id")=api::object()))
+            (arg("modifiers")=0,
+             arg("id")=api::object()))
 
         // def make_function(self, modifiers=0, domain=[], labels=[], codomain)
         .def("make_function", &make_function_type,
@@ -295,6 +297,20 @@ BOOST_PYTHON_MODULE(wrapper) {
             arg("modifiers"))))
         .def_readwrite("signature",           &TypeIdentifier::signature)
         .def_readwrite("modifiers",           &TypeIdentifier::modifiers);
+
+    class_<FunSignParam, bases<ASTNode>>(
+        "FunSignParam", init<std::string, ASTNodePtr>((
+            arg("label"),
+            arg("type_annotation"))))
+        .def_readwrite("label",               &FunSignParam::label)
+        .def_readwrite("type_annotation",     &FunSignParam::type_annotation);
+
+    class_<FunSign, bases<ASTNode>>(
+        "FunSign", init<ASTNodeList, ASTNodePtr>((
+            arg("parameters"),
+            arg("codomain_annotation"))))
+        .def_readwrite("parameters",          &FunSign::parameters)
+        .def_readwrite("codomain_annotation", &FunSign::codomain_annotation);
 
     class_<IntLiteral, bases<ASTNode>>(
         "IntLiteral", init<long>((arg("value"))))

@@ -113,8 +113,8 @@ namespace tango {
 
     struct TypeVariable: public TypeBase {
         TypeVariable(const TypeVariable&) = delete;
-        TypeVariable(boost::python::object id)
-            : id(id) {}
+        TypeVariable(uint8_t modifiers, boost::python::object id)
+            : TypeBase(modifiers), id(id) {}
 
         bool is_primitive()    const { return false; }
 

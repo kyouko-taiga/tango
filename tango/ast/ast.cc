@@ -55,6 +55,14 @@ namespace tango {
         visitor.visit(*this);
     }
 
+    void FunSignParam::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void FunSign::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
     void IntLiteral::accept(ASTNodeVisitor& visitor) {
         visitor.visit(*this);
     }
