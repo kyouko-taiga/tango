@@ -104,7 +104,7 @@ modifiers_combinations = [
     TM.tm_cst | TM.tm_stk | TM.tm_ref,
     TM.tm_mut | TM.tm_stk | TM.tm_val,
     TM.tm_mut | TM.tm_stk | TM.tm_ref,
-    # TM.tm_mut | TM.tm_shd | TM.tm_val,
+    TM.tm_mut | TM.tm_shd | TM.tm_val,
 ]
 
 def TypeFactory_make_variants(self, ty):

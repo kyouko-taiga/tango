@@ -182,29 +182,30 @@ class TangoLightTransformer(Transformer):
             })
 
     def type_ident(self, items):
-        # type modifiers + type signature
-        if len(items) > 1:
-            modifiers = items[0][0]
-            signature = items[1]
-            meta      = {
-                'start': items[0][1]['start'],
-                'end'  : signature.__meta__['end']
-            }
+        # Check if there's a type signature.
+        if isinstance(items[-1], ast.Node):
+            signature = items[-1]
 
-        # type signature only
-        elif isinstance(items[0], ast.Node):
             modifiers = 0
-            signature = items[0]
-            meta      = {
-                'start': signature.__meta__['start'],
-                'end'  : signature.__meta__['end']
+            for it in items[:-1]:
+                modifiers |= it[0]
+
+            meta = {
+                'start': items[0][1]['start'] if len(items) > 1 else signature.__meta__['start'],
+                'end'  : signature.__meta__['end'],
             }
 
-        # type modifiers only
+        # Otherwise we only combine modifiers.
         else:
-            modifiers = items[0][0]
             signature = None
-            meta      = items[0][1]
+            modifiers = 0
+            for it in items:
+                modifiers |= it[0]
+
+            meta = {
+                'start': items[ 0][1]['start'],
+                'end'  : items[-1][1]['end'],
+            }
 
         # Check type modifiers combinations.
         if (modifiers & TM.tm_cst) and (modifiers & TM.tm_mut):
@@ -220,7 +221,7 @@ class TangoLightTransformer(Transformer):
 
         # Set implicit type modifiers.
         if not (modifiers & TM.tm_mut):
-            modifiers |= TM.tm_cst
+            modifiers |= TM.tm_cst if not (modifiers & TM.tm_shd) else TM.tm_mut
         if not (modifiers & TM.tm_shd):
             modifiers |= TM.tm_stk
         if not (modifiers & TM.tm_ref):

@@ -113,7 +113,7 @@ class Substitution(object):
         elif isinstance(b, TypeUnion) and isinstance(a, TypeBase):
             self.unify(b, a, memo)
 
-        if isinstance(a, TypeVariable):
+        elif isinstance(a, TypeVariable):
             self.storage[a] = b
         elif isinstance(b, TypeVariable):
             self.storage[b] = a
@@ -325,7 +325,7 @@ class TypeSolver(NodeVisitor):
         if node.type_annotation:
             type_modifiers = node.type_annotation.modifiers
         else:
-            node.type_annotation.modifiers = TM.tm_cst | TM.tm_stk | TM.tm_val
+            type_modifiers = TM.tm_cst | TM.tm_stk | TM.tm_val
 
         # If there's an initial value, we shoud infer its type.
         if node.initial_value:
