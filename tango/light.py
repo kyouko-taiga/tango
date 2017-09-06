@@ -3,7 +3,7 @@ import os
 from lark import Lark, Transformer
 
 from . import ast
-from .builtin import Int, Double, String, Nothing
+from .builtin import Int, Double, String
 from .types import TypeModifier as TM
 
 

@@ -6,7 +6,7 @@ module         : stmt_list
 
 stmt_list      : _stmt*
 
-_stmt          : _simple_stmt
+_stmt          : _NEWLINE | _simple_stmt _NEWLINE
 
 _simple_stmt   : prop_decl
                | fun_decl
@@ -19,7 +19,7 @@ prop_decl      : LET NAME (":" type_ident)? (assign_op _expr)?
 
 fun_decl       : FUN NAME "(" param_decls? ")" "->" type_ident block
 
-param_decls    : param_decl ("," param_decl)*       -> param_decls
+param_decls    : param_decl ("," param_decl)* -> param_decls
 
 param_decl     : NAME ":" type_ident
 
@@ -98,4 +98,3 @@ STRING         : /'[^']*'/
 
 %ignore /[\t \f]+/
 %ignore COMMENT
-%ignore _NEWLINE

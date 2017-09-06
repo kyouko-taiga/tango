@@ -422,6 +422,9 @@ class TypeSolver(NodeVisitor):
         if isinstance(walked, TypeVariable):
             overload_set = TypeUnion([function_type])
             self.environment.unify(walked, overload_set)
+        elif isinstance(walked, FunctionType):
+            overload_set = TypeUnion([walked])
+            overload_set.add(function_type)
         elif isinstance(walked, TypeUnion) and isinstance(walked.types[0], FunctionType):
             overload_set = walked
             overload_set.add(function_type)
@@ -444,8 +447,9 @@ class TypeSolver(NodeVisitor):
             return_value_type = statement.value.__meta__['type']
             self.environment.unify(return_value_type, function_type.codomain)
 
-        node.__meta__['scope'][node.name].type = function_type
-        node.__meta__['type'] = function_type
+        node.__meta__['scope'][node.name].type = overload_set
+        node.__meta__['type']                  = overload_set
+        self.environment[varof(node)]          = overload_set
 
     def visit_nominal_type(self, node, type_class):
         # First, we create (unless we already did) a generic type object for
@@ -581,7 +585,7 @@ class TypeSolver(NodeVisitor):
 
         # If the node is a simple literal, its type should have been inferred
         # by the parser already.
-        if isinstance(node, IntLiteral):
+        if isinstance(node, (IntLiteral, StringLiteral)):
             return node.__meta__['type']
 
         if isinstance(node, Identifier):
