@@ -176,9 +176,11 @@ Block.__str__  = Block_str
 
 
 def PropDecl_str(self):
-    result = 'var {}'.format(self.name)
+    result = 'let {}'.format(self.name)
     if self.type_annotation:
-        result += ': {}'.format(self.type_annotation)
+        annotation = str(self.type_annotation)
+        if annotation:
+            result += ': {}'.format(self.type_annotation)
     if self.initial_value:
         result += ' {} {}'.format(operator_str[self.initial_binding], self.initial_value)
     return result
@@ -274,7 +276,11 @@ def TypeIdentifier_str(self):
         if self.signature:
             return modifiers + ' ' + str(self.signature)
         return modifiers
-    return str(self.signature)
+
+    if self.signature:
+        return str(self.signature)
+
+    return ''
 
 monkeypatch_init(TypeIdentifier)
 TypeIdentifier._fields = ('signature', 'modifiers',)
