@@ -25,7 +25,7 @@ param_decl     : NAME ":" type_ident
 
 assign_stmt    : ident assign_op _expr
 
-if_stmt        : IF _expr block
+if_stmt        : IF _expr block (ELSE if_stmt | block)?
 
 return_stmt    : RETURN _expr
 
@@ -87,6 +87,7 @@ REF            : "ref"
 OWN            : "own"
 FUN            : "fun"
 IF             : "if"
+ELSE           : "else"
 RETURN         : "return"
 
 COMMENT        : /\#[^\n]*/

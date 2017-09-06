@@ -221,7 +221,9 @@ Assignment.__str__ = Assignment_str
 
 
 def If_str(self):
-    return 'if {} {}'.format(self.condition, self.body)
+    if self.else_block:
+        return 'if {} {} else {}'.format(self.condition, self.then_block, self.else_block)
+    return 'if {} {}'.format(self.condition, self.then_block)
 
 monkeypatch_init(If)
 If._fields = ('condition', 'then_block', 'else_block',)
@@ -310,4 +312,4 @@ IntLiteral.__str__ = lambda self: str(self.value)
 
 monkeypatch_init(StringLiteral)
 StringLiteral._fields = ('value',)
-StringLiteral.__str__ = lambda self: str(self.value)
+StringLiteral.__str__ = lambda self: "'" + str(self.value) + "'"

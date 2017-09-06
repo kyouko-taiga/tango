@@ -180,15 +180,21 @@ class ScopeBinder(NodeVisitor):
         # Bind the symbols in the node's condition.
         self.visit(node.condition)
 
-        # Push a new scope on the stack before visiting the node's body, pre-
-        # filled with the symbols it declares.
+        # Push a new scope on the stack before visiting the node's then block,
+        # pre-filled with the symbols it declares.
         self.push_scope()
-        for name in node.body.__meta__['symbols']:
+        for name in node.then_block.__meta__['symbols']:
             self.current_scope.add(Symbol(name=name))
-        node.body.__meta__['scope'] = self.current_scope
-        self.visit(node.body)
+        node.then_block.__meta__['scope'] = self.current_scope
+        self.visit(node.then_block)
 
         self.scopes.pop()
+
+        # Visit the node's else block (if it exists) after popping the scope
+        # of the then block so that symbols of the latter can't collide with
+        # that of the former.
+        if node.else_block:
+            self.visit(node.else_block)
 
 
 class SymbolsExtractor(NodeVisitor):

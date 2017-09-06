@@ -555,10 +555,13 @@ class TypeSolver(NodeVisitor):
 
         # The condition of an if expressions should always be a boolean, so we
         # can unify the type of the node's condition with Bool.
-        self.environment.unify(condition_type, Bool)
+        expected_type = type_factory.updating(Bool, modifiers=TM.tm_cst | TM.tm_stk | TM.tm_val)
+        self.environment.unify(condition_type, expected_type)
 
         # Then we can visit the node's body.
-        self.visit(node.body)
+        self.visit(node.then_block)
+        if node.else_block:
+            self.visit(node.else_block)
 
     def visit_Switch(self, node):
         # First, we infer the type of the switch's argument.

@@ -120,12 +120,20 @@ class TangoLightTransformer(Transformer):
             })
 
     def if_stmt(self, items):
+        if len(items) > 3:
+            else_block = items[4]
+            end        = items[4].__meta__['end']
+        else:
+            else_block = None
+            end        = items[2].__meta__['end']
+
         return ast.If(
-            condition = items[1],
-            body      = items[2],
-            meta      = {
+            condition  = items[1],
+            then_block = items[2],
+            else_block = else_block,
+            meta       = {
                 'start': (items[0].line, items[0].column),
-                'end'  : items[2].__meta__['end']
+                'end'  : end,
             })
 
     def return_stmt(self, items):
