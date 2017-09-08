@@ -12,7 +12,7 @@ type_factory   = TypeFactory()
 
 def modifiers_to_str(modifiers):
     result = []
-    if modifiers & TM.tm_mut:
+    if (modifiers & TM.tm_mut) and (modifiers & TM.tm_stk):
         result.append('@mut')
     if modifiers & TM.tm_ref:
         result.append('@ref')
