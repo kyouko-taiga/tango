@@ -85,6 +85,26 @@ class Substitution(object):
         if a == b:
             return
 
+        elif isinstance(a, TypeVariable):
+            if (a.modifiers == 0) or (a.modifiers == b.modifiers):
+                self.storage[a] = b
+
+            elif (b.modifiers == 0) and isinstance(b, TypeVariable):
+                self.storage[b] = a
+
+            elif isinstance(b, TypeUnion):
+                ts = TypeUnion([t for t in b if t.modifiers == a.modifiers])
+                if not ts.types:
+                    raise InferenceError("no type in '{}' matches '{}'".format(b, a))
+                self.storage[a] = ts
+                self.unify(ts, b)
+
+            else:
+                raise InferenceError("type '{}' does not match '{}'".format(a, b))
+
+        elif isinstance(b, TypeVariable):
+            self.unify(b, a, memo)
+
         elif isinstance(a, TypeUnion) and isinstance(b, TypeUnion):
             results = []
             for ita, itb in product(a, b):
@@ -113,11 +133,6 @@ class Substitution(object):
         elif isinstance(b, TypeUnion) and isinstance(a, TypeBase):
             self.unify(b, a, memo)
 
-        elif isinstance(a, TypeVariable):
-            self.storage[a] = b
-        elif isinstance(b, TypeVariable):
-            self.storage[b] = a
-
         elif isinstance(a, NominalType) and isinstance(b, NominalType):
             if (a.name != b.name) or (set(a.members.keys()) ^ set(b.members.keys())):
                 raise InferenceError("type '{}' does not match '{}'".format(a, b))
@@ -125,7 +140,6 @@ class Substitution(object):
                 self.unify(a.members[it], b.members[it], memo)
 
             # FIXME Should we unify defining scopes too?
-            # FIXME How to handle type modifiers?
 
         elif isinstance(a, FunctionType) and isinstance(b, FunctionType):
             for ita, itb in zip(a.domain, b.domain):
@@ -149,9 +163,11 @@ class Substitution(object):
             return True
 
         if isinstance(a, TypeVariable) or isinstance(b, TypeVariable):
-            return (a.modifiers == b.modifiers
-                    or a.modifiers == 0
-                    or b.modifiers == 0)
+            return ((a.modifiers == b.modifiers)
+                or (a.modifiers == 0)
+                or (b.modifiers == 0)
+                or isinstance(a, TypeUnion) and any(self.matches(it, b) for it in a)
+                or isinstance(b, TypeUnion) and any(self.matches(it, a) for it in b))
 
         if isinstance(a, TypeUnion):
             return any(self.matches(it, b) for it in a)
@@ -319,15 +335,16 @@ class TypeSolver(NodeVisitor):
         if not (node.type_annotation or node.initial_value):
             return
 
-        # First, we need to infer the modifiers of the property's type. If it
-        # has a type annotation, we can simply copy them, otherwise we default
-        # to `@cst @stk @val`.
+        # First, we read the annotated type if one was provided, or create a
+        # new type variable with the default type modiers otherwise (i.e.
+        # `@cst @stk @val`).
         if node.type_annotation:
-            type_modifiers = node.type_annotation.modifiers
+            annotation_type = self.read_type_reference(node.type_annotation)
         else:
-            type_modifiers = TM.tm_cst | TM.tm_stk | TM.tm_val
+            annotation_type = type_factory.make_variable(
+                modifiers=TM.tm_cst | TM.tm_stk | TM.tm_val)
 
-        # If there's an initial value, we shoud infer its type.
+        # If there's an initial value, we infer its type.
         if node.initial_value:
             initial_value_type = self.read_type_instance(node.initial_value)
 
@@ -337,40 +354,79 @@ class TypeSolver(NodeVisitor):
             ts = (initial_value_type.types if isinstance(initial_value_type, TypeUnion)
                   else [initial_value_type])
 
-            # NOTE: If the initial value is a `@ref` type, we could forbid the
-            # use of a move binding operator here. But for now we'll let that
-            # error be detected and raised by the reference checker.
+            # A copy binding produces `@val` or `@ref` types.
+            if node.initial_binding == Operator.o_cpy:
+                for t in [t for t in ts if not (t.modifiers & TM.tm_val)]:
+                    ts.append(type_factory.updating(
+                        t, modifiers=t.modifiers & ~TM.tm_ref | TM.tm_val))
+                for t in [t for t in ts if not (t.modifiers & TM.tm_ref)]:
+                    ts.append(type_factory.updating(
+                        t, modifiers=t.modifiers & ~TM.tm_shd & ~TM.tm_val | TM.tm_stk | TM.tm_ref))
 
-            # A copy or move binding always produces `@val` types.
-            if node.initial_binding in (Operator.o_cpy, Operator.o_mov):
+            # NOTE: The statement `let x: @ref = y` is illegal, because `x`
+            # cannot possibly already refer to a valid variable. Hence, we
+            # could assume copy bindings to always produce `@val` types in the
+            # case of property initialization. But for consistency with the
+            # type inference of assignment statements, but we'll let that
+            # error to be handled by the reference checker.
+
+            # A move binding always produces `@val` types.
+            elif node.initial_binding == Operator.o_mov:
                 ts = [
                     type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_ref | TM.tm_val)
                     for t in ts
                 ]
 
-            # NOTE: The statement `let x: @ref = y` will fail type inference,
-            # because `x` cannot possibly already refer to a valid variable.
-            # As a result, contrary to copy assignment statements, initial
-            # copy bindings can be assumed to always produce a `@val` type.
+            # NOTE: If the initial value is a `@ref` type, we could forbid the
+            # use of a move binding operator here. But we'll leave that error
+            # to be handled by  the reference checker.
+
+            # NOTE: The statement `let x: @shd <- y` is illegal, but we'll
+            # let that error to be handled by the reference checker.
 
             # A reference binding always produces `@ref` types.
-            if node.initial_binding == Operator.o_ref:
+            elif node.initial_binding == Operator.o_ref:
                 ts = [
-                    type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_val | TM.tm_ref)
+                    type_factory.updating(
+                        t, modifiers=t.modifiers & ~TM.tm_shd & ~TM.tm_val | TM.tm_stk | TM.tm_ref)
                     for t in ts
                 ]
+
+            # In order to handle mutable lvalues, we should add a mutable
+            # version of every type of the rvalue so that unification may
+            # select a mutable type if necessary.
+            for t in [t for t in ts if not (t.modifiers & TM.tm_mut)]:
+                ts.append(type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_cst | TM.tm_mut))
+
+            # NOTE: The statements `let x: @mut <- y` and `let x: @mut &- y`
+            # are illegal if `y` is constant, but we'll let that error to be
+            # handled by the reference checker.
 
             initial_value_type = TypeUnion(ts)
             if len(initial_value_type) == 1:
                 initial_value_type = initial_value_type.types[0]
 
-            # If there's a type annotation as well, we should unify the type
-            # it denotes with that of the initial value.
+            # If a type annotation was provided, we unify it with the initial
+            # value types we just inferred to filter out invalid modifiers,
+            # and potentially unify unknown type names.
             if node.type_annotation:
                 annotation_type = self.read_type_reference(node.type_annotation)
                 self.environment.unify(annotation_type, initial_value_type)
+                inferred_type = initial_value_type
 
-            inferred_type = initial_value_type
+            # If no type annotation was provided, we manually select the most
+            # restrictive variant of modifiers.
+            elif isinstance(initial_value_type, TypeUnion):
+                ts = [t for t in initial_value_type if t.modifiers & TM.tm_cst]
+                if ts:
+                    initial_value_type = ts
+                ts = [t for t in initial_value_type if t.modifiers & TM.tm_stk]
+                if ts:
+                    initial_value_type = ts
+                ts = [t for t in initial_value_type if t.modifiers & TM.tm_val]
+                if ts:
+                    initial_value_type = ts
+                inferred_type = TypeUnion(list(initial_value_type))
 
         # If there isn't an initializing value, we should simply use the type
         # annotation.
@@ -530,19 +586,51 @@ class TypeSolver(NodeVisitor):
         self.environment.unify(TypeVariable(node), case_type)
 
     def visit_Assignment(self, node):
+        # NOTE: For now, we assume lvalues to always represent identifiers.
+        # This'll change when we'll implement properties and subscripts.
+        if not isinstance(node.lvalue, Identifier):
+            assert False, '{} is not a valid lvalue'.format(node.target.__class__.__name__)
+
         # First, we infer and unify the types of the lvalue and rvalue.
         lvalue_type = self.analyse(node.lvalue)
         rvalue_type = self.read_type_instance(node.rvalue)
+
+        # We'll have to override the modifiers of the rvalue's type, so they
+        # match the return type of the the binding operator.
+        rtypes = rvalue_type.types if isinstance(rvalue_type, TypeUnion) else [rvalue_type]
+
+        # NOTE: If the rvalue is a `@ref` type, we could forbid the use of a
+        # move binding operator here. But for now we'll let that error be
+        # detected and raised by the reference checker.
+
+        # A copy or move binding usually produces `@val` types, but may
+        # produce `@ref` types if the lvalue is a reference (i.e. `x = y`
+        # where `x` is a reference) to handle assignments of referenced
+        # variables.
+        if node.operator in (Operator.o_cpy, Operator.o_mov):
+            ts = []
+            for t in rtypes:
+                ts.append(type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_ref | TM.tm_val))
+                ts.append(type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_val | TM.tm_ref))
+            rtypes = ts
+
+        # A reference binding always produces `@ref` types.
+        if node.operator == Operator.o_ref:
+            rtypes = [
+                type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_val | TM.tm_ref)
+                for t in rtypes
+            ]
+
+        rvalue_type = TypeUnion(rtypes)
+        if len(rvalue_type) == 1:
+            rvalue_type = rvalue_type.types[0]
+
         self.environment.unify(lvalue_type, rvalue_type)
 
-        # If the lvalue is an identifer, we unify its name with the type of
-        # the rvalue.
+        # If the lvalue is an identifer, we unify its name with the rvalue's
+        # type as well.
         if isinstance(node.lvalue, Identifier):
-            self.environment.unify(TypeVariable(node.lvalue), rvalue_type)
-            return
-
-        # Note that for now, only identifiers are valid lvalues.
-        assert False, '{} is not a valid lvalue'.format(node.target.__class__.__name__)
+            self.environment.unify(varof(node.lvalue), rvalue_type)
 
     def visit_Call(self, node):
         # While we don't need to unify the return type of the function, we
