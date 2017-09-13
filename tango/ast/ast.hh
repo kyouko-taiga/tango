@@ -38,7 +38,7 @@ namespace tango {
 
     /// Base class for all AST nodes.
     struct ASTNode {
-        virtual ~ASTNode() {};
+        virtual ~ASTNode() {}
 
         // Has to be implemented in every derived class, or dynamic dispatch
         // wouldn't work.
@@ -304,6 +304,8 @@ namespace tango {
     // -----------------------------------------------------------------------
 
     struct ASTNodeVisitor {
+        virtual ~ASTNodeVisitor() {}
+
         virtual void visit(Block&          node) = 0;
         virtual void visit(ModuleDecl&     node) = 0;
         virtual void visit(PropDecl&       node) = 0;

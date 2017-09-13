@@ -176,9 +176,9 @@ class Substitution(object):
 
         if isinstance(a, NominalType) and isinstance(b, NominalType):
             return (a.modifiers == b.modifiers
-                    and a.name == b.name
-                    and not (set(a.members.keys()) ^ set(b.members.keys()))
-                    and all(self.matches(a.members[it], b.members[it]) for it in a.members.keys()))
+                and a.name == b.name
+                and not (set(a.members.keys()) ^ set(b.members.keys()))
+                and all(self.matches(a.members[it], b.members[it]) for it in a.members.keys()))
 
         # Note that unification of function types is stricter than what `matches`
         # checks, requiring `t` and `u` to be equal under `__eq__`. Relaxing the
@@ -188,10 +188,10 @@ class Substitution(object):
         # more relaxed match function shouldn't cause any issue.
         if isinstance(a, FunctionType) and isinstance(b, FunctionType):
             return (a.modifiers == b.modifiers
-                    and len(a.domain) == len(b.domain)
-                    and all(self.matches(a.domain[i], b.domain[i]) for i in range(len(a.domain)))
-                    and self.matches(a.codomain, b.codomain)
-                    and self.matches(a.labels, b.labels))
+                and len(a.domain) == len(b.domain)
+                and all(self.matches(a.domain[i], b.domain[i]) for i in range(len(a.domain)))
+                and self.matches(a.codomain, b.codomain)
+                and self.matches(a.labels, b.labels))
 
         return False
 
@@ -710,7 +710,7 @@ class TypeSolver(NodeVisitor):
                 if not selected_codomains:
                     raise InferenceError(
                         "function call do not match any candidate in '{}'".format(
-                        ', '.join(map(str, callee_type))))
+                            ', '.join(map(str, callee_type))))
 
                 # Avoid creating signletons when there's only one result.
                 if len(selected_codomains) == 1:
@@ -804,7 +804,7 @@ class TypeSolver(NodeVisitor):
                 if not selected_codomains:
                     raise InferenceError(
                         "function call do not match any candidate in '{}'".format(
-                        ', '.join(map(str, callee_type))))
+                            ', '.join(map(str, callee_type))))
 
             # We unify the argument types of the node with the domain of the
             # selected candidates, to propagate type constraints.
@@ -863,21 +863,12 @@ class TypeSolver(NodeVisitor):
         # they match the return type of the binding operator.
         ts = rvalue_type.types if isinstance(rvalue_type, TypeUnion) else [rvalue_type]
 
-        # A copy binding produces `@val` or `@ref` types.
+        # A copy binding requires the lvalue to have the same type as the
+        # rvalue, modulo the mutability modifier.
         if op == Operator.o_cpy:
-            for t in [t for t in ts if not (t.modifiers & TM.tm_val)]:
+            for t in [t for t in ts if not (t.modifiers & TM.tm_cst)]:
                 ts.append(type_factory.updating(
-                    t, modifiers=t.modifiers & ~TM.tm_ref | TM.tm_val))
-            for t in [t for t in ts if not (t.modifiers & TM.tm_ref)]:
-                ts.append(type_factory.updating(
-                    t, modifiers=t.modifiers & ~TM.tm_shd & ~TM.tm_val | TM.tm_stk | TM.tm_ref))
-
-        # NOTE: The statement `let x: @ref = y` is illegal, because `x` can't
-        # possibly already refer to a valid variable. Hence, we could assume
-        # copy bindings to always produce `@val` types in the case of property
-        # initialization. But for consistency with the type inference of other
-        # assignment statements, but we'll let that error to be handled by the
-        # reference checker.
+                    t, modifiers=t.modifiers & ~TM.tm_cst | TM.tm_mut))
 
         # A move binding always produces `@val` types.
         elif op == Operator.o_mov:
@@ -898,8 +889,15 @@ class TypeSolver(NodeVisitor):
             ts = [
                 type_factory.updating(
                     t, modifiers=t.modifiers & ~TM.tm_shd & ~TM.tm_val | TM.tm_stk | TM.tm_ref)
-                for t in ts
+
+                # As we forbid reference of references, the statement `x &- y`
+                # is illegal if `y` is a reference. That's why we filter out
+                # rvalue's type candidates that are references.
+                for t in ts if not (t.modifiers & TM.tm_ref)
             ]
+
+            if not ts:
+                raise InferenceError("invalid use of reference operator on reference rvalue")
 
         # In order to handle mutable lvalues, we should add a mutable version
         # of every type of the rvalue so that unification may select a mutable
@@ -921,13 +919,15 @@ class TypeSolver(NodeVisitor):
 
             self.environment.unify(lvalue_type, rvalue_type)
 
-        # NOTE: If we can't rely on the type modifiers of the lvalue's type,
-        # we'll produce unecessary variants (i.e. `T`, `@ref T`, `@mut T`,
-        # ...). Because in the presence of multiple variants of `T` we always
-        # choose the most restrictive variant, it might be more efficient to
-        # already apply such restriction here, rather than waiting for type
-        # inference to converge, so as to reduce the combinatorial explosion
-        # of type unions.
+        # Variable may be declared without any type annotation. As such we
+        # can't restrict the inferred variants using lvalue's type modifiers.
+        # In those instances, we'll select the most restrictive variant by
+        # default.
+        else:
+            ts = [t for t in ts if t.modifiers & TM.tm_cst] or ts
+            ts = [t for t in ts if t.modifiers & TM.tm_stk] or ts
+            ts = [t for t in ts if t.modifiers & TM.tm_val] or ts
+            rvalue_type = TypeUnion(ts)
 
         return rvalue_type
 
@@ -990,7 +990,7 @@ class TypeSolver(NodeVisitor):
     def is_typename(self, node):
         if isinstance(node, Identifier):
             return (('scope' in node.__meta__)
-                    and (node.name in node.__meta__['scope'].typenames))
+                and (node.name in node.__meta__['scope'].typenames))
 
         if isinstance(node, Select):
             return self.is_typename(node.member)
@@ -1161,7 +1161,7 @@ def specialize_from_annotation(unspecialized, type_annotation):
     if len(specialized) == 0:
         raise InferenceError(
             "no candidate in '{}' is compatible with type annotation '{}'".format(
-            (','.join(map(str, unspecialized)), type_annotation)))
+                (','.join(map(str, unspecialized)), type_annotation)))
 
     return TypeUnion(specialized)
 

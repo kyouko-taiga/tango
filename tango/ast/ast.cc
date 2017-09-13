@@ -1,3 +1,5 @@
+#include <boost/python.hpp>
+
 #include "ast.hh"
 
 
