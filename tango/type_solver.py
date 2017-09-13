@@ -335,98 +335,19 @@ class TypeSolver(NodeVisitor):
         if not (node.type_annotation or node.initial_value):
             return
 
-        # First, we read the annotated type if one was provided, or create a
-        # new type variable with the default type modiers otherwise (i.e.
-        # `@cst @stk @val`).
-        if node.type_annotation:
-            annotation_type = self.read_type_reference(node.type_annotation)
-        else:
-            annotation_type = type_factory.make_variable(
-                modifiers=TM.tm_cst | TM.tm_stk | TM.tm_val)
-
         # If there's an initial value, we infer its type.
         if node.initial_value:
-            initial_value_type = self.read_type_instance(node.initial_value)
-
-            # Depending on the binding operator, we may have to override the
-            # modifiers of the initial value's type, so they match the return
-            # type of the binding operator.
-            ts = (initial_value_type.types if isinstance(initial_value_type, TypeUnion)
-                  else [initial_value_type])
-
-            # A copy binding produces `@val` or `@ref` types.
-            if node.initial_binding == Operator.o_cpy:
-                for t in [t for t in ts if not (t.modifiers & TM.tm_val)]:
-                    ts.append(type_factory.updating(
-                        t, modifiers=t.modifiers & ~TM.tm_ref | TM.tm_val))
-                for t in [t for t in ts if not (t.modifiers & TM.tm_ref)]:
-                    ts.append(type_factory.updating(
-                        t, modifiers=t.modifiers & ~TM.tm_shd & ~TM.tm_val | TM.tm_stk | TM.tm_ref))
-
-            # NOTE: The statement `let x: @ref = y` is illegal, because `x`
-            # cannot possibly already refer to a valid variable. Hence, we
-            # could assume copy bindings to always produce `@val` types in the
-            # case of property initialization. But for consistency with the
-            # type inference of assignment statements, but we'll let that
-            # error to be handled by the reference checker.
-
-            # A move binding always produces `@val` types.
-            elif node.initial_binding == Operator.o_mov:
-                ts = [
-                    type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_ref | TM.tm_val)
-                    for t in ts
-                ]
-
-            # NOTE: If the initial value is a `@ref` type, we could forbid the
-            # use of a move binding operator here. But we'll leave that error
-            # to be handled by  the reference checker.
-
-            # NOTE: The statement `let x: @shd <- y` is illegal, but we'll
-            # let that error to be handled by the reference checker.
-
-            # A reference binding always produces `@ref` types.
-            elif node.initial_binding == Operator.o_ref:
-                ts = [
-                    type_factory.updating(
-                        t, modifiers=t.modifiers & ~TM.tm_shd & ~TM.tm_val | TM.tm_stk | TM.tm_ref)
-                    for t in ts
-                ]
-
-            # In order to handle mutable lvalues, we should add a mutable
-            # version of every type of the rvalue so that unification may
-            # select a mutable type if necessary.
-            for t in [t for t in ts if not (t.modifiers & TM.tm_mut)]:
-                ts.append(type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_cst | TM.tm_mut))
-
-            # NOTE: The statements `let x: @mut <- y` and `let x: @mut &- y`
-            # are illegal if `y` is constant, but we'll let that error to be
-            # handled by the reference checker.
-
-            initial_value_type = TypeUnion(ts)
-            if len(initial_value_type) == 1:
-                initial_value_type = initial_value_type.types[0]
-
-            # If a type annotation was provided, we unify it with the initial
-            # value types we just inferred to filter out invalid modifiers,
-            # and potentially unify unknown type names.
+            rvalue_type = self.read_type_instance(node.initial_value)
             if node.type_annotation:
-                annotation_type = self.read_type_reference(node.type_annotation)
-                self.environment.unify(annotation_type, initial_value_type)
-                inferred_type = initial_value_type
-
-            # If no type annotation was provided, we manually select the most
-            # restrictive variant of modifiers.
-            elif isinstance(initial_value_type, TypeUnion):
-                ts = [t for t in initial_value_type if t.modifiers & TM.tm_cst]
-                if ts:
-                    initial_value_type = ts
-                ts = [t for t in initial_value_type if t.modifiers & TM.tm_stk]
-                if ts:
-                    initial_value_type = ts
-                ts = [t for t in initial_value_type if t.modifiers & TM.tm_val]
-                if ts:
-                    initial_value_type = ts
-                inferred_type = TypeUnion(list(initial_value_type))
+                inferred_type = self.unify_assignment(
+                    lvalue_type = self.read_type_reference(node.type_annotation),
+                    op          = node.initial_binding,
+                    rvalue_type = rvalue_type)
+            else:
+                inferred_type = self.unify_assignment(
+                    lvalue_type = None,
+                    op          = node.initial_binding,
+                    rvalue_type = rvalue_type)
 
         # If there isn't an initializing value, we should simply use the type
         # annotation.
@@ -591,46 +512,21 @@ class TypeSolver(NodeVisitor):
         if not isinstance(node.lvalue, Identifier):
             assert False, '{} is not a valid lvalue'.format(node.target.__class__.__name__)
 
-        # First, we infer and unify the types of the lvalue and rvalue.
+        # We first infer the types of the lvalue and rvalue.
         lvalue_type = self.analyse(node.lvalue)
         rvalue_type = self.read_type_instance(node.rvalue)
 
-        # We'll have to override the modifiers of the rvalue's type, so they
-        # match the return type of the the binding operator.
-        rtypes = rvalue_type.types if isinstance(rvalue_type, TypeUnion) else [rvalue_type]
+        # We unify both of those types according to the semantics of the
+        # binding operator.
+        inferred_type = self.unify_assignment(
+            lvalue_type = lvalue_type,
+            op          = node.operator,
+            rvalue_type = rvalue_type)
 
-        # NOTE: If the rvalue is a `@ref` type, we could forbid the use of a
-        # move binding operator here. But for now we'll let that error be
-        # detected and raised by the reference checker.
-
-        # A copy or move binding usually produces `@val` types, but may
-        # produce `@ref` types if the lvalue is a reference (i.e. `x = y`
-        # where `x` is a reference) to handle assignments of referenced
-        # variables.
-        if node.operator in (Operator.o_cpy, Operator.o_mov):
-            ts = []
-            for t in rtypes:
-                ts.append(type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_ref | TM.tm_val))
-                ts.append(type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_val | TM.tm_ref))
-            rtypes = ts
-
-        # A reference binding always produces `@ref` types.
-        if node.operator == Operator.o_ref:
-            rtypes = [
-                type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_val | TM.tm_ref)
-                for t in rtypes
-            ]
-
-        rvalue_type = TypeUnion(rtypes)
-        if len(rvalue_type) == 1:
-            rvalue_type = rvalue_type.types[0]
-
-        self.environment.unify(lvalue_type, rvalue_type)
-
-        # If the lvalue is an identifer, we unify its name with the rvalue's
-        # type as well.
+        # If the lvalue is an identifer, we unify its name with the unified
+        # type as well, so as to assign it a type.
         if isinstance(node.lvalue, Identifier):
-            self.environment.unify(varof(node.lvalue), rvalue_type)
+            self.environment.unify(varof(node.lvalue), inferred_type)
 
     def visit_Call(self, node):
         # While we don't need to unify the return type of the function, we
@@ -961,6 +857,79 @@ class TypeSolver(NodeVisitor):
             # multiple configurations of argument groups.
 
         assert False, "no type inference for node '{}'".format(node.__class__.__name__)
+
+    def unify_assignment(self, lvalue_type, op, rvalue_type):
+        # First, we have to override the modifiers of the rvalue's type, so
+        # they match the return type of the binding operator.
+        ts = rvalue_type.types if isinstance(rvalue_type, TypeUnion) else [rvalue_type]
+
+        # A copy binding produces `@val` or `@ref` types.
+        if op == Operator.o_cpy:
+            for t in [t for t in ts if not (t.modifiers & TM.tm_val)]:
+                ts.append(type_factory.updating(
+                    t, modifiers=t.modifiers & ~TM.tm_ref | TM.tm_val))
+            for t in [t for t in ts if not (t.modifiers & TM.tm_ref)]:
+                ts.append(type_factory.updating(
+                    t, modifiers=t.modifiers & ~TM.tm_shd & ~TM.tm_val | TM.tm_stk | TM.tm_ref))
+
+        # NOTE: The statement `let x: @ref = y` is illegal, because `x` can't
+        # possibly already refer to a valid variable. Hence, we could assume
+        # copy bindings to always produce `@val` types in the case of property
+        # initialization. But for consistency with the type inference of other
+        # assignment statements, but we'll let that error to be handled by the
+        # reference checker.
+
+        # A move binding always produces `@val` types.
+        elif op == Operator.o_mov:
+            ts = [
+                type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_ref | TM.tm_val)
+                for t in ts
+            ]
+
+        # NOTE: If the rvalue is a `@ref` type, we could forbid the use of a
+        # move binding operator here. But we'll leave that error to be handled
+        # by the reference checker.
+
+        # NOTE: The statement `x <- y` is illegal if `x` is a shared variable,
+        # but we'll let that error to be handled by the reference checker.
+
+        # A reference binding always produces `@ref` types.
+        elif op == Operator.o_ref:
+            ts = [
+                type_factory.updating(
+                    t, modifiers=t.modifiers & ~TM.tm_shd & ~TM.tm_val | TM.tm_stk | TM.tm_ref)
+                for t in ts
+            ]
+
+        # In order to handle mutable lvalues, we should add a mutable version
+        # of every type of the rvalue so that unification may select a mutable
+        # type if necessary.
+        for t in [t for t in ts if not (t.modifiers & TM.tm_mut)]:
+            ts.append(type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_cst | TM.tm_mut))
+
+        # NOTE: The statements `x <- y` and `x &- y` are illegal if `x` is a
+        # mutable and `y` is constant, but we'll let that error to be handled
+        # by the reference checker.
+
+        # If we already could infer a type for the lvalue, we'll unify it with
+        # the types for the rvalue we just inferred to filter out invalid
+        # modifiers, and potentially unify unknown type names.
+        if lvalue_type is not None:
+            rvalue_type = TypeUnion(ts)
+            if len(rvalue_type) == 1:
+                rvalue_type = rvalue_type.types[0]
+
+            self.environment.unify(lvalue_type, rvalue_type)
+
+        # NOTE: If we can't rely on the type modifiers of the lvalue's type,
+        # we'll produce unecessary variants (i.e. `T`, `@ref T`, `@mut T`,
+        # ...). Because in the presence of multiple variants of `T` we always
+        # choose the most restrictive variant, it might be more efficient to
+        # already apply such restriction here, rather than waiting for type
+        # inference to converge, so as to reduce the combinatorial explosion
+        # of type unions.
+
+        return rvalue_type
 
     def read_type_instance(self, node):
         t = self.analyse(node)
