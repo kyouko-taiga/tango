@@ -330,6 +330,11 @@ class TypeSolver(NodeVisitor):
                 node.__meta__['return_statements'].append(statement)
 
     def visit_PropDecl(self, node):
+        # We assign the type variable associated with the declared symbol to
+        # the node's metadata. After unification, it will be reified to the
+        # type of the symbol, which we'll use during code generation.
+        node.__meta__['type'] = varof(node)
+
         # If there isn't neither a type annotation, nor an initial value, we
         # can't infer any additional type information.
         if not (node.type_annotation or node.initial_value):
@@ -357,7 +362,6 @@ class TypeSolver(NodeVisitor):
         # Finally, we should unify the inferred type with the type variable
         # corresponding to the symbol under declaration.
         self.environment.unify(varof(node), inferred_type)
-        node.__meta__['type'] = inferred_type
 
     def visit_FunDecl(self, node):
         # Unlike variables, function parameters are always declared with a

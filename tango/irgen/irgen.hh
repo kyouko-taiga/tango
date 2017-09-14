@@ -1,5 +1,8 @@
 #pragma once
 
+// FIXME: This include is only for debug!
+#include <iostream>
+
 #include <stack>
 #include <string>
 #include <unordered_map>
@@ -54,10 +57,6 @@ namespace tango {
         /// of the function declaration being visited.
         std::stack<llvm::AllocaInst*> return_alloca;
 
-        /// A stack of Tango types that represent the return type of the
-        /// function declaration being visited.
-        std::stack<TypePtr> return_type;
-
         IRGenerator(llvm::Module&, llvm::IRBuilder<>&);
 
         /// Returns the location of a symbol from the local or global table.
@@ -68,7 +67,7 @@ namespace tango {
         void visit(PropDecl&);
         void visit(ParamDecl&      node) {}
         void visit(FunDecl&);
-        void visit(Assignment&     node) {}
+        void visit(Assignment&);
         void visit(If&             node) {}
         void visit(Return&);
         void visit(BinaryExpr&     node) {}
@@ -78,7 +77,7 @@ namespace tango {
         void visit(TypeIdentifier& node) {}
         void visit(FunSignParam&   node) {}
         void visit(FunSign&        node) {}
-        void visit(IntLiteral&     node) {}
+        void visit(IntLiteral&);
         void visit(StringLiteral&  node) {}
 
     };

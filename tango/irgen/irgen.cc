@@ -1,5 +1,3 @@
-#include <iostream>
-
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
@@ -65,6 +63,11 @@ namespace tango {
         // Look for the identifier in the local/global symbol tables.
         auto loc = this->get_symbol_location(node.name);
         this->stack.push(builder.CreateLoad(loc, node.name.c_str()));
+    }
+
+    void IRGenerator::visit(IntLiteral& node) {
+        this->stack.push(
+            llvm::ConstantInt::get(this->module.getContext(), llvm::APInt(64, node.value, true)));
     }
 
     llvm::AllocaInst* create_alloca(

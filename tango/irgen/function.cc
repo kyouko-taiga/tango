@@ -16,9 +16,8 @@ namespace tango {
         auto ib = gen.builder.GetInsertBlock();
         gen.builder.SetInsertPoint(bb);
 
-        // Store the alloca and (Tango) return type of the return value.
+        // Store the alloca the return value.
         gen.return_alloca.push(create_alloca(fun, fun_type->getReturnType(), "rv"));
-        gen.return_type.push(std::static_pointer_cast<FunctionType>(node.meta.type)->codomain);
 
         // Store the function parameters in its local symbol table.
         IRGenerator::LocalSymbolTable fun_locals;
@@ -36,7 +35,6 @@ namespace tango {
         gen.builder.CreateRet(gen.builder.CreateLoad(gen.return_alloca.top()));
 
         gen.return_alloca.pop();
-        gen.return_type.pop();
         gen.locals.pop();
 
         if (ib == nullptr) {
