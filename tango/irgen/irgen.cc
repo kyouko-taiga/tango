@@ -24,6 +24,11 @@ namespace tango {
         ast.accept(irgen);
         // irgen.finish_main_function();
 
+        // Create an optimization pass manager.
+        auto pass_manager = llvm::make_unique<llvm::legacy::PassManager>();
+        pass_manager->add(llvm::createPromoteMemoryToRegisterPass());
+        pass_manager->run(module);
+
         module.dump();
     }
 
