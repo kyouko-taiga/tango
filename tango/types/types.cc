@@ -1,3 +1,5 @@
+#include <llvm/IR/DerivedTypes.h>
+
 #include "types.hh"
 
 
@@ -69,6 +71,28 @@ namespace tango {
         if (this->types.find(t) == this->types.end()) {
             this->types.insert(t);
         }
+    }
+
+    // -----------------------------------------------------------------------
+
+    llvm::Type* FunctionType::get_llvm_type(llvm::LLVMContext& ctx) const {
+        std::vector<llvm::Type*> arg_types;
+        for (auto ty: this->domain) {
+            arg_types.push_back(ty->get_llvm_type(ctx));
+        }
+        return llvm::FunctionType::get(this->codomain->get_llvm_type(ctx), arg_types, false);
+    }
+
+    // -----------------------------------------------------------------------
+
+    llvm::Type* BuiltinType::get_llvm_type(llvm::LLVMContext& ctx) const {
+        if (this->name == "Int") {
+            return llvm::Type::getInt64Ty(ctx);
+        } else if (this->name == "Bool") {
+            return llvm::Type::getInt1Ty(ctx);
+        }
+
+        assert(false);
     }
 
 } // namespace tango

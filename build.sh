@@ -1,7 +1,7 @@
 #!/bin/bash
 
 PYTHON_ROOT=/opt/local/Library/Frameworks/Python.framework/Versions/3.6/
-LLVM_ROOT=/Volumes/Data/Development/llvm_build
+LLVM_ROOT=/Users/alvae/Documents/workspace/llvm_build
 SRC_ROOT=$(pwd)
 
 PYTHON_INCLUDE=${PYTHON_ROOT}/include/python3.6m
@@ -22,6 +22,7 @@ LLVM_CONFIG=${LLVM_ROOT}/bin/llvm-config
 # AST sources
 echo "Building the ast module ..."
 c++ -c -std=c++11 \
+    $(${LLVM_CONFIG} --cxxflags) \
     -I${PYTHON_INCLUDE} \
     -I${SRC_ROOT} \
     ${SRC_ROOT}/tango/ast/ast.cc -o ${SRC_ROOT}/tango/ast/ast.o
@@ -30,6 +31,7 @@ if [ $? -ne 0 ]; then exit 1; fi
 # Types sources
 echo "Building the types module ..."
 c++ -c -std=c++11 \
+    $(${LLVM_CONFIG} --cxxflags) \
     -I${PYTHON_INCLUDE} \
     -I${SRC_ROOT} \
     ${SRC_ROOT}/tango/types/types.cc -o ${SRC_ROOT}/tango/types/types.o
@@ -37,16 +39,20 @@ if [ $? -ne 0 ]; then exit 1; fi
 
 # LLVM IR generator
 echo "Building the LLVM IR generator ..."
-c++ -c \
-    $(${LLVM_CONFIG} --cxxflags) -fexceptions \
-    -I${PYTHON_INCLUDE} \
-    -I${SRC_ROOT} \
-    ${SRC_ROOT}/tango/irgen/irgen.cc -o ${SRC_ROOT}/tango/irgen/irgen.o
-if [ $? -ne 0 ]; then exit 1; fi
+for f in $(ls ${SRC_ROOT}/tango/irgen/*.cc); do
+    f=$(basename ${f})
+    c++ -c \
+        $(${LLVM_CONFIG} --cxxflags) \
+        -I${PYTHON_INCLUDE} \
+        -I${SRC_ROOT} \
+        ${SRC_ROOT}/tango/irgen/${f} -o ${SRC_ROOT}/tango/irgen/${f%.*}.o
+    if [ $? -ne 0 ]; then exit 1; fi
+done
 
 # Wrapper module
 echo "Building the wrapper module ..."
 c++ -c -std=c++11 \
+    $(${LLVM_CONFIG} --cxxflags) \
     -I${PYTHON_INCLUDE} \
     -I${SRC_ROOT} \
     ${SRC_ROOT}/tango/wrapper.cc -o ${SRC_ROOT}/tango/wrapper.o
@@ -62,6 +68,9 @@ c++ -shared \
     -lboost_python3 \
     ${SRC_ROOT}/tango/ast/ast.o \
     ${SRC_ROOT}/tango/types/types.o \
+    ${SRC_ROOT}/tango/irgen/function.o \
+    ${SRC_ROOT}/tango/irgen/propdecl.o \
+    ${SRC_ROOT}/tango/irgen/return.o \
     ${SRC_ROOT}/tango/irgen/irgen.o \
     ${SRC_ROOT}/tango/wrapper.o \
     -o ${SRC_ROOT}/tango/wrapper.so

@@ -6,6 +6,8 @@ from tango.scope_binder import ScopeBinder, SymbolsExtractor
 from tango.type_solver import infer_types
 from tango.state_checker import CaptureFinder, StateChecker
 
+from tango.wrapper import emit_ir
+
 from tango.ast import Node
 from tango.scope import Scope
 from tango.types import TypeBase
@@ -36,7 +38,7 @@ if __name__ == '__main__':
     transformer      = TangoLightTransformer()
     module_decl      = transformer.transform(parse_tree)
     module_decl.name = os.path.splitext(os.path.basename(filename))[0]
-    print(module_decl)
+    # print(module_decl)
 
     # Annotate each scope-opening node with the symols it declares.
     symbols_extractor = SymbolsExtractor()
@@ -49,7 +51,9 @@ if __name__ == '__main__':
 
     # Infer the types of all expressions.
     (module, environment) = infer_types(module_decl)
-    environment.print_debug()
+
+    # environment.print_debug()
+    emit_ir(module)
     exit()
 
     # Check the correctness of resource access.

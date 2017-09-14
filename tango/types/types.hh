@@ -11,6 +11,14 @@
 #include <boost/python.hpp>
 
 
+namespace llvm {
+
+    class LLVMContext;
+    class Type;
+
+} // namespace llvm
+
+
 namespace tango {
 
     enum TypeClass {
@@ -43,6 +51,10 @@ namespace tango {
         virtual bool is_primitive() const = 0;
         virtual bool is_generic()   const = 0;
         virtual bool isa(TypeClass) const = 0;
+
+        virtual llvm::Type* get_llvm_type(llvm::LLVMContext&) const {
+            return nullptr;
+        };
 
         // NOTE: In order to simplify equality check between type classes,
         // we maintain a unicity table in the TypeFactory, which lets us use
@@ -149,6 +161,8 @@ namespace tango {
         bool is_generic()      const { return false; }
         bool isa(TypeClass tc) const { return tc & tc_function; }
 
+        llvm::Type* get_llvm_type(llvm::LLVMContext&) const;
+
         TypeList                 domain;
         std::vector<std::string> labels;
         TypePtr                  codomain;
@@ -182,6 +196,8 @@ namespace tango {
 
         bool is_generic()      const { return false; }
         bool isa(TypeClass tc) const { return tc & (tc_nominal | tc_builtin); }
+
+        llvm::Type* get_llvm_type(llvm::LLVMContext&) const;
     };
 
     // -----------------------------------------------------------------------

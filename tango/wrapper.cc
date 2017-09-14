@@ -5,6 +5,7 @@
 #include <boost/python/suite/indexing/vector_indexing_suite.hpp>
 
 #include "tango/ast/ast.hh"
+#include "tango/irgen/irgen.hh"
 #include "tango/types/types.hh"
 
 
@@ -33,7 +34,7 @@ namespace tango {
     void set_type_union_content(TypeUnion& u, boost::python::list py_types) {
         using namespace boost::python;
 
-        int length = extract<int>(py_types.attr("__len__")());
+        std::size_t length = extract<std::size_t>(py_types.attr("__len__")());
         u.types.clear();
         for (std::size_t i = 0; i < length; ++i) {
             u.add(extract<TypePtr>(py_types[i]));
@@ -73,7 +74,7 @@ namespace tango {
         TypeList                 cc_domain;
         std::vector<std::string> cc_labels;
 
-        int domain_length = extract<int>(py_domain.attr("__len__")());
+        std::size_t domain_length = extract<std::size_t>(py_domain.attr("__len__")());
         for (std::size_t i = 0; i < domain_length; ++i) {
             cc_domain.push_back(extract<TypePtr>(py_domain[i]));
             cc_labels.push_back(extract<std::string>(py_labels[i]));
@@ -97,6 +98,8 @@ BOOST_PYTHON_MODULE(wrapper) {
 
     using namespace boost::python;
     using namespace tango;
+
+    def("emit_ir", emit_ir);
 
     class_<std::vector<std::string>>("StringList")
         .def(vector_indexing_suite<std::vector<std::string>, true>());
