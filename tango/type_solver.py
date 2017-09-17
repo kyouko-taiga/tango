@@ -867,12 +867,22 @@ class TypeSolver(NodeVisitor):
         # they match the return type of the binding operator.
         ts = rvalue_type.types if isinstance(rvalue_type, TypeUnion) else [rvalue_type]
 
-        # A copy binding requires the lvalue to have the same type as the
-        # rvalue, modulo the mutability modifier.
+        # A copy binding produces the rvalue's type, with the lvalue's type
+        # modifiers. That's what enables implicit dereferences of the lvalue
+        # and or rvalue.
         if op == Operator.o_cpy:
-            for t in [t for t in ts if not (t.modifiers & TM.tm_cst)]:
-                ts.append(type_factory.updating(
-                    t, modifiers=t.modifiers & ~TM.tm_cst | TM.tm_mut))
+            cst_stk_val = TM.tm_cst | TM.tm_stk | TM.tm_val
+            if lvalue_type is None:
+                modifiers = [cst_stk_val]
+            elif isinstance(lvalue_type, TypeUnion):
+                modifiers = [(t.modifiers or cst_stk_val) for t in lvalue_type]
+            else:
+                modifiers = [lvalue_type.modifiers or cst_stk_val]
+
+            candidates = []
+            for m in modifiers:
+                candidates += [type_factory.updating(t, modifiers=m) for t in ts]
+            ts = candidates
 
         # A move binding always produces `@val` types.
         elif op == Operator.o_mov:

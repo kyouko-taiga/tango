@@ -5,7 +5,7 @@ namespace tango {
 
     void IRGenerator::visit(PropDecl& node) {
         // Get the LLVM type of the property.
-        auto prop_type = node.meta.type->get_llvm_type(this->module.getContext());
+        auto prop_type = node.meta.type->llvm_type(this->module.getContext());
 
         // Check whether we should declare a local or global variable. If
         // we're not generating the body of a function, we're looking at a

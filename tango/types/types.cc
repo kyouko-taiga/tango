@@ -75,17 +75,29 @@ namespace tango {
 
     // -----------------------------------------------------------------------
 
-    llvm::Type* FunctionType::get_llvm_type(llvm::LLVMContext& ctx) const {
-        std::vector<llvm::Type*> arg_types;
-        for (auto ty: this->domain) {
-            arg_types.push_back(ty->get_llvm_type(ctx));
+    llvm::Type* TypeBase::llvm_type(llvm::LLVMContext& ctx) const {
+        auto raw_type = this->llvm_raw_type(ctx);
+
+        if (this->modifiers & tm_ref) {
+            return llvm::PointerType::getUnqual(raw_type);
         }
-        return llvm::FunctionType::get(this->codomain->get_llvm_type(ctx), arg_types, false);
+
+        return raw_type;
     }
 
     // -----------------------------------------------------------------------
 
-    llvm::Type* BuiltinType::get_llvm_type(llvm::LLVMContext& ctx) const {
+    llvm::Type* FunctionType::llvm_raw_type(llvm::LLVMContext& ctx) const {
+        std::vector<llvm::Type*> arg_types;
+        for (auto ty: this->domain) {
+            arg_types.push_back(ty->llvm_type(ctx));
+        }
+        return llvm::FunctionType::get(this->codomain->llvm_type(ctx), arg_types, false);
+    }
+
+    // -----------------------------------------------------------------------
+
+    llvm::Type* BuiltinType::llvm_raw_type(llvm::LLVMContext& ctx) const {
         if (this->name == "Int") {
             return llvm::Type::getInt64Ty(ctx);
         } else if (this->name == "Bool") {

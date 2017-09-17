@@ -52,9 +52,21 @@ namespace tango {
         virtual bool is_generic()   const = 0;
         virtual bool isa(TypeClass) const = 0;
 
-        virtual llvm::Type* get_llvm_type(llvm::LLVMContext&) const {
+        /// Returns the underlying LLVM type implementing this Tango type.
+        ///
+        /// This method relies on derived implementations of `llvm_raw_type`
+        /// to produce the LLVM type corresponding to this Tango type without
+        /// modifiers (i.e. stacked value type), and then decorates it to
+        /// implement the Tango type modifiers.
+        ///
+        /// Consider for instance the Tango type `@ref Int`. `llvm_raw_type`
+        /// will return `i64` and this method will create a pointer to that
+        /// that type to finally return `i64*`.
+        llvm::Type* llvm_type(llvm::LLVMContext&) const;
+
+        virtual llvm::Type* llvm_raw_type(llvm::LLVMContext&) const {
             return nullptr;
-        };
+        }
 
         // NOTE: In order to simplify equality check between type classes,
         // we maintain a unicity table in the TypeFactory, which lets us use
@@ -161,7 +173,7 @@ namespace tango {
         bool is_generic()      const { return false; }
         bool isa(TypeClass tc) const { return tc & tc_function; }
 
-        llvm::Type* get_llvm_type(llvm::LLVMContext&) const;
+        llvm::Type* llvm_raw_type(llvm::LLVMContext&) const;
 
         TypeList                 domain;
         std::vector<std::string> labels;
@@ -197,7 +209,7 @@ namespace tango {
         bool is_generic()      const { return false; }
         bool isa(TypeClass tc) const { return tc & (tc_nominal | tc_builtin); }
 
-        llvm::Type* get_llvm_type(llvm::LLVMContext&) const;
+        llvm::Type* llvm_raw_type(llvm::LLVMContext&) const;
     };
 
     // -----------------------------------------------------------------------
