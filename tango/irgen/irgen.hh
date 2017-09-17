@@ -26,7 +26,7 @@ namespace llvm {
 
 namespace tango {
 
-    void emit_ir(ModuleDecl&);
+    void emit_ir(ModuleDecl&, bool with_optimizations = true);
 
     struct IRGenerator: public ASTNodeVisitor {
 

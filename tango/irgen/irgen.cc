@@ -12,7 +12,7 @@
 
 namespace tango {
 
-    void emit_ir(ModuleDecl& ast) {
+    void emit_ir(ModuleDecl& ast, bool with_optimizations) {
         llvm::LLVMContext context;
         llvm::IRBuilder<> builder(context);
         llvm::Module      module(ast.name, context);
@@ -23,9 +23,11 @@ namespace tango {
         // irgen.finish_main_function();
 
         // Create an optimization pass manager.
-        auto pass_manager = llvm::make_unique<llvm::legacy::PassManager>();
-        pass_manager->add(llvm::createPromoteMemoryToRegisterPass());
-        pass_manager->run(module);
+        if (with_optimizations) {
+            auto pass_manager = llvm::make_unique<llvm::legacy::PassManager>();
+            pass_manager->add(llvm::createPromoteMemoryToRegisterPass());
+            pass_manager->run(module);
+        }
 
         module.dump();
     }

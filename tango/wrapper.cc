@@ -99,7 +99,7 @@ BOOST_PYTHON_MODULE(wrapper) {
     using namespace boost::python;
     using namespace tango;
 
-    def("emit_ir", emit_ir);
+    def("emit_ir", emit_ir, (arg("with_optimizations")=true));
 
     class_<std::vector<std::string>>("StringList")
         .def(vector_indexing_suite<std::vector<std::string>, true>());

@@ -53,7 +53,10 @@ if __name__ == '__main__':
     (module, environment) = infer_types(module_decl)
 
     # environment.print_debug()
-    emit_ir(module)
+    if (len(sys.argv) > 2) and (sys.argv[2] == '-O'):
+        emit_ir(module, with_optimizations=True)
+    else:
+        emit_ir(module, with_optimizations=False)
     exit()
 
     # Check the correctness of resource access.
