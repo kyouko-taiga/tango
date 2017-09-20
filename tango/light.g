@@ -2,7 +2,7 @@
 
 module          : (_NEWLINE | stmt)*
 
-block          : "{" _stmt_end* stmt* "}"
+block           : "{" _stmt_end* stmt* "}"
 
 fun_decl        : "function" NAME [generic_decls] "(" [param_decls] ")" ["->" type_ident] block
 
@@ -39,16 +39,16 @@ _stmt_end       : _NEWLINE | ";"
 
 ?expr           : range_expr
 ?range_expr     : or_test [".." or_test]
-?or_test        : and_test ("or" and_test)*
-?and_test       : prefix_expr ("and" prefix_expr)*
+?or_test        : and_test ("or" and_test)*         -> binary_expr
+?and_test       : prefix_expr ("and" prefix_expr)*  -> binary_expr
 ?prefix_expr    : _prefix_op suffix_expr | suffix_expr
 ?suffix_expr    : eq_expr _suffix_op | eq_expr
-?eq_expr        : cast_expr (_eq_op   cast_expr)*
-?cast_expr      : cmp_expr  (_cast_op cmp_expr)*
-?cmp_expr       : shf_expr  (_cmp_op  shf_expr)*
-?shf_expr       : add_expr  (_shf_op  add_expr)*
-?add_expr       : mul_expr  (_add_op  mul_expr)*
-?mul_expr       : atom_expr (_mul_op  atom_expr)*
+?eq_expr        : cast_expr (_eq_op   cast_expr)*   -> binary_expr
+?cast_expr      : cmp_expr  (_cast_op cmp_expr)*    -> binary_expr
+?cmp_expr       : shf_expr  (_cmp_op  shf_expr)*    -> binary_expr
+?shf_expr       : add_expr  (_shf_op  add_expr)*    -> binary_expr
+?add_expr       : mul_expr  (_add_op  mul_expr)*    -> binary_expr
+?mul_expr       : atom_expr (_mul_op  atom_expr)*   -> binary_expr
 
 !_assign_op     : "="   | "&-"  | "<-"  | "?-"
 !_prefix_op     : "+"   | "-"   | "not"
@@ -100,7 +100,7 @@ while_loop      : "while" [":" NAME] expr block
 closure         : "function" "(" [param_decls] ")" ["->" type_ident] block
 
 type_ident      : type_modifier* type_sign | type_modifier+
-type_modifier   : "@" (CST | MUT | STK | SHD | VAL | REF | OWN | WEAK)
+type_modifier   : "@" NAME
 ?type_sign      : ident
                 | fun_sign
                 | tuple_sign
@@ -118,20 +118,13 @@ ident           : NAME [specializations]
 specializations : "<" (type_sign | specialization ("," specialization)* [","]) ">"
 specialization  : NAME "=" type_sign
 
-?literal        : NUMBER                            -> int_literal
+?literal        : INTEGER                           -> int_literal
+                | DOUBLE                            -> double_literal
                 | STRING                            -> string_literal
 
-CST             : "cst"
-MUT             : "mut"
-STK             : "stk"
-SHD             : "shd"
-VAL             : "val"
-REF             : "ref"
-OWN             : "own"
-WEAK            : "weak"
-
 NAME            : /[a-zA-Z_]\w*/
-NUMBER          : /(0|([1-9][0-9]*))(\.[0-9]+)?([Ee][+-]?[0-9]+)?/
+INTEGER         : /[-+]?(0|[1-9]\d*)/
+DOUBLE          : /(?i)[+-]?(\d+\.\d*(e[-+]?\d+)?|\d+(e[-+]?\d+))/
 STRING          : /'[^']*'/
 
 COMMENT         : /\#[^\n]*/

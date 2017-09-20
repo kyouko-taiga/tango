@@ -390,7 +390,7 @@ class TypeSolver(NodeVisitor):
         # Once we've computed the function signature, we can create a type
         # for the function itself.
         function_type = type_factory.make_function(
-            modifiers = TM.tm_cst | TM.tm_stk | TM.tm_val,
+            modifiers = TM.cst | TM.stk | TM.val,
             domain    = parameter_types,
             labels    = parameter_names,
             codomain  = codomain)
@@ -543,7 +543,7 @@ class TypeSolver(NodeVisitor):
 
         # The condition of an if expressions should always be a boolean, so we
         # can unify the type of the node's condition with Bool.
-        expected_type = type_factory.updating(Bool, modifiers=TM.tm_cst | TM.tm_stk | TM.tm_val)
+        expected_type = type_factory.updating(Bool, modifiers=TM.cst | TM.stk | TM.val)
         self.environment.unify(condition_type, expected_type)
 
         # Then we can visit the node's body.
@@ -870,8 +870,8 @@ class TypeSolver(NodeVisitor):
         # A copy binding produces the rvalue's type, with the lvalue's type
         # modifiers. That's what enables implicit dereferences of the lvalue
         # and or rvalue.
-        if op == Operator.o_cpy:
-            cst_stk_val = TM.tm_cst | TM.tm_stk | TM.tm_val
+        if op == Operator.cpy:
+            cst_stk_val = TM.cst | TM.stk | TM.val
             if lvalue_type is None:
                 modifiers = [cst_stk_val]
             elif isinstance(lvalue_type, TypeUnion):
@@ -885,9 +885,9 @@ class TypeSolver(NodeVisitor):
             ts = candidates
 
         # A move binding always produces `@val` types.
-        elif op == Operator.o_mov:
+        elif op == Operator.mov:
             ts = [
-                type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_ref | TM.tm_val)
+                type_factory.updating(t, modifiers=t.modifiers & ~TM.ref | TM.val)
                 for t in ts
             ]
 
@@ -899,15 +899,15 @@ class TypeSolver(NodeVisitor):
         # but we'll let that error to be handled by the reference checker.
 
         # A reference binding always produces `@ref` types.
-        elif op == Operator.o_ref:
+        elif op == Operator.ref:
             ts = [
                 type_factory.updating(
-                    t, modifiers=t.modifiers & ~TM.tm_shd & ~TM.tm_val | TM.tm_stk | TM.tm_ref)
+                    t, modifiers=t.modifiers & ~TM.shd & ~TM.val | TM.stk | TM.ref)
 
                 # As we forbid reference of references, the statement `x &- y`
                 # is illegal if `y` is a reference. That's why we filter out
                 # rvalue's type candidates that are references.
-                for t in ts if not (t.modifiers & TM.tm_ref)
+                for t in ts if not (t.modifiers & TM.ref)
             ]
 
             if not ts:
@@ -916,8 +916,8 @@ class TypeSolver(NodeVisitor):
         # In order to handle mutable lvalues, we should add a mutable version
         # of every type of the rvalue so that unification may select a mutable
         # type if necessary.
-        for t in [t for t in ts if not (t.modifiers & TM.tm_mut)]:
-            ts.append(type_factory.updating(t, modifiers=t.modifiers & ~TM.tm_cst | TM.tm_mut))
+        for t in [t for t in ts if not (t.modifiers & TM.mut)]:
+            ts.append(type_factory.updating(t, modifiers=t.modifiers & ~TM.cst | TM.mut))
 
         # NOTE: The statements `x <- y` and `x &- y` are illegal if `x` is a
         # mutable and `y` is constant, but we'll let that error to be handled
@@ -938,9 +938,9 @@ class TypeSolver(NodeVisitor):
         # In those instances, we'll select the most restrictive variant by
         # default.
         else:
-            ts = [t for t in ts if t.modifiers & TM.tm_cst] or ts
-            ts = [t for t in ts if t.modifiers & TM.tm_stk] or ts
-            ts = [t for t in ts if t.modifiers & TM.tm_val] or ts
+            ts = [t for t in ts if t.modifiers & TM.cst] or ts
+            ts = [t for t in ts if t.modifiers & TM.stk] or ts
+            ts = [t for t in ts if t.modifiers & TM.val] or ts
             rvalue_type = TypeUnion(ts)
 
         return rvalue_type

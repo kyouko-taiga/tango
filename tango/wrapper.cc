@@ -107,13 +107,13 @@ BOOST_PYTHON_MODULE(wrapper) {
     // -----------------------------------------------------------------------
 
     enum_<TypeModifier>("TypeModifier")
-        .value("tm_cst",  tm_cst)
-        .value("tm_mut",  tm_mut)
-        .value("tm_stk",  tm_stk)
-        .value("tm_shd",  tm_shd)
-        .value("tm_val",  tm_val)
-        .value("tm_ref",  tm_ref)
-        .value("tm_own",  tm_own);
+        .value("cst",  tm_cst)
+        .value("mut",  tm_mut)
+        .value("stk",  tm_stk)
+        .value("shd",  tm_shd)
+        .value("val",  tm_val)
+        .value("ref",  tm_ref)
+        .value("own",  tm_own);
 
     class_<TypeBase, boost::noncopyable>("TypeBase", no_init)
         .add_property("is_primitive", make_function(&TypeBase::is_primitive))
@@ -182,13 +182,13 @@ BOOST_PYTHON_MODULE(wrapper) {
     // -----------------------------------------------------------------------
 
     enum_<Operator>("Operator")
-        .value("o_add", o_add)
-        .value("o_sub", o_sub)
-        .value("o_mul", o_mul)
-        .value("o_div", o_div)
-        .value("o_cpy", o_cpy)
-        .value("o_ref", o_ref)
-        .value("o_mov", o_mov);
+        .value("add", o_add)
+        .value("sub", o_sub)
+        .value("mul", o_mul)
+        .value("div", o_div)
+        .value("cpy", o_cpy)
+        .value("ref", o_ref)
+        .value("mov", o_mov);
 
     class_<ASTNodeMetadata>("NodeMetadata")
         .def_readwrite("_py_attrs",           &ASTNodeMetadata::_py_attrs)

@@ -12,12 +12,14 @@ type_factory   = TypeFactory()
 
 def modifiers_to_str(modifiers):
     result = []
-    if (modifiers & TM.tm_mut) and (modifiers & TM.tm_stk):
+    if (modifiers & TM.mut) and (modifiers & TM.stk):
         result.append('@mut')
-    if modifiers & TM.tm_ref:
+    if modifiers & TM.ref:
         result.append('@ref')
-    if modifiers & TM.tm_shd:
+    if modifiers & TM.shd:
         result.append('@shd')
+    if modifiers & TM.own:
+        result.append('@own')
     return ' '.join(result) if (result != 0) else '@?'
 
 
@@ -100,11 +102,11 @@ def TypeFactory_updating(self, ty, **kwargs):
     assert False, 'cannot update instances of {}'.format(ty.__class__.__name__)
 
 modifiers_combinations = [
-    TM.tm_cst | TM.tm_stk | TM.tm_val,
-    TM.tm_cst | TM.tm_stk | TM.tm_ref,
-    TM.tm_mut | TM.tm_stk | TM.tm_val,
-    TM.tm_mut | TM.tm_stk | TM.tm_ref,
-    TM.tm_mut | TM.tm_shd | TM.tm_val,
+    TM.cst | TM.stk | TM.val,
+    TM.cst | TM.stk | TM.ref,
+    TM.mut | TM.stk | TM.val,
+    TM.mut | TM.stk | TM.ref,
+    TM.mut | TM.shd | TM.val,
 ]
 
 def TypeFactory_make_variants(self, ty):

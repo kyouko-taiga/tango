@@ -1,261 +1,287 @@
 import os
 
 from lark import Lark, Transformer
+from lark.lexer import Token
+from lark.tree import Tree, Transformer_NoRecurse
 
 from . import ast
+from .errors import CompilerError, UnknownModifierError
 from .builtin import Int, Double, String
 from .types import TypeModifier as TM
 
 
 operator_table = {
-    '+'  : ast.Operator.o_add,
-    '-'  : ast.Operator.o_sub,
-    '*'  : ast.Operator.o_mul,
-    '/'  : ast.Operator.o_div,
-    '='  : ast.Operator.o_cpy,
-    '&-' : ast.Operator.o_ref,
-    '<-' : ast.Operator.o_mov,
-}
-
-type_modifier_table = {
-    'CST': TM.tm_cst,
-    'MUT': TM.tm_mut,
-    'STK': TM.tm_stk,
-    'SHD': TM.tm_shd,
-    'VAL': TM.tm_val,
-    'REF': TM.tm_ref,
-    'OWN': TM.tm_own,
+    '+'  : ast.Operator.add,
+    '-'  : ast.Operator.sub,
+    '*'  : ast.Operator.mul,
+    '/'  : ast.Operator.div,
+    '='  : ast.Operator.cpy,
+    '&-' : ast.Operator.ref,
+    '<-' : ast.Operator.mov,
 }
 
 
 grammar_filename = os.path.join(os.path.dirname(__file__), 'light.g')
 with open(grammar_filename) as f:
-    parser = Lark(f, lexer='standard', start='module')
+    parser = Lark(f, start='module', parser='lalr', propagate_positions=True)
 
 
-class TangoLightTransformer(Transformer):
+class ParseTreeTransformer(Transformer_NoRecurse):
 
-    def module(self, items):
+    def __init__(self, filename):
+        self.filename = filename
+
+    def module(self, tree):
         return ast.ModuleDecl(
-            body = ast.Block(statements=items[0]),
-            name = '')
-
-    def block(self, items):
-        return ast.Block(
-            statements = items[1],
-            meta       = {
-                'start': (items[0].line, items[0].column),
-                'end'  : (items[2].line, items[2].column)
+            body = ast.Block(
+                statements = tree.children,
+                meta       = {
+                    'start': (tree.line, tree.column),
+                    'end'  : (tree.end_line, tree.end_col)
+                }),
+            name = '',
+            meta = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
             })
 
-    def stmt_list(self, items):
-        return items
+    def block(self, tree):
+        return ast.Block(
+            statements = tree.children,
+            meta       = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col)
+            })
 
-    def prop_decl(self, items):
-        tail            = items[2:]
-        type_annotation = None
-        initial_value   = None
-        initial_binding = ast.Operator.o_cpy
-        end             = 0
+    def fun_decl(self, tree):
+        # TODO: Handle generic declarations.
 
-        # If the next item after the property's name is an AST node, it means
-        # the declation comes with a type annotation.
-        if tail and isinstance(tail[0], ast.Node):
-            type_annotation = tail[0]
-            end             = tail[0].__meta__['end']
-            tail.pop(0)
+        index = 1
+        if isinstance(tree.children[index], list):
+            parameters = tree.children[index]
+            index += 1
+        else:
+            parameters = None
 
-        # If the next (next) item after the property's name starts with an
-        # assignment operator, it means the declaration comes with an initial
-        # value expression.
-        if tail:
-            initial_binding = operator_table[tail[0].children[0].value]
-            initial_value   = tail[1]
-            end             = tail[1].__meta__['end']
+        if isinstance(tree.children[index], ast.TypeIdentifier):
+            codomain_annotation = tree.children[index]
+            index += 1
+        else:
+            codomain_annotation = None
+
+        return ast.FunDecl(
+            name                = tree.children[0].value,
+            parameters          = parameters,
+            codomain_annotation = codomain_annotation,
+            body                = tree.children[index],
+            meta                = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
+            })
+
+    def param_decls(self, tree):
+        return tree.children
+
+    def param_decl(self, tree):
+        return ast.ParamDecl(
+            name            = tree.children[0].value,
+            type_annotation = tree.children[1],
+            meta            = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
+            })
+
+        # TODO: Handle default values.
+
+    def prop_decl(self, tree):
+        index = 1
+        if (index < len(tree.children)) and isinstance(tree.children[index], ast.TypeIdentifier):
+            type_annotation = tree.children[index]
+            index += 1
+        else:
+            type_annotation = None
+
+        if (index < len(tree.children)) and isinstance(tree.children[index], Token):
+            initial_binding = operator_table[tree.children[index].value]
+            initial_value   = tree.children[index + 1]
+            index += 1
+        else:
+            initial_binding = ast.Operator.cpy
+            initial_value   = None
+            index += 2
+
+        # TODO: Handle descriptors.
 
         return ast.PropDecl(
-            name            = items[1].value,
+            name            = tree.children[0].value,
             type_annotation = type_annotation,
             initial_binding = initial_binding,
             initial_value   = initial_value,
             meta            = {
-                'start': (items[0].line, items[0].column),
-                'end'  : end
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
             })
 
-    def fun_decl(self, items):
-        parameters          = items[2]  if isinstance(items[2], list) else None
-        codomain_annotation = items[-2] if isinstance(items[-2], ast.TypeIdentifier) else None
-
-        return ast.FunDecl(
-            name                = items[1].value,
-            parameters          = parameters,
-            codomain_annotation = codomain_annotation,
-            body                = items[-1],
-            meta                = {
-                'start': (items[0].line, items[0].column),
-                'end'  : items[-1].__meta__['end']
-            })
-
-    def param_decls(self, items):
-        return items
-
-    def param_decl(self, items):
-        return ast.ParamDecl(
-            name            = items[0].value,
-            type_annotation = items[1],
-            meta            = {
-                'start': (items[0].line, items[0].column),
-                'end'  : items[1].__meta__['end']
-            })
-
-    def assign_stmt(self, items):
+    def assign_stmt(self, tree):
         return ast.Assignment(
-            lvalue   = items[0],
-            operator = operator_table[items[1].children[0].value],
-            rvalue   = items[2],
+            lvalue   = tree.children[0],
+            operator = operator_table[tree.children[1].value],
+            rvalue   = tree.children[2],
             meta     = {
-                'start': items[0].__meta__['start'],
-                'end'  : items[2].__meta__['end']
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
             })
 
-    def if_stmt(self, items):
-        if len(items) > 3:
-            else_block = items[4]
-            end        = items[4].__meta__['end']
-        else:
-            else_block = None
-            end        = items[2].__meta__['end']
-
-        return ast.If(
-            condition  = items[1],
-            then_block = items[2],
-            else_block = else_block,
-            meta       = {
-                'start': (items[0].line, items[0].column),
-                'end'  : end,
-            })
-
-    def return_stmt(self, items):
+    def return_stmt(self, tree):
         return ast.Return(
-            value = items[1],
+            value = tree.children[0],
             meta  = {
-                'start': (items[0].line, items[0].column),
-                'end'  : items[1].__meta__['end']
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
             })
 
-    def binary_expr(self, items):
-        if len(items) == 1:
-            return items[0]
-        return ast.BinaryExpr(
-            left     = items[0],
-            operator = operator_table[items[1].children[0].value],
-            right    = self.binary_expr(items[2:]),
-            meta     = {
-                'start': items[0].__meta__['start'],
-                'end'  : items[2].__meta__['end']
-            })
+        # TODO: Handle return labels.
 
-    def prefix_expr(self, items):
-        if len(items) == 1:
-            return items[0]
+    def binary_expr(self, tree):
+        left = tree.children.pop(0)
+        while tree.children:
+            op    = operator_table[tree.children.pop(0).value]
+            right = tree.children.pop(0)
+
+            left = ast.BinaryExpr(
+                left     = left,
+                operator = op,
+                right    = right,
+                meta  = {
+                    'start': (tree.line, tree.column),
+                    'end'  : right.__meta__['end'],
+                })
+
+        return left
+
+
+    def prefix_expr(self, tree):
         return ast.PrefixExpression(
-            operator = items[0].children[0].value,
-            operand  = items[1],
+            operator = operator_table[tree.children[0].value],
+            operand  = tree.children[1],
             meta     = {
-                'start': (items[0].children[0].line, items[0].children[0].column),
-                'end'  : items[1].__meta__['end']
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
             })
 
-    def call_expr(self, items):
+    def call_expr(self, tree):
         return ast.Call(
-            callee    = items[0],
-            arguments = items[2] if isinstance(items[2], list) else None,
+            callee    = tree.children[0],
+            arguments = tree.children[1] if len(tree.children) > 1 else None,
             meta      = {
-                'start': items[0].__meta__['start'],
-                'end'  : (items[-1].line, items[-1].column),
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
             })
 
-    def call_args(self, items):
-        return items
+    def arguments(self, tree):
+        return tree.children
 
-    def call_arg(self, items):
+    def argument(self, tree):
         return ast.CallArg(
-            label    = items[0].value,
-            operator = operator_table[items[1].children[0].value],
-            value    = items[2],
+            label    = tree.children[0].value,
+            operator = operator_table[tree.children[1].value],
+            value    = tree.children[2],
             meta     = {
-                'start': (items[0].line, items[0].column),
-                'end'  : items[2].__meta__['end']
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
             })
 
-    def type_ident(self, items):
-        # Check if there's a type signature.
-        if isinstance(items[-1], ast.Node):
-            signature = items[-1]
+    def if_expr(self, tree):
+        return ast.If(
+            condition  = tree.children[0],
+            then_block = tree.children[1],
+            else_block = tree.children[2] if len(tree.children) > 2 else None,
+            meta       = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
+            })
 
-            modifiers = 0
-            for it in items[:-1]:
-                modifiers |= it[0]
-
-            meta = {
-                'start': items[0][1]['start'] if len(items) > 1 else signature.__meta__['start'],
-                'end'  : signature.__meta__['end'],
-            }
-
-        # Otherwise we only combine modifiers.
-        else:
-            signature = None
-            modifiers = 0
-            for it in items:
-                modifiers |= it[0]
-
-            meta = {
-                'start': items[ 0][1]['start'],
-                'end'  : items[-1][1]['end'],
-            }
+    def type_ident(self, tree):
+        signature = tree.children[-1] if not isinstance(tree.children[-1], TM) else None
+        modifiers = 0
+        for tm in tree.children:
+            if not isinstance(tm, TM):
+                break
+            modifiers |= tm
 
         # Check type modifiers combinations.
-        if (modifiers & TM.tm_cst) and (modifiers & TM.tm_mut):
-            raise SyntaxError("'@cst' modifier cannot be used together with '@mut'")
-        if (modifiers & TM.tm_cst) and (modifiers & TM.tm_shd):
-            raise SyntaxError("'@cst' modifier cannot be used together with '@shd'")
-        if (modifiers & TM.tm_stk) and (modifiers & TM.tm_shd):
-            raise SyntaxError("'@stk' modifier cannot be used together with '@shd'")
-        if (modifiers & TM.tm_shd) and (modifiers & TM.tm_ref):
-            raise SyntaxError("'@shd' modifier cannot be used together with '@ref'")
-        if (modifiers & TM.tm_val) and (modifiers & TM.tm_ref):
-            raise SyntaxError("'@val' modifier cannot be used together with '@ref'")
+        if (modifiers & TM.cst) and (modifiers & TM.mut):
+            raise CompilerError("error - '@cst' modifier cannot be used together with '@mut'")
+        if (modifiers & TM.cst) and (modifiers & TM.shd):
+            raise CompilerError("error - '@cst' modifier cannot be used together with '@shd'")
+        if (modifiers & TM.stk) and (modifiers & TM.shd):
+            raise CompilerError("error - '@stk' modifier cannot be used together with '@shd'")
+        if (modifiers & TM.shd) and (modifiers & TM.ref):
+            raise CompilerError("error - '@shd' modifier cannot be used together with '@ref'")
+        if (modifiers & TM.val) and (modifiers & TM.ref):
+            raise CompilerError("error - '@val' modifier cannot be used together with '@ref'")
 
         # Set implicit type modifiers.
-        if not (modifiers & TM.tm_mut):
-            modifiers |= TM.tm_cst if not (modifiers & TM.tm_shd) else TM.tm_mut
-        if not (modifiers & TM.tm_shd):
-            modifiers |= TM.tm_stk
-        if not (modifiers & TM.tm_ref):
-            modifiers |= TM.tm_val
+        if not (modifiers & TM.mut):
+            modifiers |= TM.cst if not (modifiers & TM.shd) else TM.mut
+        if not (modifiers & TM.shd):
+            modifiers |= TM.stk
+        if not (modifiers & TM.ref):
+            modifiers |= TM.val
 
         return ast.TypeIdentifier(
             modifiers = modifiers,
             signature = signature,
-            meta      = meta)
-
-    def type_modifier(self, items):
-        modifiers = 0
-        for token in items:
-            modifiers |= type_modifier_table[token.type]
-        return (modifiers, {
-                'start': (items[0].line,  items[0].column),
-                'end':   (items[-1].line, items[-1].column + len(items[-1].value))
-            })
-
-    def ident(self, items):
-        return ast.Identifier(
-            name = items[0].value,
             meta = {
-                'start': (items[0].line, items[0].column),
-                'end'  : (items[0].line, items[0].column + len(items[0].value))
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
             })
+
+    def type_modifier(self, tree):
+        try:
+            return getattr(TM, tree.children[0].value)
+        except AttributeError:
+            raise UnknownModifierError(tree.children[0].value, filename=self.filename)
+
+    def ident(self, tree):
+        return ast.Identifier(
+            name = tree.children[0].value,
+            meta = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
+            })
+
+        # TODO: Handle generic specializtions.
+
+    def int_literal(self, tree):
+        return ast.IntLiteral(
+            value = int(tree.children[0].value),
+            meta  = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
+                'type' : Int,
+            })
+
+    def double_literal(self, tree):
+        return ast.DoubleLiteral(
+            value = float(tree.children[0].value),
+            meta  = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
+                'type' : Double,
+            })
+
+    def string_literal(self, tree):
+        return ast.StringLiteral(
+            value = tree.children[0].value[1:-1],
+            meta  = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
+                'type' : String,
+            })
+
+
+class TangoLightTransformer(Transformer):
 
     def fun_sign(self, items):
         parameters = items[1] if isinstance(items[1], list) else None
@@ -277,30 +303,4 @@ class TangoLightTransformer(Transformer):
             meta = {
                 'start': (items[0].line, items[0].column),
                 'end'  : items[1].__meta__['end']
-            })
-
-    def literal(self, items):
-        if items[0].type == 'NUMBER':
-            value = items[0].value
-            if ('.' in value) or ('e' in value) or ('E' in value):
-                value      = float(value)
-                node_class = ast.DoubleLiteral
-                node_type  = Double
-            else:
-                value      = int(value)
-                node_class = ast.IntLiteral
-                node_type  = Int
-        elif items[0].type == 'STRING':
-            value      = (items[0].value[1:-1])
-            node_class = ast.StringLiteral
-            node_type  = String
-        else:
-            assert False, 'unknown literal type: {}'.format(items[0].type)
-
-        return node_class(
-            value = value,
-            meta  = {
-                'start': (items[0].line, items[0].column),
-                'end'  : (items[0].line, items[0].column + len(items[0].value)),
-                'type' : node_type,
             })

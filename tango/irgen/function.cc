@@ -51,7 +51,7 @@ namespace tango {
         // Global function don't need to be lifted, as they only capture
         // other global symbols.
         llvm::FunctionType* fun_type = static_cast<llvm::FunctionType*>(
-            node.meta.type->get_llvm_type(gen.module.getContext()));
+            node.meta.type->llvm_type(gen.module.getContext()));
 
         // Create the LLVM function prototype.
         auto fun = llvm::Function::Create(

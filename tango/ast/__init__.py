@@ -57,13 +57,13 @@ class NodeTransformer(NodeVisitor):
 # the C++ classes, so as to have a nicer API to work with.
 
 operator_str = {
-    Operator.o_add: '+',
-    Operator.o_sub: '-',
-    Operator.o_mul: '*',
-    Operator.o_div: '/',
-    Operator.o_cpy: '=',
-    Operator.o_ref: '&-',
-    Operator.o_mov: '<-',
+    Operator.add: '+',
+    Operator.sub: '-',
+    Operator.mul: '*',
+    Operator.div: '/',
+    Operator.cpy: '=',
+    Operator.ref: '&-',
+    Operator.mov: '<-',
 }
 
 def Node_to_dict(self):
@@ -91,13 +91,13 @@ Node.to_dict = Node_to_dict
 
 
 def TypeModifier_str(self):
-    return ('@cst' if self == TypeModifier.tm_cst else
-            '@mut' if self == TypeModifier.tm_mut else
-            '@stk' if self == TypeModifier.tm_stk else
-            '@shd' if self == TypeModifier.tm_shd else
-            '@val' if self == TypeModifier.tm_val else
-            '@ref' if self == TypeModifier.tm_ref else
-            '@own' if self == TypeModifier.tm_own else '')
+    return ('@cst' if self == TypeModifier.cst else
+            '@mut' if self == TypeModifier.mut else
+            '@stk' if self == TypeModifier.stk else
+            '@shd' if self == TypeModifier.shd else
+            '@val' if self == TypeModifier.val else
+            '@ref' if self == TypeModifier.ref else
+            '@own' if self == TypeModifier.own else '')
 
 TypeModifier.__str__ = TypeModifier_str
 
@@ -239,7 +239,7 @@ Return.__str__ = Return_str
 
 
 def BinaryExpr_str(self):
-    return '({} {} {})'.format(self.left, self.operator, self.right)
+    return '({} {} {})'.format(self.left, operator_str[self.operator], self.right)
 
 monkeypatch_init(BinaryExpr)
 BinaryExpr._fields = ('left', 'operator', 'right',)

@@ -1,7 +1,10 @@
 import os
+import linecache
 import sys
 
-from tango.light import parser, TangoLightTransformer
+from lark.common import UnexpectedToken
+
+from tango.light import parser, ParseTreeTransformer
 from tango.scope_binder import ScopeBinder, SymbolsExtractor
 from tango.type_solver import infer_types
 from tango.state_checker import CaptureFinder, StateChecker
@@ -34,11 +37,21 @@ if __name__ == '__main__':
         source = f.read()
 
     # Parse the module declaration and produce an AST.
-    parse_tree       = parser.parse(source)
-    transformer      = TangoLightTransformer()
+    try:
+        parse_tree = parser.parse(source)
+    except UnexpectedToken as e:
+        print(
+            '{}:{}:{}: syntax error - unexpected token'.format(filename, e.line, e.column),
+            file=sys.stderr)
+        print(linecache.getline(filename, e.line), file=sys.stderr, end='')
+        print(' ' * (e.column - 1) + '^', file=sys.stderr)
+        exit(1)
+
+    transformer      = ParseTreeTransformer(filename)
     module_decl      = transformer.transform(parse_tree)
     module_decl.name = os.path.splitext(os.path.basename(filename))[0]
-    # print(module_decl)
+    print(module_decl)
+    exit()
 
     # Annotate each scope-opening node with the symols it declares.
     symbols_extractor = SymbolsExtractor()
