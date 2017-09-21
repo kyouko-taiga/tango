@@ -576,7 +576,7 @@ class TypeSolver(NodeVisitor):
 
         # If the node is a simple literal, its type should have been inferred
         # by the parser already.
-        if isinstance(node, (IntLiteral, StringLiteral)):
+        if isinstance(node, (IntLiteral, DoubleLiteral, StringLiteral, BoolLiteral)):
             return node.__meta__['type']
 
         if isinstance(node, Identifier):
@@ -730,7 +730,7 @@ class TypeSolver(NodeVisitor):
             # Then, we have to infer the type of each argument.
             argument_types = []
             for argument in node.arguments:
-                # FIXME read the type of the whole CallArg (for binding policy)
+                # FIXME read the type of the whole argument (for binding policy)
                 argument_type = self.read_type_instance(argument.value)
                 argument_types.append(argument_type)
 

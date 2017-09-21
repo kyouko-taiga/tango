@@ -121,6 +121,8 @@ specialization  : NAME "=" type_sign
 ?literal        : INTEGER                           -> int_literal
                 | DOUBLE                            -> double_literal
                 | STRING                            -> string_literal
+                | "true"                            -> true_literal
+                | "false"                           -> false_literal
 
 NAME            : /[a-zA-Z_]\w*/
 INTEGER         : /[-+]?(0|[1-9]\d*)/

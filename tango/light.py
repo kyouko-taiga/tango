@@ -6,7 +6,7 @@ from lark.tree import Tree, Transformer_NoRecurse
 
 from . import ast
 from .errors import CompilerError, UnknownModifierError
-from .builtin import Int, Double, String
+from .builtin import Int, Double, String, Bool
 from .types import TypeModifier as TM
 
 
@@ -182,7 +182,7 @@ class ParseTreeTransformer(Transformer_NoRecurse):
         return tree.children
 
     def argument(self, tree):
-        return ast.CallArg(
+        return ast.Argument(
             label    = tree.children[0].value,
             operator = operator_table[tree.children[1].value],
             value    = tree.children[2],
@@ -278,6 +278,24 @@ class ParseTreeTransformer(Transformer_NoRecurse):
                 'start': (tree.line, tree.column),
                 'end'  : (tree.end_line, tree.end_col),
                 'type' : String,
+            })
+
+    def true_literal(self, tree):
+        return ast.BoolLiteral(
+            value = True,
+            meta  = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
+                'type' : Bool,
+            })
+
+    def false_literal(self, tree):
+        return ast.BoolLiteral(
+            value = False,
+            meta  = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
+                'type' : Bool,
             })
 
 

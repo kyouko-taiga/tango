@@ -4,9 +4,9 @@ from tango.wrapper import (
     ModuleDecl, Block,
     PropDecl, ParamDecl, FunDecl,
     Assignment, If, Return,
-    CallArg, Call, BinaryExpr,
+    Argument, Call, BinaryExpr,
     Identifier, TypeIdentifier, FunSignParam, FunSign,
-    IntLiteral, StringLiteral)
+    IntLiteral, DoubleLiteral, StringLiteral, BoolLiteral)
 
 from tango.types import modifiers_to_str
 
@@ -246,12 +246,12 @@ BinaryExpr._fields = ('left', 'operator', 'right',)
 BinaryExpr.__str__ = BinaryExpr_str
 
 
-def CallArg_str(self):
+def Argument_str(self):
     return '{} {} {}'.format(self.label, operator_str[self.operator], self.value)
 
-monkeypatch_init(CallArg)
-CallArg._fields = ('label', 'operator', 'value',)
-CallArg.__str__ = CallArg_str
+monkeypatch_init(Argument)
+Argument._fields = ('label', 'operator', 'value',)
+Argument.__str__ = Argument_str
 
 
 Call_initializer = Call.__init__
@@ -310,6 +310,16 @@ IntLiteral._fields = ('value',)
 IntLiteral.__str__ = lambda self: str(self.value)
 
 
+monkeypatch_init(DoubleLiteral)
+DoubleLiteral._fields = ('value',)
+DoubleLiteral.__str__ = lambda self: str(self.value)
+
+
 monkeypatch_init(StringLiteral)
 StringLiteral._fields = ('value',)
 StringLiteral.__str__ = lambda self: "'" + str(self.value) + "'"
+
+
+monkeypatch_init(BoolLiteral)
+BoolLiteral._fields = ('value',)
+BoolLiteral.__str__ = lambda self: str(self.value)

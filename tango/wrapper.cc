@@ -274,14 +274,14 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def_readwrite("operator",            &BinaryExpr::op)
         .def_readwrite("right",               &BinaryExpr::right);
 
-    class_<CallArg, bases<ASTNode>>(
-        "CallArg", init<std::string, Operator, ASTNodePtr>((
+    class_<Argument, bases<ASTNode>>(
+        "Argument", init<std::string, Operator, ASTNodePtr>((
             arg("label"),
             arg("operator"),
             arg("value"))))
-        .def_readwrite("label",               &CallArg::label)
-        .def_readwrite("operator",            &CallArg::op)
-        .def_readwrite("value",               &CallArg::value);
+        .def_readwrite("label",               &Argument::label)
+        .def_readwrite("operator",            &Argument::op)
+        .def_readwrite("value",               &Argument::value);
 
     class_<Call, bases<ASTNode>>(
         "Call", init<ASTNodePtr, ASTNodeList>((
@@ -319,8 +319,16 @@ BOOST_PYTHON_MODULE(wrapper) {
         "IntLiteral", init<long>((arg("value"))))
         .def_readwrite("value",               &IntLiteral::value);
 
+    class_<DoubleLiteral, bases<ASTNode>>(
+        "DoubleLiteral", init<double>((arg("value"))))
+        .def_readwrite("value",               &DoubleLiteral::value);
+
     class_<StringLiteral, bases<ASTNode>>(
         "StringLiteral", init<std::string>((arg("value"))))
         .def_readwrite("value",               &StringLiteral::value);
+
+    class_<BoolLiteral, bases<ASTNode>>(
+        "BoolLiteral", init<bool>((arg("value"))))
+        .def_readwrite("value",               &BoolLiteral::value);
 
 }

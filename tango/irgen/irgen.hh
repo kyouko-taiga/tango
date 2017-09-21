@@ -71,14 +71,16 @@ namespace tango {
         void visit(If&             node) {}
         void visit(Return&);
         void visit(BinaryExpr&     node) {}
-        void visit(CallArg&        node) {}
+        void visit(Argument&       node) {}
         void visit(Call&           node) {}
         void visit(Identifier&);
         void visit(TypeIdentifier& node) {}
         void visit(FunSignParam&   node) {}
         void visit(FunSign&        node) {}
         void visit(IntLiteral&);
+        void visit(DoubleLiteral&  node) {}
         void visit(StringLiteral&  node) {}
+        void visit(BoolLiteral&    node) {}
 
     };
 

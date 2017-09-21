@@ -82,6 +82,3 @@ builtin_module.symbols['Int']      = builtin_symbol(Int)
 builtin_module.symbols['Double']   = builtin_symbol(Double)
 builtin_module.symbols['String']   = builtin_symbol(String)
 builtin_module.symbols['Bool']     = builtin_symbol(Bool)
-
-builtin_module.symbols['true']     = Symbol(name='true',     type=Bool)
-builtin_module.symbols['false']    = Symbol(name='false',    type=Bool)

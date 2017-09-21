@@ -197,8 +197,8 @@ namespace tango {
     // -----------------------------------------------------------------------
 
     /// AST node for call arguments.
-    struct CallArg: public ASTNode {
-        CallArg(
+    struct Argument: public ASTNode {
+        Argument(
             const std::string& label,
             Operator           op,
             ASTNodePtr         value)
@@ -291,6 +291,18 @@ namespace tango {
 
     // -----------------------------------------------------------------------
 
+    /// AST node for double literals.
+    struct DoubleLiteral: public ASTNode {
+        DoubleLiteral(double value)
+            : value(value) {}
+
+        void accept(ASTNodeVisitor& visitor);
+
+        double value;
+    };
+
+    // -----------------------------------------------------------------------
+
     /// AST node for string literals.
     struct StringLiteral: public ASTNode {
         StringLiteral(const std::string& value)
@@ -299,6 +311,18 @@ namespace tango {
         void accept(ASTNodeVisitor& visitor);
 
         std::string value;
+    };
+
+    // -----------------------------------------------------------------------
+
+    /// AST node for bool literals.
+    struct BoolLiteral: public ASTNode {
+        BoolLiteral(bool value)
+            : value(value) {}
+
+        void accept(ASTNodeVisitor& visitor);
+
+        bool value;
     };
 
     // -----------------------------------------------------------------------
@@ -315,14 +339,16 @@ namespace tango {
         virtual void visit(If&             node) = 0;
         virtual void visit(Return&         node) = 0;
         virtual void visit(BinaryExpr&     node) = 0;
-        virtual void visit(CallArg&        node) = 0;
+        virtual void visit(Argument&       node) = 0;
         virtual void visit(Call&           node) = 0;
         virtual void visit(Identifier&     node) = 0;
         virtual void visit(TypeIdentifier& node) = 0;
         virtual void visit(FunSignParam&   node) = 0;
         virtual void visit(FunSign&        node) = 0;
         virtual void visit(IntLiteral&     node) = 0;
+        virtual void visit(DoubleLiteral&  node) = 0;
         virtual void visit(StringLiteral&  node) = 0;
+        virtual void visit(BoolLiteral&    node) = 0;
     };
 
 } // namespace tango

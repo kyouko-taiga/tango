@@ -41,7 +41,7 @@ namespace tango {
         visitor.visit(*this);
     }
 
-    void CallArg::accept(ASTNodeVisitor& visitor) {
+    void Argument::accept(ASTNodeVisitor& visitor) {
         visitor.visit(*this);
     }
 
@@ -69,7 +69,15 @@ namespace tango {
         visitor.visit(*this);
     }
 
+    void DoubleLiteral::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
     void StringLiteral::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
+    void BoolLiteral::accept(ASTNodeVisitor& visitor) {
         visitor.visit(*this);
     }
 
