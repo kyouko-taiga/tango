@@ -68,7 +68,7 @@ namespace tango {
         void visit(ParamDecl&      node) {}
         void visit(FunDecl&);
         void visit(Assignment&);
-        void visit(If&             node) {}
+        void visit(If&);
         void visit(Return&);
         void visit(BinaryExpr&     node) {}
         void visit(Argument&       node) {}
@@ -78,9 +78,9 @@ namespace tango {
         void visit(FunSignParam&   node) {}
         void visit(FunSign&        node) {}
         void visit(IntLiteral&);
-        void visit(DoubleLiteral&  node) {}
+        void visit(DoubleLiteral&);
         void visit(StringLiteral&  node) {}
-        void visit(BoolLiteral&    node) {}
+        void visit(BoolLiteral&);
 
     };
 

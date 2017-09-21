@@ -69,7 +69,23 @@ namespace tango {
 
     void IRGenerator::visit(IntLiteral& node) {
         this->stack.push(
-            llvm::ConstantInt::get(this->module.getContext(), llvm::APInt(64, node.value, true)));
+            llvm::ConstantInt::get(
+                this->module.getContext(),
+                // 64 bits int, signed
+                llvm::APInt(64, node.value, true)));
+    }
+
+    void IRGenerator::visit(DoubleLiteral& node) {
+        this->stack.push(
+            llvm::ConstantFP::get(this->module.getContext(), llvm::APFloat(node.value)));
+    }
+
+    void IRGenerator::visit(BoolLiteral& node) {
+        this->stack.push(
+            llvm::ConstantInt::get(
+                this->module.getContext(),
+                // 1 bit int, unsigned
+                llvm::APInt(1, node.value, false)));
     }
 
     llvm::AllocaInst* create_alloca(

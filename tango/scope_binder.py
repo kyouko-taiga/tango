@@ -194,6 +194,7 @@ class ScopeBinder(NodeVisitor):
         # of the then block so that symbols of the latter can't collide with
         # that of the former.
         if node.else_block:
+            node.else_block.__meta__['scope'] = self.current_scope
             self.visit(node.else_block)
 
 

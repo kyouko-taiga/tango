@@ -50,8 +50,6 @@ if __name__ == '__main__':
     transformer      = ParseTreeTransformer(filename)
     module_decl      = transformer.transform(parse_tree)
     module_decl.name = os.path.splitext(os.path.basename(filename))[0]
-    print(module_decl)
-    exit()
 
     # Annotate each scope-opening node with the symols it declares.
     symbols_extractor = SymbolsExtractor()
