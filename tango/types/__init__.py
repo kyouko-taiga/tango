@@ -1,6 +1,6 @@
 from tango.wrapper import (
     TypeModifier, TypeFactory, TypeBase, TypeName, TypeUnion, TypeVariable,
-    FunctionType, NominalType, BuiltinType)
+    PlaceholderType, FunctionType, NominalType, BuiltinType)
 
 
 TM             = TypeModifier
@@ -26,15 +26,6 @@ def modifiers_to_str(modifiers):
 TypeBase.__hash__ = lambda self: 0
 
 
-def TypeVariable_str(self):
-    modifiers = modifiers_to_str(self.modifiers)
-    if modifiers:
-        return modifiers + ' ' + hex(hash(self.id))
-    return hex(hash(self.id))
-
-TypeVariable.__str__ = TypeVariable_str
-
-
 TypeUnion_initializer = TypeUnion.__init__
 def TypeUnion_init(self, types=None):
     TypeUnion_initializer(self)
@@ -54,6 +45,24 @@ TypeUnion.__init__ = TypeUnion_init
 TypeUnion.__iter__ = TypeUnion_iter
 TypeUnion.__len__  = TypeUnion_len
 TypeUnion.__str__  = TypeUnion_str
+
+
+def TypeVariable_str(self):
+    modifiers = modifiers_to_str(self.modifiers)
+    if modifiers:
+        return modifiers + ' ' + hex(hash(self.id))
+    return hex(hash(self.id))
+
+TypeVariable.__str__ = TypeVariable_str
+
+
+def PlaceholderType_str(self):
+    modifiers = modifiers_to_str(self.modifiers)
+    if modifiers:
+        return modifiers + ' ' + self.id
+    return self.id
+
+PlaceholderType.__str__ = PlaceholderType_str
 
 
 def FunctionType_str(self):
@@ -84,6 +93,11 @@ NominalType.__repr__ = NominalType_str
 def TypeFactory_updating(self, ty, **kwargs):
     if isinstance(ty, TypeVariable):
         return self.make_variable(modifiers=kwargs.get('modifiers', ty.modifiers))
+
+    if isinstance(ty, PlaceholderType):
+        return self.make_placeholder(
+            modifiers = kwargs.get('modifiers', ty.modifiers),
+            id        = ty.id)
 
     if isinstance(ty, BuiltinType):
         return self.make_builtin(**{

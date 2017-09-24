@@ -7,7 +7,7 @@ from .scope import Scope
 from .types import (
     TypeModifier as TM,
     TypeBase, TypeName, TypeUnion, TypeVariable,
-    BuiltinType, NominalType, FunctionType,
+    PlaceholderType, BuiltinType, NominalType, FunctionType,
     type_factory)
 
 
@@ -146,6 +146,11 @@ class Substitution(object):
                 self.unify(ita, itb, memo)
             self.unify(a.codomain, b.codomain, memo)
 
+        elif isinstance(a, PlaceholderType) and isinstance(b, PlaceholderType):
+            print(a.modifiers, a.id)
+            print(b.modifiers, b.id)
+            exit()
+
         elif isinstance(a, TypeBase) and isinstance(b, TypeBase):
             if a != b:
                 raise InferenceError("type '{}' does not match '{}'".format(a, b))
@@ -180,12 +185,13 @@ class Substitution(object):
                 and not (set(a.members.keys()) ^ set(b.members.keys()))
                 and all(self.matches(a.members[it], b.members[it]) for it in a.members.keys()))
 
-        # Note that unification of function types is stricter than what `matches`
-        # checks, requiring `t` and `u` to be equal under `__eq__`. Relaxing the
-        # constraint here is what lets us matching a generic signature to its
-        # specialization when visiting Call nodes. However, we normally only unify
-        # generic signatures with themselves in FunctionDecl nodes, so having a
-        # more relaxed match function shouldn't cause any issue.
+        # Note that unification of function types is stricter than what
+        # `matches` checks because it requires `a` and `b` to be equal under
+        # `__eq__`. Relaxing the constraint here is what lets us matching a
+        # generic signature to its specialization when visiting Call nodes.
+        # However, we normally only unify generic signatures with themselves
+        # in FunDecl nodes, so having a more relaxed match function shouldn't
+        # cause any issue.
         if isinstance(a, FunctionType) and isinstance(b, FunctionType):
             return (a.modifiers == b.modifiers
                 and len(a.domain) == len(b.domain)
@@ -364,6 +370,17 @@ class TypeSolver(NodeVisitor):
         self.environment.unify(varof(node), inferred_type)
 
     def visit_FunDecl(self, node):
+        # First, we create (unless we already did) a placeholder type object
+        # for each of the function's generic placeholders (if any).
+        inner_scope = node.body.__meta__['scope']
+        for placeholder_name in node.placeholders:
+            var = type_factory.make_variable(id=(inner_scope, placeholder_name))
+            if var not in self.environment:
+                placeholder_type = type_factory.make_placeholder(id=placeholder_name)
+                self.environment.unify(
+                    var,
+                    type_factory.make_name(name=placeholder_name, type=placeholder_type))
+
         # Unlike variables, function parameters are always declared with a
         # type annotation, so we can type them directly.
         parameter_types = []
@@ -753,7 +770,10 @@ class TypeSolver(NodeVisitor):
                 valid = True
                 for i, argument in zip(range(len(node.arguments)), node.arguments):
                     expected_label = signature.labels[i]
-                    if expected_label != argument.label:
+                    if (expected_label == '_') and (argument.label is not None):
+                        valid = False
+                        break
+                    elif expected_label != argument.label:
                         valid = False
                         break
 
@@ -777,7 +797,7 @@ class TypeSolver(NodeVisitor):
             for types in product(*choices):
                 specializer = type_factory.make_function(
                     domain   = list(types[0:-1]),
-                    labels   = ['' for _ in range(len(types) - 1)],
+                    labels   = ['_' for _ in range(len(types) - 1)],
                     codomain = types[-1])
 
                 specialized_candidates.extend(flatten(
@@ -829,11 +849,6 @@ class TypeSolver(NodeVisitor):
                         candidate_domains.add(arg)
 
                 if candidate_domains.types:
-                    # We have to make a copy of the type union we created here
-                    # to avoid introducing circular substitutions in the
-                    # environment. This could happen if `candidate_domains`
-                    # references `argument_type` somewhere in the hierarchy.
-                    candidate_domains = TypeUnion(candidate_domains.types)
                     self.environment.unify(candidate_domains, argument_type)
 
             result = TypeUnion()
@@ -849,10 +864,13 @@ class TypeSolver(NodeVisitor):
                 selected_candidates = selected_candidates[0]
 
             node.__meta__['type'] = result
-            node.__meta__['function_call_type'] = selected_candidates
+            node.__meta__['dispatch_type'] = selected_candidates
             return result
 
-            # TODO Handle variadic arguments
+            # TODO: Keep track of what specializations of generic functions
+            # (and maybe types?) are expected to generated.
+
+            # TODO: Handle variadic arguments
             # A possible approach would be to transform the Call nodes of the
             # AST whenever we visit a variadic parameter, so that we regroup
             # the arguments that can be considered part of the variadic
@@ -1096,21 +1114,24 @@ def specialize_with_pattern(unspecialized, specializer, call_node, specializatio
         return
 
     specializations = specializations if (specializations is not None) else {}
-    if id(unspecialized) in specializations:
+    if unspecialized in specializations:
         # FIXME Maybe we should check whether the stored specialization result
         # is compatible with the replacements we otherwise would have yielded.
-        for t in specializations[id(unspecialized)]:
+        for t in specializations[unspecialized]:
             yield t
         return
 
-    if isinstance(unspecialized, GenericType):
-        if isinstance(specializer, TypeUnion):
-            for t in specializer:
-                yield t if not t.is_generic() else TypeVariable(id=(id(t), id(call_node)))
-        if specializer.is_generic():
-            yield TypeVariable(id=(id(specializer), id(call_node)))
-        else:
-            yield specializer
+    if isinstance(unspecialized, PlaceholderType):
+        specializers = specializer if isinstance(specializer, TypeUnion) else (specializer,)
+        for candidate in specializers:
+            if candidate.is_generic:
+                yield TypeVariable(id=(id(candidate), id(call_node)))
+            elif unspecialized.modifiers == candidate.modifiers:
+                yield candidate
+
+            # Note that we don't use the specializer candidate if it doesn't
+            # have the same type modifiers as the unspecialized argument.
+
         return
 
     if isinstance(unspecialized, FunctionType):
@@ -1122,31 +1143,32 @@ def specialize_with_pattern(unspecialized, specializer, call_node, specializatio
         specialized_domain = []
 
         for original, replacement in zip(unspecialized.domain, specializer.domain):
-            if original.is_generic():
+            if original.is_generic:
                 specialized = list(specialize_with_pattern(
                     original, replacement, call_node, specializations))
-                specializations[id(original)] = specialized
+                specializations[original] = specialized
                 specialized_domain.append(specialized)
             else:
                 specialized_domain.append((original,))
 
-        if unspecialized.codomain.is_generic():
+        if unspecialized.codomain.is_generic:
             specialized = list(specialize_with_pattern(
                 unspecialized.codomain, specializer.codomain, call_node, specializations))
-            specializations[id(unspecialized.codomain)] = specialized
+            specializations[unspecialized.codomain] = specialized
             specialized_codomain = specialized
         else:
             specialized_codomain = (unspecialized.codomain,)
 
         # FIXME Determine if a replacement can be a type union (or `specialize` returned
-        # more than one result for the domain or codomain). If it can't, then it that
-        # cartesian product will always be a singleton.
+        # more than one result for the domain or codomain). If it can't, then we may
+        # assume this cartesian product will always be a singleton.
         for specialized in product(*chain(specialized_domain, (specialized_codomain,))):
-            yield FunctionType(
-                domain     = specialized[0:-1],
-                codomain   = specialized[-1],
-                labels     = unspecialized.labels,
-                attributes = unspecialized.attributes)
+            t = type_factory.make_function(
+                modifiers = unspecialized.modifiers,
+                domain    = list(specialized[0:-1]),
+                codomain  = specialized[-1],
+                labels    = list(unspecialized.labels))
+            yield t
 
         return
 

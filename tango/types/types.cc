@@ -5,8 +5,19 @@
 
 namespace tango {
 
+    bool TypeUnion::operator==(const TypeBase& base_rhs) const {
+        if (auto rhs = dynamic_cast<const TypeUnion*>(&base_rhs)) {
+            return this->types == rhs->types;
+        }
+        return false;
+    }
+
     bool operator==(const TypeVariable& lhs, const TypeVariable& rhs) {
         return lhs.id == rhs.id;
+    }
+
+    bool operator==(const PlaceholderType& lhs, const PlaceholderType& rhs) {
+        return (lhs.modifiers == rhs.modifiers) && (lhs.id == rhs.id);
     }
 
     bool operator==(const FunctionType& lhs, const FunctionType& rhs) {
@@ -25,11 +36,18 @@ namespace tango {
 
     bool operator==(const NominalType& lhs, const NominalType& rhs) {
         return (lhs.modifiers == rhs.modifiers) && (lhs.name == rhs.name);
+        // FIXME
     }
 
     bool deep_equals(const TypeBase& lhs, const TypeBase& rhs) {
         if (auto lty = dynamic_cast<const TypeVariable*>(&lhs)) {
             if (auto rty = dynamic_cast<const TypeVariable*>(&rhs)) {
+                return *lty == *rty;
+            }
+        }
+
+        if (auto lty = dynamic_cast<const PlaceholderType*>(&lhs)) {
+            if (auto rty = dynamic_cast<const PlaceholderType*>(&rhs)) {
                 return *lty == *rty;
             }
         }
@@ -60,17 +78,21 @@ namespace tango {
         return false;
     }
 
-    bool TypeUnion::operator==(const TypeBase& base_rhs) const {
-        if (auto rhs = dynamic_cast<const TypeUnion*>(&base_rhs)) {
-            return this->types == rhs->types;
-        }
-        return false;
-    }
-
     void TypeUnion::add(TypePtr t) {
         if (this->types.find(t) == this->types.end()) {
             this->types.insert(t);
         }
+    }
+
+    // -----------------------------------------------------------------------
+
+    bool FunctionType::is_generic() const {
+        for (auto t: this->domain) {
+            if (t->is_generic()) {
+                return true;
+            }
+        }
+        return this->codomain->is_generic();
     }
 
     // -----------------------------------------------------------------------

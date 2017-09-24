@@ -22,13 +22,14 @@ namespace llvm {
 namespace tango {
 
     enum TypeClass {
-        tc_union     = 1 << 0,
-        tc_name      = 1 << 1,
-        tc_variable  = 1 << 2,
-        tc_reference = 1 << 3,
-        tc_function  = 1 << 4,
-        tc_nominal   = 1 << 5,
-        tc_builtin   = 1 << 6,
+        tc_union       = 1 << 0,
+        tc_name        = 1 << 1,
+        tc_variable    = 1 << 2,
+        tc_placeholder = 1 << 3,
+        tc_reference   = 1 << 4,
+        tc_function    = 1 << 5,
+        tc_nominal     = 1 << 6,
+        tc_builtin     = 1 << 7,
     };
 
     // Type identifier attributes.
@@ -48,8 +49,7 @@ namespace tango {
 
         virtual ~TypeBase() {}
 
-        virtual bool is_primitive() const = 0;
-        virtual bool is_generic()   const = 0;
+        virtual bool is_generic()   const { return false; }
         virtual bool isa(TypeClass) const = 0;
 
         /// Returns the underlying LLVM type implementing this Tango type.
@@ -104,7 +104,6 @@ namespace tango {
         TypeUnion(const TypeUnion&) = delete;
         TypeUnion() {}
 
-        bool is_primitive()    const { return false; }
         bool is_generic()      const;
         bool isa(TypeClass tc) const { return tc & tc_union; }
 
@@ -125,8 +124,6 @@ namespace tango {
         TypeName(const std::string& name, TypePtr type)
             : name(name), type(type) {}
 
-            bool is_primitive()    const { return false; }
-            bool is_generic()      const { return false; }
             bool isa(TypeClass tc) const { return tc & tc_name; }
 
             std::string name;
@@ -140,8 +137,6 @@ namespace tango {
         TypeVariable(uint8_t modifiers, boost::python::object id)
             : TypeBase(modifiers), id(id) {}
 
-        bool is_primitive()    const { return false; }
-
         // NOTE: We chose to always consider type variables non-generic. The
         // consequence of this choice is that whenever we visit a generic type
         // that has yet to be specialized, we have to type the expression that
@@ -150,11 +145,24 @@ namespace tango {
         // specialization list, so as to represent "some type specialized as
         // such". This would reduce the number of variables we have to create,
         // but would also make matching and unification harder.
-        bool is_generic()      const { return false; }
+        // bool is_generic() const { return false; }
 
         bool isa(TypeClass tc) const { return tc & tc_variable; }
 
         boost::python::object id;
+    };
+
+    // -----------------------------------------------------------------------
+
+    struct PlaceholderType: public TypeBase {
+        PlaceholderType(const TypeName&) = delete;
+        PlaceholderType(uint8_t modifiers, boost::python::object id)
+            : TypeBase(modifiers), id(id) {}
+
+            bool is_generic()      const { return true; }
+            bool isa(TypeClass tc) const { return tc & tc_placeholder; }
+
+            boost::python::object id;
     };
 
     // -----------------------------------------------------------------------
@@ -169,8 +177,7 @@ namespace tango {
             : TypeBase(modifiers),
               domain(domain), labels(labels), codomain(codomain) {}
 
-        bool is_primitive()    const { return false; }
-        bool is_generic()      const { return false; }
+        bool is_generic()      const;
         bool isa(TypeClass tc) const { return tc & tc_function; }
 
         llvm::Type* llvm_raw_type(llvm::LLVMContext&) const;
@@ -202,11 +209,6 @@ namespace tango {
         BuiltinType(uint8_t modifiers, const std::string& name)
             : NominalType(modifiers, name) {}
 
-        bool is_primitive() const {
-            return (name == "Int") || (name == "Double") || (name == "Bool");
-        }
-
-        bool is_generic()      const { return false; }
         bool isa(TypeClass tc) const { return tc & (tc_nominal | tc_builtin); }
 
         llvm::Type* llvm_raw_type(llvm::LLVMContext&) const;

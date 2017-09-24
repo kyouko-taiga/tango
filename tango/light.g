@@ -4,18 +4,18 @@ module          : (_NEWLINE | stmt)*
 
 block           : "{" _stmt_end* stmt* "}"
 
-fun_decl        : "function" NAME [generic_decls] "(" [param_decls] ")" ["->" type_ident] block
+fun_decl        : "function" NAME [placeholders] "(" [param_decls] ")" ["->" type_ident] block
 
 param_decls     : param_decl ("," param_decl)* [","]
 param_decl      : NAME [NAME] [":" type_ident] ["=" expr]
 
-generic_decls   : "<" NAME ("," NAME)* [","] ">"
+placeholders    : "<" NAME ("," NAME)* [","] ">"
 
 prop_decl       : "let" NAME [":" type_ident] [_assign_op expr] [block]
 
-struct_decl     : "struct" NAME [generic_decls] ["conforms" conformances] block
+struct_decl     : "struct" NAME [placeholders] ["conforms" conformances] block
 
-enum_decl       : "enum" NAME [generic_decls] ["conforms" conformances] block
+enum_decl       : "enum" NAME [placeholders] ["conforms" conformances] block
 
 case_decl       : "case" NAME ["(" param_decls ")"]
 

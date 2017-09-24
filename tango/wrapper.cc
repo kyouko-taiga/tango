@@ -62,6 +62,14 @@ namespace tango {
         return factory.make<TypeVariable>(modifiers, id);
     }
 
+    std::shared_ptr<PlaceholderType> make_placeholder_type(
+        TypeFactory&          factory,
+        uint8_t               modifiers,
+        boost::python::object id)
+    {
+        return factory.make<PlaceholderType>(modifiers, id);
+    }
+
     std::shared_ptr<FunctionType> make_function_type(
         TypeFactory&        factory,
         uint8_t             modifiers,
@@ -116,9 +124,8 @@ BOOST_PYTHON_MODULE(wrapper) {
         .value("own",  tm_own);
 
     class_<TypeBase, boost::noncopyable>("TypeBase", no_init)
-        .add_property("is_primitive", make_function(&TypeBase::is_primitive))
-        .add_property("is_generic",   make_function(&TypeBase::is_generic))
-        .def_readonly("modifiers",                  &TypeBase::modifiers)
+        .add_property("is_generic", make_function(&TypeBase::is_generic))
+        .def_readonly("modifiers",                &TypeBase::modifiers)
         .def(self == self);
 
     class_<TypeList>("TypeList")
@@ -142,6 +149,10 @@ BOOST_PYTHON_MODULE(wrapper) {
         "TypeVariable", no_init)
         .def_readonly("id",                   &TypeVariable::id);
 
+    class_<PlaceholderType, std::shared_ptr<PlaceholderType>, bases<TypeBase>, boost::noncopyable>(
+        "PlaceholderType", no_init)
+        .def_readonly("id",                   &PlaceholderType::id);
+
     class_<FunctionType, std::shared_ptr<FunctionType>, bases<TypeBase>, boost::noncopyable>(
         "FunctionType", no_init)
         .def_readonly("domain",               &FunctionType::domain)
@@ -162,10 +173,15 @@ BOOST_PYTHON_MODULE(wrapper) {
             (arg("name"),
              arg("type")))
 
-        // def make_variable(self, id=None)
+        // def make_variable(self, modifiers=0, id=None)
         .def("make_variable", &make_type_variable,
             (arg("modifiers")=0,
              arg("id")=api::object()))
+
+        // def make_placeholder(self, modifiers=0, id)
+        .def("make_placeholder", &make_placeholder_type,
+            (arg("modifiers")=0,
+             arg("id")))
 
         // def make_function(self, modifiers=0, domain=[], labels=[], codomain)
         .def("make_function", &make_function_type,
@@ -179,7 +195,7 @@ BOOST_PYTHON_MODULE(wrapper) {
             (arg("modifiers")=0,
              arg("name")));
 
-    // -----------------------------------------------------------------------
+        // -----------------------------------------------------------------------
 
     enum_<Operator>("Operator")
         .value("add", o_add)

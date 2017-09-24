@@ -53,6 +53,19 @@ class NodeTransformer(NodeVisitor):
         return node
 
 
+class PlaceholdersDescriptor(object):
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
+        return obj.__meta__['placeholders']
+
+    def __set__(self, obj, value):
+        if obj is None:
+            return self
+        obj.__meta__['placeholders'] = value
+
+
 # Following are some helper methods and properties we add by monkeypatching
 # the C++ classes, so as to have a nicer API to work with.
 
@@ -199,17 +212,22 @@ ParamDecl.__str__  = ParamDecl_str
 
 
 FunDecl_initializer = FunDecl.__init__
-def FunDecl_init(self, parameters=None, meta=None, **kwargs):
+def FunDecl_init(self, placeholders=None, parameters=None, meta=None, **kwargs):
     FunDecl_initializer(self, parameters=NodeList(parameters), **kwargs)
     self.__meta__ = NodeMetadata(**(meta or {}))
+    self.__meta__['placeholders'] = placeholders or []
 
 def FunDecl_str(self):
-        return 'fun {} ({}) -> {} {}'.format(
-            self.name, ', '.join(map(str, self.parameters)), self.codomain_annotation, self.body)
+    placeholders = '<' + ', '.join(map(str, self.placeholders)) + '>' if self.placeholders else ''
+    parameters   = ', '.join(map(str, self.parameters))
+    codomain     = self.codomain_annotation or 'Nothing'
+    return 'function {}{}({}) -> {} {}'.format(
+        self.name, placeholders, parameters, codomain, self.body)
 
-FunDecl._fields  = ('name', 'parameters', 'codomain_annotation', 'body',)
-FunDecl.__init__ = FunDecl_init
-FunDecl.__str__  = FunDecl_str
+FunDecl._fields  = ('name', 'placeholders', 'parameters', 'codomain_annotation', 'body',)
+FunDecl.placeholders = PlaceholdersDescriptor()
+FunDecl.__init__     = FunDecl_init
+FunDecl.__str__      = FunDecl_str
 
 
 def Assignment_str(self):

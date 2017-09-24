@@ -54,9 +54,15 @@ class ParseTreeTransformer(Transformer_NoRecurse):
             })
 
     def fun_decl(self, tree):
-        # TODO: Handle generic declarations.
-
         index = 1
+        if isinstance(tree.children[index], list):
+            placeholders = tree.children[index]
+            index += 1
+        else:
+            placeholders = None
+
+        # TODO: Make sure placeholders don't appear more than once.
+
         if isinstance(tree.children[index], list):
             parameters = tree.children[index]
             index += 1
@@ -71,6 +77,7 @@ class ParseTreeTransformer(Transformer_NoRecurse):
 
         return ast.FunDecl(
             name                = tree.children[0].value,
+            placeholders        = placeholders,
             parameters          = parameters,
             codomain_annotation = codomain_annotation,
             body                = tree.children[index],
@@ -78,6 +85,9 @@ class ParseTreeTransformer(Transformer_NoRecurse):
                 'start': (tree.line, tree.column),
                 'end'  : (tree.end_line, tree.end_col),
             })
+
+    def placeholders(self, tree):
+        return [token.value for token in tree.children]
 
     def param_decls(self, tree):
         return tree.children
