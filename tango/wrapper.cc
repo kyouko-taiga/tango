@@ -65,9 +65,10 @@ namespace tango {
     std::shared_ptr<PlaceholderType> make_placeholder_type(
         TypeFactory&          factory,
         uint8_t               modifiers,
-        boost::python::object id)
+        boost::python::object id,
+        TypePtr               specialization)
     {
-        return factory.make<PlaceholderType>(modifiers, id);
+        return factory.make<PlaceholderType>(modifiers, id, specialization);
     }
 
     std::shared_ptr<FunctionType> make_function_type(
@@ -151,7 +152,8 @@ BOOST_PYTHON_MODULE(wrapper) {
 
     class_<PlaceholderType, std::shared_ptr<PlaceholderType>, bases<TypeBase>, boost::noncopyable>(
         "PlaceholderType", no_init)
-        .def_readonly("id",                   &PlaceholderType::id);
+        .def_readonly("id",                   &PlaceholderType::id)
+        .def_readonly("specialization",       &PlaceholderType::specialization);
 
     class_<FunctionType, std::shared_ptr<FunctionType>, bases<TypeBase>, boost::noncopyable>(
         "FunctionType", no_init)
@@ -178,10 +180,11 @@ BOOST_PYTHON_MODULE(wrapper) {
             (arg("modifiers")=0,
              arg("id")=api::object()))
 
-        // def make_placeholder(self, modifiers=0, id)
+        // def make_placeholder(self, modifiers=0, id, specialization=None)
         .def("make_placeholder", &make_placeholder_type,
             (arg("modifiers")=0,
-             arg("id")))
+             arg("id"),
+             arg("specialization")=TypePtr(nullptr)))
 
         // def make_function(self, modifiers=0, domain=[], labels=[], codomain)
         .def("make_function", &make_function_type,

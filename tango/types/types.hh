@@ -156,13 +156,22 @@ namespace tango {
 
     struct PlaceholderType: public TypeBase {
         PlaceholderType(const TypeName&) = delete;
-        PlaceholderType(uint8_t modifiers, boost::python::object id)
-            : TypeBase(modifiers), id(id) {}
+        PlaceholderType(
+            uint8_t modifiers,
+            boost::python::object id,
+            TypePtr specialization = nullptr)
+            : TypeBase(modifiers), id(id), specialization(specialization) {}
 
-            bool is_generic()      const { return true; }
+            bool is_generic() const {
+                return specialization == nullptr
+                    ? true
+                    : specialization->is_generic();
+            }
+
             bool isa(TypeClass tc) const { return tc & tc_placeholder; }
 
             boost::python::object id;
+            TypePtr               specialization;
     };
 
     // -----------------------------------------------------------------------

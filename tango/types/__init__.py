@@ -3,8 +3,8 @@ from tango.wrapper import (
     PlaceholderType, FunctionType, NominalType, BuiltinType)
 
 
-TM             = TypeModifier
-type_factory   = TypeFactory()
+TM           = TypeModifier
+type_factory = TypeFactory()
 
 
 # Following are some helper methods and properties we add by monkeypatching
@@ -57,6 +57,9 @@ TypeVariable.__str__ = TypeVariable_str
 
 
 def PlaceholderType_str(self):
+    if self.specialization is not None:
+        return '<{}>'.format(self.specialization)
+
     modifiers = modifiers_to_str(self.modifiers)
     if modifiers:
         return modifiers + ' ' + self.id

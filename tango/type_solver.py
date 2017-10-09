@@ -146,19 +146,14 @@ class Substitution(object):
                 self.unify(ita, itb, memo)
             self.unify(a.codomain, b.codomain, memo)
 
-        elif isinstance(a, PlaceholderType) and isinstance(b, PlaceholderType):
-            print(a.modifiers, a.id)
-            print(b.modifiers, b.id)
-            exit()
-
         elif isinstance(a, TypeBase) and isinstance(b, TypeBase):
             if a != b:
                 raise InferenceError("type '{}' does not match '{}'".format(a, b))
 
-        # TODO take conformance into account
+        # TODO: Take interface conformance into account.
 
         else:
-            assert False, 'cannot unify %r and %r' % (a, b)
+            assert False, f'cannot unify {a} ({a.__class__}) and {b}({b.__class__})'
 
     def matches(self, t, u):
         a = self[t]
@@ -174,10 +169,15 @@ class Substitution(object):
                 or isinstance(a, TypeUnion) and any(self.matches(it, b) for it in a)
                 or isinstance(b, TypeUnion) and any(self.matches(it, a) for it in b))
 
+        if isinstance(a, PlaceholderType) and (a.specialization is not None):
+            return self.matches(a.specialization, b)
+        elif isinstance(b, PlaceholderType):
+            return self.matches(b, a)
+
         if isinstance(a, TypeUnion):
             return any(self.matches(it, b) for it in a)
         if isinstance(b, TypeUnion):
-            return self.matches(u, a)
+            return self.matches(b, a)
 
         if isinstance(a, NominalType) and isinstance(b, NominalType):
             return (a.modifiers == b.modifiers
@@ -313,7 +313,7 @@ class TypeSolver(NodeVisitor):
             if types:
                 self.environment.unify(
                     type_factory.make_variable(id=(module_scope, name)),
-                    type_factory.make_union(types) if len(types) > 1 else types[0])
+                    TypeUnion(types) if len(types) > 1 else types[0])
 
         self.visit(node.body)
 
@@ -429,10 +429,8 @@ class TypeSolver(NodeVisitor):
         else:
             raise InferenceError("cannot overload '{}' with '{}'".format(walked, function_type))
 
-        # If the function name is also associated with function types in the
-        # enclosing scopes, we should add the latter as overloads.
-        for overload in find_overload_decls(node.name, node.__meta__['scope']):
-            overload_set.add(TypeVariable(overload))
+        # TODO: We should also consider the overloads defined in enclosing
+        # scopes or defined in other modules.
 
         # We continue the type inference in the function body.
         self.visit(node.body)
@@ -445,87 +443,17 @@ class TypeSolver(NodeVisitor):
             return_value_type = statement.value.__meta__['type']
             self.environment.unify(return_value_type, function_type.codomain)
 
-        node.__meta__['scope'][node.name].type = overload_set
-        node.__meta__['type']                  = overload_set
-        self.environment[varof(node)]          = overload_set
+        for symbol in node.__meta__['scope'].getlist(node.name):
+            if symbol.code == node:
+                symbol.type = function_type
 
-    def visit_nominal_type(self, node, type_class):
-        # First, we create (unless we already did) a generic type object for
-        # each of the type's generic parameters (if any).
-        inner_scope = node.body.__meta__['scope']
-        for symbol in node.generic_parameters:
-            var = TypeVariable(id=(inner_scope, symbol))
-            if var not in self.environment:
-                self.environment.unify(var, GenericType(symbol))
-                inner_scope.typenames.add(symbol)
+        # We associate the function type we've created to the AST node, so
+        # that code generation may emit the correct type.
+        node.__meta__['type'] = function_type
 
-        # Then, we create a new nominal type (unless we already did).
-        walked = self.environment[TypeVariable(node)]
-        if isinstance(walked, TypeVariable):
-            type_instance = type_class(
-                name               = node.name,
-                scope              = node.__meta__['scope'],
-                inner_scope        = inner_scope,
-                generic_parameters = {
-                    # We retrieve and store the generic type object we created
-                    # for each of the type's generic parameters (if any).
-                    symbol: self.environment[TypeVariable((inner_scope, symbol))]
-                    for symbol in node.generic_parameters
-                },
-                members            = {
-                    # We create new type variables for each of the symbols the
-                    # nominal type defines.
-                    name: self.environment[TypeVariable((inner_scope, name))]
-                    for name in node.body.__meta__['symbols']
-                })
-
-            node.__meta__['scope'][node.name].type = type_instance
-            self.environment.unify(TypeVariable(node), type_instance)
-
-        else:
-            type_instance = walked
-
-        # Update `current_self_type` before visiting the type's members to
-        # to handle enum case declarations.
-        self.current_self_type.append(type_instance)
-        self.visit(node.body)
-        self.current_self_type.pop()
-
-        node.__meta__['type'] = type_instance
-
-    def visit_StructDecl(self, node):
-        self.visit_nominal_type(node, StructType)
-
-    def visit_EnumDecl(self, node):
-        self.visit_nominal_type(node, EnumType)
-
-    def visit_EnumCaseDecl(self, node):
-        # Enum case declaration should always be visited in the context of an
-        # enum declaration. Consequently, the top `current_self_type` should
-        # refer to that enum type.
-        assert self.current_self_type and isinstance(self.current_self_type[-1], EnumType)
-        enum_type = self.current_self_type[-1]
-
-        # If the case doesn't have any associated value, we type it as the
-        # enum type directly.
-        if not node.parameters:
-            self.environment.unify(TypeVariable(node), enum_type)
-            return
-
-        # If the case does have associated values, we first have to infer
-        # their types.
-        parameter_types = []
-        for parameter in node.parameters:
-            type_annotation = self.read_type_reference(parameter.type_annotation)
-            parameter_types.append(type_annotation)
-
-        # Then, we can type the case as a function taking associated values to
-        # return the enum type.
-        case_type = FunctionType(
-            domain   = parameter_types,
-            codomain = enum_type,
-            labels   = [parameter.label for parameter in node.parameters])
-        self.environment.unify(TypeVariable(node), case_type)
+        # We associate the set of overloads to the symbol, so that type
+        # inference may consider other candidates.
+        self.environment[varof(node)] = overload_set
 
     def visit_Assignment(self, node):
         # NOTE: For now, we assume lvalues to always represent identifiers.
@@ -568,20 +496,6 @@ class TypeSolver(NodeVisitor):
         if node.else_block:
             self.visit(node.else_block)
 
-    def visit_Switch(self, node):
-        # First, we infer the type of the switch's argument.
-        argument_type = self.analyse(node.expression)
-
-        for clause in node.clauses:
-            # Then, we visit the pattern of each clause, before unifying their
-            # respective expression type with that of the switch's argument.
-            self.visit(clause.pattern)
-            clause_expression_type = self.read_type_instance(clause.pattern.expression)
-            self.environment.unify(clause_expression_type, argument_type)
-
-            # Finally, we can visit each clause's body.
-            self.visit(clause.body)
-
     def visit_Return(self, node):
         self.read_type_instance(node.value)
 
@@ -620,50 +534,6 @@ class TypeSolver(NodeVisitor):
 
             node.__meta__['type'] = function_type
             return function_type
-
-        # if isinstance(node, PrefixExpression):
-        #     # First, we have to infer the type of the operand.
-        #     operand_type = self.read_type_instance(node.operand)
-        #
-        #     # Then, we can get the available signatures for the operator.
-        #     candidates = self.find_operator_candidates(operand_type, node.operator)
-        #     if len(candidates) == 0:
-        #         raise InferenceError(
-        #             "{} has a no member '{}'".format(operand_type, node.operator))
-        #
-        #     # Once we've got those operator signatures, we should create a
-        #     # temporary Call node to fallback on the usual analysis of
-        #     # function call return types.
-        #     call_node = Call(
-        #         callee = TypeSolver.TypeNode(TypeUnion(candidates)),
-        #         arguments = [CallArgument(node.operand)])
-        #     result = self.analyse(call_node)
-        #
-        #     node.__meta__['type'] = result
-        #     node.__meta__['function_call_type'] = call_node.__meta__['function_call_type']
-        #     return result
-        #
-        # if isinstance(node, BinaryExpression):
-        #     # First, we have to infer the type of the left operand.
-        #     left_type = self.read_type_instance(node.left)
-        #
-        #     # Then, we can get the available signatures for the operator.
-        #     candidates = self.find_operator_candidates(left_type, node.operator)
-        #     if len(candidates) == 0:
-        #         raise InferenceError(
-        #             "{} has a no member '{}'".format(left_type, node.operator))
-        #
-        #     # Once we've got those operator signatures, we should create a
-        #     # temporary Call node to fallback on the usual analysis of
-        #     # function call return types.
-        #     call_node = Call(
-        #         callee = TypeSolver.TypeNode(TypeUnion(candidates)),
-        #         arguments = [CallArgument(node.left), CallArgument(node.right)])
-        #     result = self.analyse(call_node)
-        #
-        #     node.__meta__['type'] = result
-        #     node.__meta__['function_call_type'] = call_node.__meta__['function_call_type']
-        #     return result
 
         if isinstance(node, Call):
             # First, we get the possible types of the callee.
@@ -837,13 +707,17 @@ class TypeSolver(NodeVisitor):
                 overloads = []
                 for candidate in selected_candidates:
                     arg = self.environment[candidate.domain[i]]
+                    if isinstance(arg, PlaceholderType):
+                        assert arg.specialization is not None, 'unexpected partial specialization'
+                        arg = arg.specialization
 
                     # We don't unify function type arguments when they're used
                     # as parameters, to preserve their overloads.
                     if isinstance(arg, FunctionType):
                         # We don't unify generic specializations neither, as
                         # it would pollute the type of generic name otherwise.
-                        if not argument_type.is_generic():
+                        # FIXME
+                        if not argument_type.is_generic:
                             overloads.append(arg)
                     else:
                         candidate_domains.add(arg)
@@ -853,10 +727,36 @@ class TypeSolver(NodeVisitor):
 
             result = TypeUnion()
             for candidate in selected_candidates:
-                result.add(self.environment[candidate.codomain])
+                codomain = candidate.codomain
+                if isinstance(codomain, PlaceholderType):
+                    assert codomain.specialization is not None, 'unexpected partial specialization'
+                    codomain = codomain.specialization
+                result.add(self.environment[codomain])
 
             for codomain in selected_codomains:
+                # TODO: Check if we may have placeholder types as selected
+                # codomains.
                 result.add(selected_codomains)
+
+            # Keep track of the callee's required specializations.
+            if isinstance(node.callee, Identifier):
+                scope = node.callee.__meta__['scope']
+
+                for candidate in selected_candidates:
+                    found = False
+                    for symbol in scope.getlist(node.callee.name):
+                        if isspecialization(candidate, symbol.type):
+                            if found:
+                                raise InferenceError(
+                                    "multiple candidates found to call '{}'".format(node))
+                            found = True
+                            symbol.specializations.add(candidate)
+
+                # TODO: Propagate the specialization requirements to all
+                # reachable scopes the callee's symbol is defined in.
+
+                # TODO: Handle non-identifier callees (i.e. expressions that
+                # return a generic function).
 
             # Avoid creating singletons when there's only one candidate.
             if len(result) == 1:
@@ -868,7 +768,7 @@ class TypeSolver(NodeVisitor):
             return result
 
             # TODO: Keep track of what specializations of generic functions
-            # (and maybe types?) are expected to generated.
+            # (and maybe types?) are expected to be generated.
 
             # TODO: Handle variadic arguments
             # A possible approach would be to transform the Call nodes of the
@@ -1032,81 +932,6 @@ class TypeSolver(NodeVisitor):
 
         return False
 
-    def find_operator_candidates(self, operand_type, operator):
-        # If the operand's type is a variable, we have no choice but to return
-        # another type variable.
-        if isinstance(operand_type, TypeVariable):
-            return [TypeVariable()]
-
-        # Otherwise, we can simply search its members to find signature
-        # candidates for the given operator.
-        if not isinstance(operand_type, TypeUnion):
-            operand_type = (operand_type,)
-
-        candidates = []
-        for expr_type in (self.environment[t] for t in operand_type):
-            if isinstance(expr_type, TypeVariable):
-                candidates.append(TypeVariable())
-
-            elif isinstance(expr_type, TypeBase) and (operator in expr_type.members):
-                candidate = self.environment[expr_type.members[operator]]
-                if isinstance(candidate, TypeUnion):
-                    candidates.extend(self.environment[c] for c in candidate)
-                else:
-                    candidates.append(candidate)
-
-        return candidates
-
-
-def find_overload_decls(name, scope):
-    if scope.parent and (name in scope.parent):
-        decl = scope.parent[name].decl
-        if not isinstance(decl, list) or not isinstance(decl[0], FunctionDecl):
-            return []
-        return decl + find_overload_decls(name, scope.parent.parent)
-    return []
-
-
-def specialize(signature, specializations):
-    if not signature.is_generic():
-        return signature
-
-    if isinstance(signature, NominalType):
-        result = signature.__class__(
-            name               = signature.name,
-            scope              = signature.scope,
-            inner_scope        = signature.inner_scope,
-            generic_parameters = signature.generic_parameters)
-
-        for generic_id, specialization in specializations.items():
-            try:
-                parameter_name = next(
-                    name for name, param in signature.generic_parameters.items()
-                    if id(param) == generic_id)
-            except StopIteration:
-                continue
-            result.specializations[parameter_name] = specialization
-
-        for name, member in signature.members.items():
-            result.members[name] = specialize(member, specializations)
-
-        return result
-
-    if isinstance(signature, FunctionType):
-        return FunctionType(
-            domain     = [
-                specialize(original, specializations)
-                for original in signature.domain
-            ],
-            codomain   = specialize(original, specializations),
-            labels     = unspecialized.labels,
-            attributes = unspecialized.attributes)
-
-    if isinstance(signature, GenericType):
-        return specializations.get(id(signature), signature)
-
-    assert False, signature
-
 
 def specialize_with_pattern(unspecialized, specializer, call_node, specializations=None):
     if not unspecialized.is_generic:
@@ -1127,7 +952,10 @@ def specialize_with_pattern(unspecialized, specializer, call_node, specializatio
             if candidate.is_generic:
                 yield TypeVariable(id=(id(candidate), id(call_node)))
             elif unspecialized.modifiers == candidate.modifiers:
-                yield candidate
+                yield type_factory.make_placeholder(
+                    modifiers      = candidate.modifiers,
+                    id             = unspecialized.id,
+                    specialization = candidate)
 
             # Note that we don't use the specializer candidate if it doesn't
             # have the same type modifiers as the unspecialized argument.
@@ -1163,43 +991,41 @@ def specialize_with_pattern(unspecialized, specializer, call_node, specializatio
         # more than one result for the domain or codomain). If it can't, then we may
         # assume this cartesian product will always be a singleton.
         for specialized in product(*chain(specialized_domain, (specialized_codomain,))):
-            t = type_factory.make_function(
+            yield type_factory.make_function(
                 modifiers = unspecialized.modifiers,
                 domain    = list(specialized[0:-1]),
                 codomain  = specialized[-1],
                 labels    = list(unspecialized.labels))
-            yield t
 
         return
 
     assert False, 'cannot specialize {}'.format(unspecialized.__class__.__name__)
 
 
-def specialize_from_annotation(unspecialized, type_annotation):
-    # It shouldn't be able to express a generic type annotation, since generic
-    # parameters aren't allowed in the syntax of function signatures.
-    assert not type_annotation.is_generic()
+def isspecialization(left, right):
+    if right.is_generic:
+        specializations = list(specialize_with_pattern(right, left, object()))
+        if not specializations:
+            return False
+        assert len(specializations) == 1
+        right = specializations[0]
 
-    # Only function types can specialize a generic type.
-    if not isinstance(type_annotation, FunctionType):
-        raise InferenceError("type {} does not match {}".format(type_annotation, unspecialized))
+    if isinstance(left, FunctionType):
+        if not isinstance(right, FunctionType):
+            return False
+        if len(left.domain) != len(right.domain):
+            return False
+        for (ltype, rtype) in zip(left.domain, right.domain):
+            if not isspecialization(ltype, rtype):
+                return False
+        return isspecialization(left.codomain, right.codomain)
 
-    # Filter out functions types that aren't compatible with the given type
-    # annotation.
-    if not isinstance(unspecialized, TypeUnion):
-        unspecialized = (unspecialized,)
+    if isinstance(left, PlaceholderType):
+        left = left.specialization
+    if isinstance(right, PlaceholderType):
+        right = right.specialization
 
-    candidates = filter(lambda t: t.is_compatible_with(type_annotation), unspecialized)
-    specialized = list(flatten(
-        specialize_with_pattern(candidate, type_annotation, None)
-        for candidate in candidates))
-
-    if len(specialized) == 0:
-        raise InferenceError(
-            "no candidate in '{}' is compatible with type annotation '{}'".format(
-                (','.join(map(str, unspecialized)), type_annotation)))
-
-    return TypeUnion(specialized)
+    return left == right
 
 
 def flatten(iterable):

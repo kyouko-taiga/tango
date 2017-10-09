@@ -62,19 +62,17 @@ if __name__ == '__main__':
 
     # Infer the types of all expressions.
     (module, environment) = infer_types(module_decl)
+    environment.print_debug()
+    exit()
 
-    # environment.print_debug()
+    # Check the correctness of resource access.
+    # capture_finder = CaptureFinder()
+    # capture_finder.visit(module_decl)
+    # state_checker = StateChecker()
+    # state_checker.visit(module_decl)
+
     if (len(sys.argv) > 2) and (sys.argv[2] == '-O'):
         emit_ir(module, with_optimizations=True)
     else:
         emit_ir(module, with_optimizations=False)
     exit()
-
-    # Check the correctness of resource access.
-    capture_finder = CaptureFinder()
-    capture_finder.visit(module_decl)
-    state_checker = StateChecker()
-    state_checker.visit(module_decl)
-
-    # print(dumps(module_decl.to_dict(), indent=2, sort_keys=True, cls=ASTEncoder))
-    # print(module_decl)

@@ -1,5 +1,5 @@
-from .module import Module, Symbol
-from .scope import Scope
+from .module import Module
+from .scope import Scope, Symbol
 from .types import type_factory, TypeName
 
 

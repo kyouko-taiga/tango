@@ -1,8 +1,7 @@
 from .ast import *
 from .builtin import builtin_module
 from .errors import DuplicateDeclaration, UndefinedSymbol
-from .module import Symbol
-from .scope import Scope
+from .scope import Scope, Symbol
 from .types import TypeBase, FunctionType
 
 

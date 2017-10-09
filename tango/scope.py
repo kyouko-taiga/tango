@@ -1,3 +1,17 @@
+from tango.types import TypeUnion
+
+
+class Symbol(object):
+
+    def __init__(self, name, type=None, code=None, nested=None):
+        self.name       = name
+        self.type       = type
+        self.code       = code
+        self.nested     = nested or {}
+
+        self.specializations = TypeUnion()
+
+
 class Scope(object):
     '''
     A scope works like a dictionary of symbols, but that can store multiple
@@ -46,7 +60,7 @@ class Scope(object):
         return None
 
     def add(self, symbol):
-        if symbol in self.symbols:
+        if symbol.name in self.symbols:
             self.symbols[symbol.name].append(symbol)
         else:
             self.symbols[symbol.name] = [symbol]

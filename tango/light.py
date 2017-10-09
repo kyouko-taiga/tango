@@ -55,7 +55,7 @@ class ParseTreeTransformer(Transformer_NoRecurse):
 
     def fun_decl(self, tree):
         index = 1
-        if isinstance(tree.children[index], list):
+        if isinstance(tree.children[index], list) and isinstance(tree.children[index][0], str):
             placeholders = tree.children[index]
             index += 1
         else:
