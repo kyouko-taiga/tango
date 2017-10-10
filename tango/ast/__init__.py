@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from tango.wrapper import (
     TypeModifier, Operator,
     Node, NodeMetadata, NodeList,
@@ -97,7 +99,20 @@ def Node_to_dict(self):
 
     return {self.__class__.__name__: data}
 
-Node.to_dict = Node_to_dict
+def Node_deepcopy(self, memo):
+    new_node = self.__class__(**{
+        attr: deepcopy(getattr(self, attr), memo)
+        for attr in self._fields
+    })
+
+    # Note we don't deepcopy the metadata.
+    new_node.__meta__['type'] = self.__meta__['type']
+    for attr, value in self.__meta__._py_attrs.items():
+        new_node.__meta__[attr] = value
+    return new_node
+
+Node.to_dict      = Node_to_dict
+Node.__deepcopy__ = Node_deepcopy
 
 
 def TypeModifier_str(self):
@@ -149,7 +164,11 @@ def NodeList_init(self, nodes=None):
     for n in (nodes or []):
         self.append(n)
 
-NodeList.__init__ = NodeList_init
+def NodeList_deepcopy(self, memo):
+    return NodeList([deepcopy(it, memo) for it in self])
+
+NodeList.__init__     = NodeList_init
+NodeList.__deepcopy__ = NodeList_deepcopy
 
 
 def monkeypatch_init(class_):

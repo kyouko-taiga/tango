@@ -119,7 +119,7 @@ class ScopeBinder(NodeVisitor):
         # declaration, pre-filled with the generic placeholders.
         self.push_scope()
         for placeholder in node.placeholders:
-            self.current_scope.add(Symbol(name=placeholder, code=node))
+            self.current_scope.add(Symbol(name=placeholder))
         node.body.__meta__['scope'] = self.current_scope
 
         # Visit the type annotation of the function parameters.

@@ -1,5 +1,7 @@
+from copy import deepcopy
+
 from . import ast
-from .types import BuiltinType, PlaceholderType, TypeName, find_placeholders
+from . import types
 
 
 class Mangler(ast.NodeTransformer):
@@ -7,11 +9,11 @@ class Mangler(ast.NodeTransformer):
     def __init__(self):
         self.module_name = None
 
-    def visit_ModuleDecl(self, node):
+    def _visit_ModuleDecl(self, node):
         self.module_name = node.name
         return self.generic_visit(node)
 
-    def visit_FunDecl(self, node):
+    def _visit_FunDecl(self, node):
         # A function named `main` is a special case that shouldn't be mangled.
         if node.name == 'main':
             return node
@@ -28,21 +30,15 @@ class Mangler(ast.NodeTransformer):
         results = []
         for function_type in node.__meta__['symbol'].specializations:
             # Copy the function declaration.
-            new_node = ast.FunDecl(**{attr: getattr(node, attr) for attr in node._fields})
-
-            # TODO: We should perform a deep copy here.
+            new_node = deepcopy(node)
 
             # Update the function declaration to match its specialization.
-            new_node.__meta__['type'] = function_type
-            new_node.placeholders = []
+            specializer = Specializer(function_type)
+            new_node    = specializer.visit(new_node)
 
-            # FIXME
-            # specializer = Specializer(function_type)
-            # new_node = specializer.visit(new_node)
-
+            # Store the mangled specialization.
             new_node.name = mangle_function_name(self.module_name, node.name, function_type)
-
-            results.append(new_node)
+            results.append(self.generic_visit(new_node))
 
             # QUESTION: We don't rewrite type annotations here. Instead, we
             # only update their metadata to reflect their specialized type.
@@ -55,6 +51,21 @@ class Mangler(ast.NodeTransformer):
 
         return ast.NodeList(results)
 
+    def visit_Identifier(self, node):
+        # Check if the identifier's associated with a function declaration, in
+        # which case it should be mangled.
+        if isinstance(node.__meta__['scope'][node.name].code, ast.FunDecl):
+
+            # NOTE: In the above test, we're assuming identifiers whose symbol
+            # is associated with a function declaration to always represent
+            # the function itself. This should be right as long as we only
+            # associate function declarations to symbols that are used in
+            # expressions.
+
+            print(node.__meta__['dispatch_type'])
+
+        return node
+
 
 class Specializer(ast.NodeTransformer):
 
@@ -62,19 +73,37 @@ class Specializer(ast.NodeTransformer):
         self.specialization_type = specialization_type
         self.specializations = {
             placeholder.id: placeholder.specialization
-            for placeholder in find_placeholders(specialization_type)
+            for placeholder in types.find_placeholders(specialization_type)
         }
 
-    def visit_Identifier(self, node):
-        node_type = node.__meta__['type']
-        if isinstance(node_type, TypeName):
-            if isinstance(node_type.type, PlaceholderType):
-                # FIXME
-                new_node = ast.Identifier(name=str(self.specializations[node_type.type.id]))
-                new_node.__meta__['type'] = self.specializations[node_type.type.id]
-                return new_node
+    def generic_visit(self, node):
+        if node.__meta__['type'] is not None:
+            node.__meta__['type'] = self.specialize_type(node.__meta__['type'])
+        return super(Specializer, self).generic_visit(node)
 
-        return node
+    def specialize_type(self, type_):
+        if not type_.is_generic:
+            return type_
+
+        if isinstance(type_, types.TypeName):
+            return types.type_factory.make_name(
+                name = type_.name,
+                type = self.specialize_type(gentype_eric_type.type))
+
+        if isinstance(type_, types.PlaceholderType):
+            return self.specializations[type_.id]
+
+        if isinstance(type_, types.FunctionType):
+            return types.type_factory.make_function(
+                modifiers = type_.modifiers,
+                domain    = [self.specialize_type(p) for p in type_.domain],
+                codomain  = self.specialize_type(type_.codomain),
+                labels    = list(type_.labels))
+
+        assert isinstance(generic_type, types.BuiltinType)
+        return generic_type
+
+        # TODO: Handle structural types
 
 
 def mangle_function_name(module_name, function_name, function_type):
@@ -103,7 +132,7 @@ def mangle_function_name(module_name, function_name, function_type):
 
 
 def mangle_type(type_):
-    if isinstance(type_, PlaceholderType):
+    if isinstance(type_, types.PlaceholderType):
         assert type_.specialization is not None, 'unexpected unspecialized placeholder'
         return mangle_type(type_.specialization)
 
@@ -112,7 +141,7 @@ def mangle_type(type_):
     # Mangle the type modifiers.
     result += hex(type_.modifiers)[2:]
 
-    if isinstance(type_, BuiltinType):
+    if isinstance(type_, types.BuiltinType):
         result += type_.name[0].lower()
 
     # TODO: Handle function and custom types.

@@ -269,24 +269,6 @@ class Substitution(object):
 
 class TypeSolver(NodeVisitor):
 
-    class TypeNode(Node):
-        # A dummy AST node whose sole purpose is to specify type information for
-        # some internally created nodes.
-
-        def __init__(self, type, is_typename=False):
-            super().__init__()
-            self.type = type
-            self.is_typename = is_typename
-
-    def __init__(self):
-        # A simple substitution map: (TypeVariable) -> Type.
-        self.environment = Substitution()
-
-        # Enum case declarations typically don't explicitly specify their
-        # "return" type, so we need a way to keep track of their type as we
-        # visit them.
-        self.current_self_type = []
-
     class ReturnFinder(NodeVisitor):
 
         def __init__(self):
@@ -301,6 +283,15 @@ class TypeSolver(NodeVisitor):
                     sub_finder = TypeSolver.ReturnFinder()
                     sub_finder.visit(statement)
                     self.return_statements.extend(sub_finder.return_statements)
+
+    def __init__(self):
+        # A simple substitution map: (TypeVariable) -> Type.
+        self.environment = Substitution()
+
+        # Enum case declarations typically don't explicitly specify their
+        # "return" type, so we need a way to keep track of their type as we
+        # visit them.
+        self.current_self_type = []
 
     def visit_ModuleDecl(self, node):
         # As imported symbols are merged into the built-in scope, we have to
@@ -917,6 +908,31 @@ class TypeSolver(NodeVisitor):
         return False
 
 
+class Dispatcher(NodeVisitor):
+
+    def visit_Call(self, node):
+        # Keep track of the callee's required specializations.
+        if isinstance(node.callee, Identifier):
+            scope = node.callee.__meta__['scope']
+
+            dispatch_type = node.__meta__['dispatch_type']
+            assert not isinstance(dispatch_type, (TypeUnion, list))
+
+            found = False
+            for symbol in scope.getlist(node.callee.name):
+                if isspecialization(dispatch_type, symbol.type):
+                    if found:
+                        raise InferenceError(f"multiple candidates found to call '{node}'")
+                    found = True
+                    symbol.specializations.add(dispatch_type)
+
+        # TODO: Handle non-identifier callees (i.e. expressions that return a
+        # generic function).
+
+        # TODO: Propagate the specialization requirements to all reachable
+        # scopes the callee's symbol is defined in.
+
+
 def specialize_with_pattern(unspecialized, specializer, call_node, specializations=None):
     if not unspecialized.is_generic:
         yield unspecialized
@@ -984,31 +1000,6 @@ def specialize_with_pattern(unspecialized, specializer, call_node, specializatio
         return
 
     assert False, 'cannot specialize {}'.format(unspecialized.__class__.__name__)
-
-
-class Dispatcher(NodeVisitor):
-
-    def visit_Call(self, node):
-        # Keep track of the callee's required specializations.
-        if isinstance(node.callee, Identifier):
-            scope = node.callee.__meta__['scope']
-
-            dispatch_type = node.__meta__['dispatch_type']
-            assert not isinstance(dispatch_type, (TypeUnion, list))
-
-            found = False
-            for symbol in scope.getlist(node.callee.name):
-                if isspecialization(dispatch_type, symbol.type):
-                    if found:
-                        raise InferenceError(f"multiple candidates found to call '{node}'")
-                    found = True
-                    symbol.specializations.add(dispatch_type)
-
-        # TODO: Handle non-identifier callees (i.e. expressions that return a
-        # generic function).
-
-        # TODO: Propagate the specialization requirements to all reachable
-        # scopes the callee's symbol is defined in.
 
 
 def isspecialization(left, right):
