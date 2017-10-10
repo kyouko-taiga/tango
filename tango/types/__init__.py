@@ -7,6 +7,19 @@ TM           = TypeModifier
 type_factory = TypeFactory()
 
 
+def find_placeholders(type_):
+    if isinstance(type_, PlaceholderType):
+        return set([type_])
+
+    if isinstance(type_, FunctionType):
+        result = set()
+        for parameter_type in type_.domain:
+            result = result | find_placeholders(parameter_type)
+        return result | find_placeholders(type_.codomain)
+
+    assert False, 'TODO'
+
+
 # Following are some helper methods and properties we add by monkeypatching
 # the C++ classes, so as to have a nicer API to work with.
 

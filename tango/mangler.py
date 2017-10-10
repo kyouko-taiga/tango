@@ -1,5 +1,5 @@
 from . import ast
-from .types import BuiltinType, PlaceholderType
+from .types import BuiltinType, PlaceholderType, TypeName, find_placeholders
 
 
 class Mangler(ast.NodeTransformer):
@@ -36,6 +36,10 @@ class Mangler(ast.NodeTransformer):
             new_node.__meta__['type'] = function_type
             new_node.placeholders = []
 
+            # FIXME
+            # specializer = Specializer(function_type)
+            # new_node = specializer.visit(new_node)
+
             new_node.name = mangle_function_name(self.module_name, node.name, function_type)
 
             results.append(new_node)
@@ -50,6 +54,27 @@ class Mangler(ast.NodeTransformer):
             # this homomorphism?
 
         return ast.NodeList(results)
+
+
+class Specializer(ast.NodeTransformer):
+
+    def __init__(self, specialization_type):
+        self.specialization_type = specialization_type
+        self.specializations = {
+            placeholder.id: placeholder.specialization
+            for placeholder in find_placeholders(specialization_type)
+        }
+
+    def visit_Identifier(self, node):
+        node_type = node.__meta__['type']
+        if isinstance(node_type, TypeName):
+            if isinstance(node_type.type, PlaceholderType):
+                # FIXME
+                new_node = ast.Identifier(name=str(self.specializations[node_type.type.id]))
+                new_node.__meta__['type'] = self.specializations[node_type.type.id]
+                return new_node
+
+        return node
 
 
 def mangle_function_name(module_name, function_name, function_type):
