@@ -508,6 +508,27 @@ class TypeSolver(NodeVisitor):
         if isinstance(node, Identifier):
             # We get the identifier's type from the environment.
             result = self.environment[varof(node)]
+
+            # If the identifier's symbol is associated with a function
+            # declaration, we need to make sure we preserve its overloads.
+            # Therefore, unless its a single non-generic type, we need to
+            # dissociate this node's type and that of the symbol's.
+            if isinstance(node.__meta__['scope'][node.name].code, FunDecl):
+                # Create a fresh variable, unless we already did.
+                if node.__meta__['type'] is None:
+                    node.__meta__['type'] = type_factory.make_variable()
+                identifer_type = node.__meta__['type']
+
+                # If the symbol's type is a union, we create a new one and
+                # unify it with this node's type variable.
+                if isinstance(result, TypeUnion):
+                    self.environment.unify(identifer_type, TypeUnion(result.types))
+                    return identifer_type
+
+                # If the symbol's type is a type variable or a generic type,
+                # we create a fresh variable.
+                # TODO
+
             node.__meta__['type'] = result
             return result
 

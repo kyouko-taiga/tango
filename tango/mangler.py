@@ -62,7 +62,8 @@ class Mangler(ast.NodeTransformer):
             # associate function declarations to symbols that are used in
             # expressions.
 
-            print(node.__meta__['dispatch_type'])
+            pass
+            # print(node.__meta__['dispatch_type'])
 
         return node
 
