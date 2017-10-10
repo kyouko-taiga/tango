@@ -34,6 +34,10 @@ def infer_types(node, max_iter=100):
     # TODO: Restrict unions of type variants to the most restricted set of
     # modifiers.
 
+    # Solve the static dispatching of function calls.
+    dispatcher = Dispatcher()
+    dispatcher.visit(node)
+
     return (node, type_solver.environment.reified())
 
 
@@ -611,7 +615,7 @@ class TypeSolver(NodeVisitor):
                     selected_candidates = selected_candidates[0]
 
                 node.__meta__['type'] = result
-                node.__meta__['function_call_type'] = callee_type
+                node.__meta__['dispatch_type'] = callee_type
                 return result
 
             # Then, we have to infer the type of each argument.
@@ -737,26 +741,6 @@ class TypeSolver(NodeVisitor):
                 # TODO: Check if we may have placeholder types as selected
                 # codomains.
                 result.add(selected_codomains)
-
-            # Keep track of the callee's required specializations.
-            if isinstance(node.callee, Identifier):
-                scope = node.callee.__meta__['scope']
-
-                for candidate in selected_candidates:
-                    found = False
-                    for symbol in scope.getlist(node.callee.name):
-                        if isspecialization(candidate, symbol.type):
-                            if found:
-                                raise InferenceError(
-                                    "multiple candidates found to call '{}'".format(node))
-                            found = True
-                            symbol.specializations.add(candidate)
-
-                # TODO: Propagate the specialization requirements to all
-                # reachable scopes the callee's symbol is defined in.
-
-                # TODO: Handle non-identifier callees (i.e. expressions that
-                # return a generic function).
 
             # Avoid creating singletons when there's only one candidate.
             if len(result) == 1:
@@ -1002,6 +986,31 @@ def specialize_with_pattern(unspecialized, specializer, call_node, specializatio
     assert False, 'cannot specialize {}'.format(unspecialized.__class__.__name__)
 
 
+class Dispatcher(NodeVisitor):
+
+    def visit_Call(self, node):
+        # Keep track of the callee's required specializations.
+        if isinstance(node.callee, Identifier):
+            scope = node.callee.__meta__['scope']
+
+            dispatch_type = node.__meta__['dispatch_type']
+            assert not isinstance(dispatch_type, (TypeUnion, list))
+
+            found = False
+            for symbol in scope.getlist(node.callee.name):
+                if isspecialization(dispatch_type, symbol.type):
+                    if found:
+                        raise InferenceError(f"multiple candidates found to call '{node}'")
+                    found = True
+                    symbol.specializations.add(dispatch_type)
+
+        # TODO: Handle non-identifier callees (i.e. expressions that return a
+        # generic function).
+
+        # TODO: Propagate the specialization requirements to all reachable
+        # scopes the callee's symbol is defined in.
+
+
 def isspecialization(left, right):
     if right.is_generic:
         specializations = list(specialize_with_pattern(right, left, object()))
@@ -1021,9 +1030,9 @@ def isspecialization(left, right):
         return isspecialization(left.codomain, right.codomain)
 
     if isinstance(left, PlaceholderType):
-        left = left.specialization
+        return isspecialization(left.specialization, right)
     if isinstance(right, PlaceholderType):
-        right = right.specialization
+        return isspecialization(left, right.specialization)
 
     return left == right
 

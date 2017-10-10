@@ -3,11 +3,10 @@ from tango.types import TypeUnion
 
 class Symbol(object):
 
-    def __init__(self, name, type=None, code=None, nested=None):
-        self.name       = name
-        self.type       = type
-        self.code       = code
-        self.nested     = nested or {}
+    def __init__(self, name, type=None, code=None):
+        self.name   = name
+        self.type   = type
+        self.code   = code
 
         self.specializations = TypeUnion()
 
@@ -30,8 +29,8 @@ class Scope(object):
         self.id = Scope.next_id
         Scope.next_id += 1
 
-        self.name = name
-        self.parent = parent
+        self.name     = name
+        self.parent   = parent
         self.children = []
 
         # (String) -> Symbol
@@ -71,7 +70,7 @@ class Scope(object):
         return default
 
     def getlist(self, name):
-        return self.symbols[name]
+        return self.symbols.get(name, [])
 
     def __iter__(self):
         return iter(self.symbols)

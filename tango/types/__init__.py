@@ -20,7 +20,7 @@ def modifiers_to_str(modifiers):
         result.append('@shd')
     if modifiers & TM.own:
         result.append('@own')
-    return ' '.join(result) if (result != 0) else '@?'
+    return ' '.join(result) if (modifiers != 0) else '@?'
 
 
 TypeBase.__hash__ = lambda self: 0

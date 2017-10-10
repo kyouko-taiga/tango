@@ -22,8 +22,8 @@ class ScopeBinder(NodeVisitor):
         # For example, consider the following snippet in which `x` declared
         # within the function `f` should be a new variable, but inialized with
         # the value of the constant `x` defined in the global scope:
-        # >>> cst x = 0
-        # >>> fun f() { mut x = x }
+        # >>> let x = 0
+        # >>> function f() { let x = x }
         self.under_declaration = {}
 
     @property
@@ -82,7 +82,7 @@ class ScopeBinder(NodeVisitor):
                 ))
 
         # Bind the symbol to the current node.
-        symbol.code = node
+        symbol.code            = node
         node.__meta__['scope'] = self.current_scope
 
         # Bind the scopes of the container's type annotation and initializer.
@@ -96,8 +96,7 @@ class ScopeBinder(NodeVisitor):
         # only (overloading).
         symbol = self.current_scope[node.name]
         if (symbol.code is not None):
-            if not (isinstance(symbol.code, FunDecl) or
-                    isinstance(symbol.type, FunctionType)):
+            if not (isinstance(symbol.code, FunDecl) or isinstance(symbol.type, FunctionType)):
                 raise DuplicateDeclaration(
                     "{}:{}: duplicate declaration of '{}'".format(
                         node.__meta__['start'][0],
@@ -105,12 +104,16 @@ class ScopeBinder(NodeVisitor):
                         node.name
                     ))
 
+        # If the symbol is already associated with a declaration, we're
+        # visiting one of its overloads, so we create a new symbol.
+        if symbol.code is not None:
+            symbol = Symbol(name=node.name)
+            self.current_scope.add(symbol)
+
         # Bind the symbol to the current node.
-        if symbol.code is None:
-            symbol.code = node
-        else:
-            self.current_scope.add(Symbol(name=node.name, code=node))
-        node.__meta__['scope'] = self.current_scope
+        symbol.code             = node
+        node.__meta__['scope']  = self.current_scope
+        node.__meta__['symbol'] = symbol
 
         # Push a new scope on the stack before visiting the function's
         # declaration, pre-filled with the generic placeholders.

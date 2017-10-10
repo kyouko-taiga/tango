@@ -33,22 +33,19 @@ class NodeTransformer(NodeVisitor):
     def generic_visit(self, node):
         for attr in node._fields:
             value = getattr(node, attr)
-            if isinstance(value, list):
+            if isinstance(value, Node):
+                new_node = self.visit(value)
+                setattr(node, attr, new_node)
+            elif isinstance(value, NodeList):
                 new_values = []
                 for item in value:
                     if isinstance(item, Node):
                         new_value = self.visit(item)
-                        if isinstance(new_value, list):
-                            new_values.extend(value)
-                        elif isinstance(new_value, Node):
+                        if isinstance(new_value, Node):
                             new_values.append(new_value)
-                    else:
-                        new_values.append(item)
-                setattr(node, attr, new_values)
-
-            elif isinstance(value, Node):
-                new_node = self.visit(value)
-                setattr(node, attr, new_node)
+                        elif isinstance(new_value, NodeList):
+                            new_values.extend(new_value)
+                setattr(node, attr, NodeList(new_values))
 
         return node
 
