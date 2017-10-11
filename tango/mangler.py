@@ -9,11 +9,11 @@ class Mangler(ast.NodeTransformer):
     def __init__(self):
         self.module_name = None
 
-    def _visit_ModuleDecl(self, node):
+    def visit_ModuleDecl(self, node):
         self.module_name = node.name
         return self.generic_visit(node)
 
-    def _visit_FunDecl(self, node):
+    def visit_FunDecl(self, node):
         # A function named `main` is a special case that shouldn't be mangled.
         if node.name == 'main':
             return node
@@ -62,8 +62,7 @@ class Mangler(ast.NodeTransformer):
             # associate function declarations to symbols that are used in
             # expressions.
 
-            pass
-            # print(node.__meta__['dispatch_type'])
+            node.name = mangle_function_name(self.module_name, node.name, node.__meta__['type'])
 
         return node
 
