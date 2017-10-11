@@ -336,7 +336,7 @@ def FunSign_init(self, parameters=None, meta=None, **kwargs):
 FunSign._fields  = ('parameters', 'codomain_annotation',)
 FunSign.__init__ = FunSign_init
 FunSign.__str__  = lambda self: '({}) -> {}'.format(
-    ','.join(map(str, self.parameters)), self.codomain_annotation)
+    ', '.join(map(str, self.parameters)), self.codomain_annotation)
 
 
 monkeypatch_init(IntLiteral)

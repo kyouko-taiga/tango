@@ -247,6 +247,34 @@ class ParseTreeTransformer(Transformer_NoRecurse):
                 'end'  : (tree.end_line, tree.end_col),
             })
 
+    def fun_sign(self, tree):
+        index = 0
+        if isinstance(tree.children[index], list):
+            parameters = tree.children[index]
+            index += 1
+        else:
+            parameters = None
+
+        return ast.FunSign(
+            parameters          = parameters,
+            codomain_annotation = tree.children[index],
+            meta                = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
+            })
+
+    def sign_params(self, tree):
+        return tree.children
+
+    def sign_param(self, tree):
+        return ast.FunSignParam(
+            label           = tree.children[0].value,
+            type_annotation = tree.children[1],
+            meta            = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
+            })
+
     def type_modifier(self, tree):
         try:
             return getattr(TM, tree.children[0].value)
