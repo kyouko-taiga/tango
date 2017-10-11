@@ -17,6 +17,10 @@ namespace tango {
         visitor.visit(*this);
     }
 
+    void StructDecl::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
     void ParamDecl::accept(ASTNodeVisitor& visitor) {
         visitor.visit(*this);
     }

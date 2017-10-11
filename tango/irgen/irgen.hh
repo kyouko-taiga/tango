@@ -65,6 +65,7 @@ namespace tango {
         void visit(Block&);
         void visit(ModuleDecl&);
         void visit(PropDecl&);
+        void visit(StructDecl&     node) {}
         void visit(ParamDecl&      node) {}
         void visit(FunDecl&);
         void visit(Assignment&);

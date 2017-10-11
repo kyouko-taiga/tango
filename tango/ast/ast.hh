@@ -98,6 +98,19 @@ namespace tango {
 
     // -----------------------------------------------------------------------
 
+    /// AST node for struct declarations.
+    struct StructDecl: public ASTNode {
+        StructDecl(const std::string& name, ASTNodePtr body)
+            : name(name), body(body) {}
+
+        void accept(ASTNodeVisitor& visitor);
+
+        std::string name;
+        ASTNodePtr  body;
+    };
+
+    // -----------------------------------------------------------------------
+
     /// AST node for function parameters.
     struct ParamDecl: public ASTNode {
         ParamDecl(
@@ -333,6 +346,7 @@ namespace tango {
         virtual void visit(Block&          node) = 0;
         virtual void visit(ModuleDecl&     node) = 0;
         virtual void visit(PropDecl&       node) = 0;
+        virtual void visit(StructDecl&     node) = 0;
         virtual void visit(ParamDecl&      node) = 0;
         virtual void visit(FunDecl&        node) = 0;
         virtual void visit(Assignment&     node) = 0;

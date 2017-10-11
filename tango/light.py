@@ -132,6 +132,36 @@ class ParseTreeTransformer(Transformer_NoRecurse):
                 'end'  : (tree.end_line, tree.end_col),
             })
 
+    def struct_decl(self, tree):
+        index = 1
+        if isinstance(tree.children[index], list) and isinstance(tree.children[index][0], str):
+            placeholders = tree.children[index]
+            index += 1
+        else:
+            placeholders = None
+
+        # TODO: Make sure placeholders don't appear more than once.
+
+        if isinstance(tree.children[index], list) and isinstance(tree.children[index][0], str):
+            conformances = tree.children[index]
+            index += 1
+        else:
+            conformances = None
+
+        # TODO: Make sure conformances don't appear more than once.
+
+        # TODO: Check for unexpected statements.
+
+        return ast.StructDecl(
+            name         = tree.children[0].value,
+            placeholders = placeholders,
+            conformances = conformances,
+            body         = tree.children[index],
+            meta         = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
+            })
+
     def assign_stmt(self, tree):
         return ast.Assignment(
             lvalue   = tree.children[0],

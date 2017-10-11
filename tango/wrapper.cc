@@ -244,6 +244,13 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def_readwrite("initial_value",       &PropDecl::initial_value)
         .def_readwrite("initial_binding",     &PropDecl::initial_binding);
 
+    class_<StructDecl, bases<ASTNode>>(
+        "StructDecl", init<std::string, ASTNodePtr>((
+            arg("name"),
+            arg("body"))))
+        .def_readwrite("name",                &StructDecl::name)
+        .def_readwrite("body",                &StructDecl::body);
+
     class_<ParamDecl, bases<ASTNode>>(
         "ParamDecl", init<std::string, optional<ASTNodePtr>>((
             arg("name"),

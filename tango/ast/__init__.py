@@ -4,7 +4,7 @@ from tango.wrapper import (
     TypeModifier, Operator,
     Node, NodeMetadata, NodeList,
     ModuleDecl, Block,
-    PropDecl, ParamDecl, FunDecl,
+    PropDecl, StructDecl, ParamDecl, FunDecl,
     Assignment, If, Return,
     Argument, Call, BinaryExpr,
     Identifier, TypeIdentifier, FunSignParam, FunSign,
@@ -52,17 +52,21 @@ class NodeTransformer(NodeVisitor):
         return node
 
 
-class PlaceholdersDescriptor(object):
+def make_descriptor(name):
 
-    def __get__(self, obj, objtype=None):
-        if obj is None:
-            return self
-        return obj.__meta__['placeholders']
+    class Descriptor(object):
 
-    def __set__(self, obj, value):
-        if obj is None:
-            return self
-        obj.__meta__['placeholders'] = value
+        def __get__(self, obj, objtype=None):
+            if obj is None:
+                return self
+            return obj.__meta__[name]
+
+        def __set__(self, obj, value):
+            if obj is None:
+                return self
+            obj.__meta__[name] = value
+
+    return Descriptor()
 
 
 # Following are some helper methods and properties we add by monkeypatching
@@ -227,6 +231,30 @@ ParamDecl._fields  = ('name', 'type_annotation',)
 ParamDecl.__str__  = ParamDecl_str
 
 
+StructDecl_initializer = StructDecl.__init__
+def StructDecl_init(self, placeholders=None, conformances=None, meta=None, **kwargs):
+    StructDecl_initializer(self, **kwargs)
+    self.__meta__ = NodeMetadata(**(meta or {}))
+    self.__meta__['placeholders'] = placeholders or []
+    self.__meta__['conformances'] = conformances or []
+
+def StructDecl_str(self):
+    placeholders = (
+        '<' + ', '.join(map(str, self.placeholders)) + '>'
+        if self.placeholders else '')
+    conformances = (
+        ' conforms ' + ', '.join(map(str, self.conformances)) + '>'
+        if self.placeholders else '')
+
+    return f'struct {self.name}{placeholders}{conformances} {self.body}'
+
+StructDecl._fields  = ('name', 'placeholders', 'conformances', 'body',)
+StructDecl.placeholders = make_descriptor('placeholders')
+StructDecl.conformances = make_descriptor('conformances')
+StructDecl.__init__     = StructDecl_init
+StructDecl.__str__      = StructDecl_str
+
+
 FunDecl_initializer = FunDecl.__init__
 def FunDecl_init(self, placeholders=None, parameters=None, meta=None, **kwargs):
     FunDecl_initializer(self, parameters=NodeList(parameters), **kwargs)
@@ -241,7 +269,7 @@ def FunDecl_str(self):
         self.name, placeholders, parameters, codomain, self.body)
 
 FunDecl._fields  = ('name', 'placeholders', 'parameters', 'codomain_annotation', 'body',)
-FunDecl.placeholders = PlaceholdersDescriptor()
+FunDecl.placeholders = make_descriptor('placeholders')
 FunDecl.__init__     = FunDecl_init
 FunDecl.__str__      = FunDecl_str
 
