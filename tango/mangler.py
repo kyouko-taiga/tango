@@ -16,7 +16,7 @@ class Mangler(ast.NodeTransformer):
     def visit_FunDecl(self, node):
         # A function named `main` is a special case that shouldn't be mangled.
         if node.name == 'main':
-            return node
+            return self.generic_visit(node)
 
         # If the function is not generic, it should be emitted as is, and we
         # only have to mangle its name.
