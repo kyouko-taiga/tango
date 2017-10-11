@@ -511,23 +511,31 @@ class TypeSolver(NodeVisitor):
 
             # If the identifier's symbol is associated with a function
             # declaration, we need to make sure we preserve its overloads.
-            # Therefore, unless its a single non-generic type, we need to
-            # dissociate this node's type and that of the symbol's.
+            # Therefore we've to dissociate this node's type and that of the
+            # symbol, unless its a unique non-generic type.
             if isinstance(node.__meta__['scope'][node.name].code, FunDecl):
                 # Create a fresh variable, unless we already did.
                 if node.__meta__['type'] is None:
                     node.__meta__['type'] = type_factory.make_variable()
                 identifer_type = node.__meta__['type']
 
-                # If the symbol's type is a union, we create a new one and
-                # unify it with this node's type variable.
-                if isinstance(result, TypeUnion):
-                    self.environment.unify(identifer_type, TypeUnion(result.types))
+                # FIXME
+                # If the symbol's type is a union, we unify this identifier's
+                # type variable with a copy of that union, so that subsequent
+                # unifications don't alter the original union.
+
+                # If the symbol's type is unique and non-generic, there's no
+                # risk that it'd get altered by unification. Hence we can
+                # unifgy it with this identifier's type variable.
+                if not (isinstance(result, TypeVariable) or result.is_generic):
+                    self.environment.unify(identifer_type, result)
                     return identifer_type
 
-                # If the symbol's type is a type variable or a generic type,
-                # we create a fresh variable.
-                # TODO
+                # Otherwise, we don't unify it with this identifiers's type
+                # variable. This implies that the atual (or specialized)
+                # identifer's type will have to be inferred from a larger
+                # context, such as a function call for instance.
+                return identifer_type
 
             node.__meta__['type'] = result
             return result
@@ -554,14 +562,25 @@ class TypeSolver(NodeVisitor):
         if isinstance(node, Call):
             # First, we get the possible types of the callee.
             callee_type = self.read_type_reference(node.callee)
-            if not isinstance(callee_type, TypeUnion):
-                callee_type = (callee_type,)
+
+            # If the callee's type is a variable, and the callee is a possibly
+            # overloaded identifier, we use instead the type of its symbol.
+            if (isinstance(callee_type, TypeVariable)
+                and isinstance(node.callee, Identifier)
+                and isinstance(node.callee.__meta__['scope'][node.callee.name].code, FunDecl)):
+
+                callee_type = node.callee.__meta__['scope'][node.callee.name].type
+
+            if isinstance(callee_type, TypeUnion):
+                prospects = callee_type
+            else:
+                prospects = (callee_type,)
 
             # For each type the callee can represent, we identify which can be
-            # candidates for a function call.
+            # candidate for a function call.
             candidates = []
             selected_codomains = []
-            for signature in callee_type:
+            for signature in prospects:
                 # We list all function signatures as candidates.
                 if isinstance(signature, FunctionType):
                     candidates.append(signature)
@@ -583,36 +602,36 @@ class TypeSolver(NodeVisitor):
                 # If the signature is a non-function type, it may designate a
                 # call to a type constructor. In that case, all constructors
                 # of the type become candidates.
-                if isinstance(signature, TypeBase):
-                    if 'new' not in signature.members:
-                        continue
-                    constructors = self.environment[signature.members['new']]
+                # if isinstance(signature, TypeBase):
+                #     if 'new' not in signature.members:
+                #         continue
+                #     constructors = self.environment[signature.members['new']]
+                #
+                #     if not isinstance(constructors, TypeUnion):
+                #         constructors = (constructors,)
+                #
+                #     for constructor in constructors:
+                #         # If the constructor is a variable, it means we don't
+                #         # know its signature yet. But we do know its codomain
+                #         # (as it's a constructor), so we add the type to the
+                #         # set of pre-selected codomains.
+                #         if isinstance(constructor, TypeVariable):
+                #             selected_codomains.append(signature)
+                #             continue
+                #
+                #         # Otherwise, we'll build a new signature that doesn't
+                #         # require the first `self` parameter (for automatic
+                #         # self binding), and we'll list it as a candidate.
+                #         assert isinstance(constructor, FunctionType)
+                #         candidates.append(FunctionType(
+                #             domain             = constructor.domain[1:],
+                #             codomain           = constructor.codomain,
+                #             labels             = constructor.labels[1:],
+                #             attributes         = constructor.attributes[1:],
+                #             generic_parameters = constructor.generic_parameters))
 
-                    if not isinstance(constructors, TypeUnion):
-                        constructors = (constructors,)
-
-                    for constructor in constructors:
-                        # If the constructor is a variable, it means we don't
-                        # know its signature yet. But we do know its codomain
-                        # (as it's a constructor), so we add the type to the
-                        # set of pre-selected codomains.
-                        if isinstance(constructor, TypeVariable):
-                            selected_codomains.append(signature)
-                            continue
-
-                        # Otherwise, we'll build a new signature that doesn't
-                        # require the first `self` parameter (for automatic
-                        # self binding), and we'll list it as a candidate.
-                        assert isinstance(constructor, FunctionType)
-                        candidates.append(FunctionType(
-                            domain             = constructor.domain[1:],
-                            codomain           = constructor.codomain,
-                            labels             = constructor.labels[1:],
-                            attributes         = constructor.attributes[1:],
-                            generic_parameters = constructor.generic_parameters))
-
-            # If we can't find any candidate, we return the type codomains we
-            # already selected (if any).
+            # If we can't find any candidate, we return the codomains we've
+            # selected so far (if any).
             if not candidates:
                 if not selected_codomains:
                     raise InferenceError(
@@ -621,14 +640,12 @@ class TypeSolver(NodeVisitor):
 
                 # Avoid creating signletons when there's only one result.
                 if len(selected_codomains) == 1:
-                    result = selected_codomains[0]
+                    return_type = selected_codomains[0]
                 else:
-                    result = TypeUnion(selected_codomains)
-                    selected_candidates = selected_candidates[0]
+                    return_type = TypeUnion(selected_codomains)
 
-                node.__meta__['type'] = result
-                node.__meta__['dispatch_type'] = callee_type
-                return result
+                node.__meta__['type'] = return_type
+                return return_type
 
             # Then, we have to infer the type of each argument.
             argument_types = []
@@ -646,9 +663,9 @@ class TypeSolver(NodeVisitor):
             # types we inferred.
             compatible_candidates = []
             for signature in candidates:
-                assert(isinstance(signature, FunctionType))
+                assert isinstance(signature, FunctionType)
 
-                # Check it the number of parameters match.
+                # Check if the number of parameters matches.
                 if len(signature.domain) != len(node.arguments):
                     continue
 
@@ -708,60 +725,55 @@ class TypeSolver(NodeVisitor):
 
                 selected_candidates.append(signature)
 
-            # If we can't find any candidate, we return the type codomains we
-            # already selected (if any).
-            if not selected_candidates:
-                if not selected_codomains:
-                    raise InferenceError(
-                        "function call do not match any candidate in '{}'".format(
-                            ', '.join(map(str, callee_type))))
+            # If we can't find any candidate, we make sure we at least have
+            # some pre-selected codomains.
+            if not selected_candidates and not selected_codomains:
+                raise InferenceError(
+                    "function call do not match any candidate in '{}'".format(
+                        ', '.join(map(str, callee_type))))
+
+            # We unify the callee node's type with the selected candidates.
+            selected_candidates = TypeUnion(selected_candidates)
+            self.environment.unify(node.callee.__meta__['type'], selected_candidates)
 
             # We unify the argument types of the node with the domain of the
             # selected candidates, to propagate type constraints.
             for i, argument_type in enumerate(argument_types):
-                candidate_domains = TypeUnion()
-                overloads = []
+                domain_candidates = TypeUnion()
                 for candidate in selected_candidates:
                     arg = self.environment[candidate.domain[i]]
                     if isinstance(arg, PlaceholderType):
                         assert arg.specialization is not None, 'unexpected partial specialization'
                         arg = arg.specialization
 
-                    # We don't unify function type arguments when they're used
-                    # as parameters, to preserve their overloads.
-                    if isinstance(arg, FunctionType):
-                        # We don't unify generic specializations neither, as
-                        # it would pollute the type of generic name otherwise.
-                        # FIXME
-                        if not argument_type.is_generic:
-                            overloads.append(arg)
-                    else:
-                        candidate_domains.add(arg)
+                    # FIXME: Will this work with generic types as arguments?
+                    domain_candidates.add(arg)
 
-                if candidate_domains.types:
-                    self.environment.unify(candidate_domains, argument_type)
+                if domain_candidates.types:
+                    self.environment.unify(domain_candidates, argument_type)
 
-            result = TypeUnion()
+            return_type = TypeUnion()
             for candidate in selected_candidates:
                 codomain = candidate.codomain
                 if isinstance(codomain, PlaceholderType):
                     assert codomain.specialization is not None, 'unexpected partial specialization'
                     codomain = codomain.specialization
-                result.add(self.environment[codomain])
+                return_type.add(self.environment[codomain])
 
             for codomain in selected_codomains:
                 # TODO: Check if we may have placeholder types as selected
                 # codomains.
-                result.add(selected_codomains)
+                return_type.add(selected_codomains)
 
             # Avoid creating singletons when there's only one candidate.
-            if len(result) == 1:
-                result = result.types[0]
-                selected_candidates = selected_candidates[0]
+            if len(return_type) == 1:
+                return_type = return_type.types[0]
+            if len(selected_candidates) == 1:
+                selected_candidates = selected_candidates.types[0]
 
-            node.__meta__['type'] = result
+            node.__meta__['type'] = return_type
             node.__meta__['dispatch_type'] = selected_candidates
-            return result
+            return return_type
 
             # TODO: Keep track of what specializations of generic functions
             # (and maybe types?) are expected to be generated.
