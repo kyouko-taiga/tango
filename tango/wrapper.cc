@@ -93,12 +93,23 @@ namespace tango {
     }
 
     std::shared_ptr<StructType> make_struct_type(
-        TypeFactory&       factory,
-        uint8_t            modifiers,
-        const std::string& name,
-        const TypeMap&     members)
+        TypeFactory&        factory,
+        uint8_t             modifiers,
+        const std::string&  name,
+        boost::python::dict members)
     {
-        return factory.make<StructType>(modifiers, name, members);
+        using namespace boost::python;
+
+        TypeMap cc_members;
+
+        auto keys = members.keys();
+        std::size_t keys_lenght = extract<std::size_t>(keys.attr("__len__")());
+        for (std::size_t i = 0; i < keys_lenght; ++i) {
+            auto member = members[keys[i]];
+            cc_members[extract<std::string>(keys[i])] = extract<TypePtr>(member);
+        }
+
+        return factory.make<StructType>(modifiers, name, cc_members);
     }
 
 } // namespace tango
@@ -198,7 +209,7 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def("make_struct", &make_struct_type,
             (arg("modifiers")=0,
              arg("name"),
-             arg("members")=TypeMap()));
+             arg("members")=dict()));
 
         // -----------------------------------------------------------------------
 

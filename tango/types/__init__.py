@@ -127,7 +127,9 @@ def TypeFactory_updating(self, ty, **kwargs):
         return self.make_struct(**{
             'name'     : kwargs.get('name',      ty.name),
             'modifiers': kwargs.get('modifiers', ty.modifiers),
-            'members'  : kwargs.get('members',   ty.members),
+            'members'  : kwargs.get('members',   {
+                name: ty.members[name] for name in ty.members.keys()
+            }),
         })
 
     assert False, 'cannot update instances of {}'.format(ty.__class__.__name__)
