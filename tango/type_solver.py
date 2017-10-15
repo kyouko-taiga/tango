@@ -290,9 +290,9 @@ class TypeSolver(NodeVisitor):
         # A simple substitution map: (TypeVariable) -> Type.
         self.environment = Substitution()
 
-        # Enum case declarations typically don't explicitly specify their
-        # "return" type, so we need a way to keep track of their type as we
-        # visit them.
+        # In nominal types declarations (e.g. structs), `Self` should act as a
+        # placeholder for the type under declaration. This stack lets us bind
+        # such placeholders.
         self.current_self_type = []
 
     def visit_ModuleDecl(self, node):
@@ -473,6 +473,12 @@ class TypeSolver(NodeVisitor):
             node.__meta__['scope'][node.name].type = type_name
             self.environment.unify(varof(node), type_name)
 
+            # Bind the `Self` placeholder.
+            inner_scope['Self'].type = type_name
+            self.environment.unify(
+                type_factory.make_variable(id=(inner_scope, 'Self')),
+                type_name)
+
         self.visit(node.body)
 
         node.__meta__['type'] = inferred_type
@@ -567,24 +573,63 @@ class TypeSolver(NodeVisitor):
             node.__meta__['type'] = result
             return result
 
-        # If the node is a function signature, we should build a FunctionType.
-        if isinstance(node, FunSign):
-            domain = []
-            labels = []
-            for parameter in node.parameters:
-                type_annotation = self.read_type_reference(parameter.type_annotation)
-                domain.append(type_annotation)
-                labels.append(parameter.label)
+        if isinstance(node, Select):
+            # First, we need to infer the type of the owner.
+            owner_types = self.read_type_reference(node.owner)
+            if isinstance(owner_types, TypeUnion):
+                prospects = owner_types
+            else:
+                prospects = (owner_types,)
 
-            codomain = self.read_type_reference(node.codomain_annotation)
+            candidates = []
+            for owner_type in prospects:
+                # If the owner's type is a type variable, we have no choice
+                # but to return another unrelated type variable.
+                if isinstance(owner_type, TypeVariable):
+                    candidates.append(type_factory.make_variable())
+                    continue
 
-            function_type = type_factory.make_function(
-                domain     = domain,
-                labels     = labels,
-                codomain   = codomain)
+                # If the owner's type isn't a type name, it means the owner is
+                # a type instance, rather than a reference to the type itself.
+                # If the member is a function, we'll have to perform automatic
+                # self binding.
+                as_instance_member = not isinstance(owner_type, TypeName)
+                if not as_instance_member:
+                    owner_type = owner_type.type
 
-            node.__meta__['type'] = function_type
-            return function_type
+                # If the owner's type contains a member named after the
+                # select's member, we can add the latter as candidate.
+                if (isinstance(owner_type, StructType)
+                    and node.member.name in owner_type.members.keys()):
+
+                    members = self.environment[owner_type.members[node.member.name]]
+                    if not isinstance(members, TypeUnion):
+                        members = (members,)
+
+                    for member in members:
+                        if as_instance_member and isinstance(member, FunctionType):
+                            candidates.append(type_factory.make_function(
+                                domain   = list(member.domain)[1:],
+                                labels   = list(member.labels)[1:],
+                                codomain = member.codomain))
+                        else:
+                            candidates.append(member)
+
+            if len(candidates) == 0:
+                raise InferenceError(
+                    f"no candidates in {owner_types} has a member '{node.member.name}'")
+
+            # Avoid creating signletons when there's only one result.
+            if len(candidates) == 1:
+                result = candidates[0]
+            else:
+                result = TypeUnion(candidates)
+
+            node.__meta__['type'] = result
+            return result
+
+            # TODO: Handle genericity.
+
 
         if isinstance(node, Call):
             # First, we get the possible types of the callee.
@@ -812,6 +857,25 @@ class TypeSolver(NodeVisitor):
             # argument. Depending on the definitive syntax and restrictions
             # we'll adopt for variadics parameters, we might have to check
             # multiple configurations of argument groups.
+
+        if isinstance(node, FunSign):
+            # If the node is a function signature, we build a FunctionType.
+            domain = []
+            labels = []
+            for parameter in node.parameters:
+                type_annotation = self.read_type_reference(parameter.type_annotation)
+                domain.append(type_annotation)
+                labels.append(parameter.label)
+
+            codomain = self.read_type_reference(node.codomain_annotation)
+
+            function_type = type_factory.make_function(
+                domain     = domain,
+                labels     = labels,
+                codomain   = codomain)
+
+            node.__meta__['type'] = function_type
+            return function_type
 
         assert False, "no type inference for node '{}'".format(node.__class__.__name__)
 

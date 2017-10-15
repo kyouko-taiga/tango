@@ -196,6 +196,14 @@ class ScopeBinder(NodeVisitor):
         self.generic_visit(node.body)
         self.scopes.pop()
 
+    def visit_Select(self, node):
+        # Bind the scopes of the symbols in the owning expression.
+        self.visit(node.owner)
+
+        # Unfortunately, we can't bind the symbols of a select expression yet,
+        # because it will depend on the kind of declaration the owner's
+        # identifier is refencing.
+
     def visit_Identifier(self, node):
         # If we're currently visiting the declaration of the identifier, we
         # should necessarily bind it to an enclosing scope.
