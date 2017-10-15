@@ -224,8 +224,8 @@ class Substitution(object):
 
         if isinstance(t, StructType):
             memo[t] = t
-            for name, member in t.members:
-                t.members[name] = self.deepwalk(member, memo)
+            for name in t.members.keys():
+                t.members[name] = self.deepwalk(t.members[name], memo)
             return t
 
             # FIXME
@@ -364,6 +364,7 @@ class TypeSolver(NodeVisitor):
 
         # Finally, we should unify the inferred type with the type variable
         # corresponding to the symbol under declaration.
+        node.__meta__['scope'][node.name].type = inferred_type
         self.environment.unify(varof(node), inferred_type)
 
     def visit_FunDecl(self, node):
@@ -454,9 +455,27 @@ class TypeSolver(NodeVisitor):
 
     def visit_StructDecl(self, node):
         # We create a new nomal type (unless we already did).
-        walked = self.environment[varof(node)]
-        if isinstance(walked, TypeVariable):
-            pass
+        inferred_type = self.environment[varof(node)]
+        if isinstance(inferred_type, TypeVariable):
+            # Define a helper that retrieves the type of an inner symbol.
+            inner_scope = node.body.__meta__['scope']
+            def member_type(name):
+                return self.environment[type_factory.make_variable(id=(inner_scope, name))]
+
+            # Create the struct type.
+            inferred_type = type_factory.make_struct(
+                name    = node.name,
+                members = {
+                    name: member_type(name) for name in node.body.__meta__['symbols']
+                })
+            type_name = type_factory.make_name(name=node.name, type=inferred_type)
+
+            node.__meta__['scope'][node.name].type = type_name
+            self.environment.unify(varof(node), type_name)
+
+        self.visit(node.body)
+
+        node.__meta__['type'] = inferred_type
 
     def visit_Assignment(self, node):
         # NOTE: For now, we assume lvalues to always represent identifiers.

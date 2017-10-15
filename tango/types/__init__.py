@@ -60,6 +60,9 @@ TypeUnion.__len__  = TypeUnion_len
 TypeUnion.__str__  = TypeUnion_str
 
 
+TypeName.__str__ = lambda self: f'TypeName<{self.type}>'
+
+
 def TypeVariable_str(self):
     modifiers = modifiers_to_str(self.modifiers)
     if modifiers:
