@@ -53,6 +53,10 @@ namespace tango {
         visitor.visit(*this);
     }
 
+    void Select::accept(ASTNodeVisitor& visitor) {
+        visitor.visit(*this);
+    }
+
     void Identifier::accept(ASTNodeVisitor& visitor) {
         visitor.visit(*this);
     }

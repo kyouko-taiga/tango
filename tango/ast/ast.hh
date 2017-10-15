@@ -241,6 +241,19 @@ namespace tango {
 
     // -----------------------------------------------------------------------
 
+    /// AST node for select expressions.
+    struct Select: public ASTNode {
+        Select(ASTNodePtr owner, ASTNodePtr member)
+            : owner(owner), member(member) {}
+
+        void accept(ASTNodeVisitor& visitor);
+
+        ASTNodePtr owner;
+        ASTNodePtr member;
+    };
+
+    // -----------------------------------------------------------------------
+
     /// AST node for identifiers.
     struct Identifier: public ASTNode {
         Identifier(const std::string& name)
@@ -355,6 +368,7 @@ namespace tango {
         virtual void visit(BinaryExpr&     node) = 0;
         virtual void visit(Argument&       node) = 0;
         virtual void visit(Call&           node) = 0;
+        virtual void visit(Select&         node) = 0;
         virtual void visit(Identifier&     node) = 0;
         virtual void visit(TypeIdentifier& node) = 0;
         virtual void visit(FunSignParam&   node) = 0;

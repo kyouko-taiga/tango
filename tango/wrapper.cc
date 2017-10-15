@@ -329,6 +329,13 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def_readwrite("callee",              &Call::callee)
         .def_readwrite("arguments",           &Call::arguments);
 
+    class_<Select, bases<ASTNode>>(
+        "Select", init<ASTNodePtr, ASTNodePtr>((
+            arg("owner"),
+            arg("member"))))
+        .def_readwrite("owner",               &Select::owner)
+        .def_readwrite("member",              &Select::member);
+
     class_<Identifier, bases<ASTNode>>(
         "Identifier", init<std::string>((arg("name"))))
         .def_readwrite("name",                &Identifier::name);

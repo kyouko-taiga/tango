@@ -6,7 +6,7 @@ from tango.wrapper import (
     ModuleDecl, Block,
     PropDecl, StructDecl, ParamDecl, FunDecl,
     Assignment, If, Return,
-    Argument, Call, BinaryExpr,
+    Argument, Call, Select, BinaryExpr,
     Identifier, TypeIdentifier, FunSignParam, FunSign,
     IntLiteral, DoubleLiteral, StringLiteral, BoolLiteral)
 
@@ -327,6 +327,11 @@ def Call_str(self):
 Call._fields  = ('callee', 'arguments',)
 Call.__init__ = Call_init
 Call.__str__  = Call_str
+
+
+monkeypatch_init(Select)
+Select._fields = ('owner', 'member',)
+Select.__str__  = lambda self: f'{self.owner}.{self.member}'
 
 
 monkeypatch_init(Identifier)
