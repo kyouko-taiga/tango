@@ -7,7 +7,7 @@ from .scope import Scope
 from .types import (
     TypeModifier as TM,
     TypeBase, TypeName, TypeUnion, TypeVariable,
-    PlaceholderType, BuiltinType, NominalType, FunctionType,
+    PlaceholderType, FunctionType, StructType,
     type_factory)
 
 
@@ -137,7 +137,7 @@ class Substitution(object):
         elif isinstance(b, TypeUnion) and isinstance(a, TypeBase):
             self.unify(b, a, memo)
 
-        elif isinstance(a, NominalType) and isinstance(b, NominalType):
+        elif isinstance(a, StructType) and isinstance(b, StructType):
             if (a.name != b.name) or (set(a.members.keys()) ^ set(b.members.keys())):
                 raise InferenceError("type '{}' does not match '{}'".format(a, b))
             for it in a.members.keys():
@@ -183,7 +183,7 @@ class Substitution(object):
         if isinstance(b, TypeUnion):
             return self.matches(b, a)
 
-        if isinstance(a, NominalType) and isinstance(b, NominalType):
+        if isinstance(a, StructType) and isinstance(b, StructType):
             return (a.modifiers == b.modifiers
                 and a.name == b.name
                 and not (set(a.members.keys()) ^ set(b.members.keys()))
@@ -222,11 +222,13 @@ class Substitution(object):
                 result = result.types[0]
             return result
 
-        if isinstance(t, BuiltinType):
+        if isinstance(t, StructType):
             memo[t] = t
             for name, member in t.members:
                 t.members[name] = self.deepwalk(member, memo)
             return t
+
+            # FIXME
 
         if isinstance(t, FunctionType):
             return type_factory.make_function(
@@ -449,6 +451,12 @@ class TypeSolver(NodeVisitor):
         # We associate the set of overloads to the symbol, so that type
         # inference may consider other candidates.
         self.environment[varof(node)] = overload_set
+
+    def visit_StructDecl(self, node):
+        # We create a new nomal type (unless we already did).
+        walked = self.environment[varof(node)]
+        if isinstance(walked, TypeVariable):
+            pass
 
     def visit_Assignment(self, node):
         # NOTE: For now, we assume lvalues to always represent identifiers.

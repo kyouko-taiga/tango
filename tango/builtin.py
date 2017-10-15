@@ -4,13 +4,13 @@ from .types import type_factory, TypeName
 
 
 builtin_module = Module(name = 'Tango')
-Type           = type_factory.make_builtin(modifiers=0, name='Type')
-Nothing        = type_factory.make_builtin(modifiers=0, name='Nothing')
-Anything       = type_factory.make_builtin(modifiers=0, name='Anything')
-Int            = type_factory.make_builtin(modifiers=0, name='Int')
-Double         = type_factory.make_builtin(modifiers=0, name='Double')
-String         = type_factory.make_builtin(modifiers=0, name='String')
-Bool           = type_factory.make_builtin(modifiers=0, name='Bool')
+Type           = type_factory.make_struct(modifiers=0, name='Type')
+Nothing        = type_factory.make_struct(modifiers=0, name='Nothing')
+Anything       = type_factory.make_struct(modifiers=0, name='Anything')
+Int            = type_factory.make_struct(modifiers=0, name='Int')
+Double         = type_factory.make_struct(modifiers=0, name='Double')
+String         = type_factory.make_struct(modifiers=0, name='String')
+Bool           = type_factory.make_struct(modifiers=0, name='Bool')
 
 # Int.members = {
 #     'new': TypeUnion((

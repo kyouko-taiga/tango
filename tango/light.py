@@ -149,8 +149,8 @@ class ParseTreeTransformer(Transformer_NoRecurse):
             conformances = None
 
         # TODO: Make sure conformances don't appear more than once.
-
         # TODO: Check for unexpected statements.
+        # TODO: Disallow struct declarations for builtin types (e.g. Int).
 
         return ast.StructDecl(
             name         = tree.children[0].value,

@@ -30,6 +30,7 @@ namespace tango {
         tc_function    = 1 << 5,
         tc_nominal     = 1 << 6,
         tc_builtin     = 1 << 7,
+        tc_struct      = 1 << 8,
     };
 
     // Type identifier attributes.
@@ -200,8 +201,8 @@ namespace tango {
 
     struct NominalType: public TypeBase {
         NominalType(const NominalType&) = delete;
-        NominalType(uint8_t modifiers, const std::string& name)
-            : TypeBase(modifiers), name(name) {}
+        NominalType(uint8_t modifiers, const std::string& name, const TypeMap& members)
+            : TypeBase(modifiers), name(name), members(members) {}
 
         virtual ~NominalType() {}
 
@@ -213,12 +214,12 @@ namespace tango {
 
     // -----------------------------------------------------------------------
 
-    struct BuiltinType: public NominalType {
-        BuiltinType(const BuiltinType&) = delete;
-        BuiltinType(uint8_t modifiers, const std::string& name)
-            : NominalType(modifiers, name) {}
+    struct StructType: public NominalType {
+        StructType(const StructType&) = delete;
+        StructType(uint8_t modifiers, const std::string& name, const TypeMap& members)
+            : NominalType(modifiers, name, members) {}
 
-        bool isa(TypeClass tc) const { return tc & (tc_nominal | tc_builtin); }
+        bool isa(TypeClass tc) const { return tc & tc_struct; }
 
         llvm::Type* llvm_raw_type(llvm::LLVMContext&) const;
     };

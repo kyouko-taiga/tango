@@ -146,14 +146,54 @@ class ScopeBinder(NodeVisitor):
         # current scope.
         for symbol in node.body.__meta__['symbols']:
             # We could detect whether a symbol collides with a the name of a
-            # parameter or generic parameter here. But letting the scope
-            # binder find about the error while visiting the duplicate
+            # parameter or generic placeholder here. But letting the scope
+            # binder find about this error later while visiting the duplicate
             # declaration makes for better error messages.
             if symbol not in self.current_scope:
                 self.current_scope.add(Symbol(name=symbol))
 
         # Finally, visit the function's body.
         self.visit(node.body)
+        self.scopes.pop()
+
+    def visit_StructDecl(self, node):
+        # Make sure the type's identifier wasn't already declared.
+        symbol = self.current_scope[node.name]
+        if symbol.code is not None:
+            raise DuplicateDeclaration(
+                "{}:{}: duplicate declaration of '{}'".format(
+                    node.__meta__['start'][0],
+                    node.__meta__['start'][1],
+                    node.name
+                ))
+
+        # Bind the symbol to the current node.
+        symbol.code            = node
+        node.__meta__['scope'] = self.current_scope
+
+        # Push a new scope on the stack before visiting the type's body, pre-
+        # filled with the symbols it declares, as well as those declared as
+        # its generic placeholders.
+        self.push_scope(name=node.name)
+        node.body.__meta__['scope'] = self.current_scope
+
+        for placeholder in node.placeholders:
+            self.current_scope.add(Symbol(name=placeholder))
+
+        for symbol in node.body.__meta__['symbols']:
+            # We could detect whether a symbol collides with a the name of a
+            # parameter or generic placeholder here. But letting the scope
+            # binder find about this error later while visiting the duplicate
+            # declaration makes for better error messages.
+            if symbol not in self.current_scope:
+                self.current_scope.add(Symbol(name=symbol))
+
+        # Introduces a `Self` symbol in the type's scope, to bind references
+        # to the `Self` placeholder.
+        self.current_scope.add(Symbol(name='Self', code=node))
+
+        # Visit the type's declaration.
+        self.generic_visit(node.body)
         self.scopes.pop()
 
     def visit_Identifier(self, node):
@@ -206,7 +246,7 @@ class SymbolsExtractor(NodeVisitor):
     '''Annotate every Block node with the symbols it declares.'''
 
     scope_opening_node_classes = (Block, If,)
-    symbol_node_classes        = (PropDecl, FunDecl,)
+    symbol_node_classes        = (PropDecl, FunDecl, StructDecl,)
 
     def __init__(self):
         self.blocks = []

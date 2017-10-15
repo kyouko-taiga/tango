@@ -92,12 +92,13 @@ namespace tango {
         return factory.make<FunctionType>(modifiers, cc_domain, cc_labels, codomain);
     }
 
-    std::shared_ptr<BuiltinType> make_builtin_type(
+    std::shared_ptr<StructType> make_struct_type(
         TypeFactory&       factory,
         uint8_t            modifiers,
-        const std::string& name)
+        const std::string& name,
+        const TypeMap&     members)
     {
-        return factory.make<BuiltinType>(modifiers, name);
+        return factory.make<StructType>(modifiers, name, members);
     }
 
 } // namespace tango
@@ -166,8 +167,8 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def_readonly("name",                 &NominalType::name)
         .def_readonly("members",              &NominalType::members);
 
-    class_<BuiltinType, std::shared_ptr<BuiltinType>, bases<NominalType>, boost::noncopyable>(
-        "BuiltinType", no_init);
+    class_<StructType, std::shared_ptr<StructType>, bases<NominalType>, boost::noncopyable>(
+        "StructType", no_init);
 
     class_<TypeFactory>("TypeFactory")
         // def make_name(self, name, type)
@@ -193,10 +194,11 @@ BOOST_PYTHON_MODULE(wrapper) {
              arg("labels")=list(),
              arg("codomain")))
 
-        // def make_builtin(self, modifiers=0, name)
-        .def("make_builtin", &make_builtin_type,
+        // def make_struct(self, modifiers=0, name, members={})
+        .def("make_struct", &make_struct_type,
             (arg("modifiers")=0,
-             arg("name")));
+             arg("name"),
+             arg("members")=TypeMap()));
 
         // -----------------------------------------------------------------------
 

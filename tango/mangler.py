@@ -100,7 +100,7 @@ class Specializer(ast.NodeTransformer):
                 codomain  = self.specialize_type(type_.codomain),
                 labels    = list(type_.labels))
 
-        assert isinstance(generic_type, types.BuiltinType)
+        assert isinstance(generic_type, types.StructType)
         return generic_type
 
         # TODO: Handle structural types
@@ -141,7 +141,7 @@ def mangle_type(type_):
     # Mangle the type modifiers.
     result += hex(type_.modifiers)[2:]
 
-    if isinstance(type_, types.BuiltinType):
+    if isinstance(type_, types.StructType):
         result += type_.name[0].lower()
 
     # TODO: Handle function and custom types.

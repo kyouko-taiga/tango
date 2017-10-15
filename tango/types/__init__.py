@@ -1,6 +1,6 @@
 from tango.wrapper import (
     TypeModifier, TypeFactory, TypeBase, TypeName, TypeUnion, TypeVariable,
-    PlaceholderType, FunctionType, NominalType, BuiltinType)
+    PlaceholderType, FunctionType, StructType)
 
 
 TM           = TypeModifier
@@ -96,14 +96,14 @@ FunctionType.__str__  = FunctionType_str
 FunctionType.__repr__ = FunctionType_str
 
 
-def NominalType_str(self):
+def StructType_str(self):
     modifiers = modifiers_to_str(self.modifiers)
     if modifiers:
         return modifiers + ' ' + self.name
     return self.name
 
-NominalType.__str__  = NominalType_str
-NominalType.__repr__ = NominalType_str
+StructType.__str__  = StructType_str
+StructType.__repr__ = StructType_str
 
 
 def TypeFactory_updating(self, ty, **kwargs):
@@ -115,18 +115,19 @@ def TypeFactory_updating(self, ty, **kwargs):
             modifiers = kwargs.get('modifiers', ty.modifiers),
             id        = ty.id)
 
-    if isinstance(ty, BuiltinType):
-        return self.make_builtin(**{
-            'name'     : kwargs.get('name',      ty.name),
-            'modifiers': kwargs.get('modifiers', ty.modifiers),
-        })
-
     if isinstance(ty, FunctionType):
         return self.make_function(**{
             'domain'   : kwargs.get('domain',    list(ty.domain)),
             'labels'   : kwargs.get('labels',    list(ty.labels)),
             'codomain' : kwargs.get('codomain',  ty.codomain),
             'modifiers': kwargs.get('modifiers', ty.modifiers),
+        })
+
+    if isinstance(ty, StructType):
+        return self.make_struct(**{
+            'name'     : kwargs.get('name',      ty.name),
+            'modifiers': kwargs.get('modifiers', ty.modifiers),
+            'members'  : kwargs.get('members',   ty.members),
         })
 
     assert False, 'cannot update instances of {}'.format(ty.__class__.__name__)

@@ -37,8 +37,33 @@ namespace tango {
     }
 
     bool operator==(const NominalType& lhs, const NominalType& rhs) {
-        return (lhs.modifiers == rhs.modifiers) && (lhs.name == rhs.name);
-        // FIXME
+
+        // NOTE: It shouldn't be possible for this function to go on infinite
+        // recursion, because it should only be used by `deep_equals`, when
+        // the type factory checks whether or not it already registered an
+        // equivalent type. And at that time, it isn't possible for the type
+        // under construction to already reference itself. Once the type is
+        // created, we'll never have to use this function again, as we'll rely
+        // on pointer equality instead.
+
+        bool result = (lhs.modifiers == rhs.modifiers)
+                   && (lhs.name == rhs.name)
+                   && (lhs.members.size() == rhs.members.size());
+
+        // Avoid further recursion if we already know the types don't match.
+        if (!result) {
+            return result;
+        }
+
+        // Recursively check for members equality.
+        for (auto lit: lhs.members) {
+            auto rit = rhs.members.find(lit.first);
+            if ((rit == rhs.members.end()) || (lit.second != rit->second)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     bool deep_equals(const TypeBase& lhs, const TypeBase& rhs) {
@@ -121,7 +146,7 @@ namespace tango {
 
     // -----------------------------------------------------------------------
 
-    llvm::Type* BuiltinType::llvm_raw_type(llvm::LLVMContext& ctx) const {
+    llvm::Type* StructType::llvm_raw_type(llvm::LLVMContext& ctx) const {
         if (this->name == "Int") {
             return llvm::Type::getInt64Ty(ctx);
         } else if (this->name == "Bool") {
