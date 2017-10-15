@@ -218,6 +218,15 @@ class ParseTreeTransformer(Transformer_NoRecurse):
                 'end'  : (tree.end_line, tree.end_col),
             })
 
+    def select_expr(self, tree):
+        return ast.Select(
+            owner  = tree.children[0],
+            member = tree.children[1],
+            meta   = {
+                'start': (tree.line, tree.column),
+                'end'  : (tree.end_line, tree.end_col),
+            })
+
     def arguments(self, tree):
         return tree.children
 

@@ -62,7 +62,7 @@ _stmt_end       : _NEWLINE | ";"
 
 ?atom_expr      : atom_expr "(" [arguments] ")"     -> call_expr
                 | atom_expr "[" [arguments] "]"     -> subscript_expr
-                | atom_expr "." NAME                -> select_expr
+                | atom_expr "." ident               -> select_expr
                 | "." atom_expr                     -> select_expr
                 | "(" [arguments] ")"               -> tuple_literal
                 | "[" [array_items] "]"             -> array_literal

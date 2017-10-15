@@ -74,6 +74,7 @@ namespace tango {
         void visit(BinaryExpr&     node) {}
         void visit(Argument&       node) {}
         void visit(Call&);
+        void visit(Select&         node) {}
         void visit(Identifier&);
         void visit(TypeIdentifier& node) {}
         void visit(FunSignParam&   node) {}
