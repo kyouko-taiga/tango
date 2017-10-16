@@ -111,7 +111,9 @@ StructType.__repr__ = StructType_str
 
 def TypeFactory_updating(self, ty, **kwargs):
     if isinstance(ty, TypeVariable):
-        return self.make_variable(modifiers=kwargs.get('modifiers', ty.modifiers))
+        return self.make_variable(
+            modifiers = kwargs.get('modifiers', ty.modifiers),
+            id        = ty.id)
 
     if isinstance(ty, PlaceholderType):
         return self.make_placeholder(

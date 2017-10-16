@@ -13,7 +13,8 @@ namespace tango {
     }
 
     bool operator==(const TypeVariable& lhs, const TypeVariable& rhs) {
-        return lhs.id == rhs.id;
+        return (lhs.modifiers == rhs.modifiers)
+            && (lhs.id == rhs.id);
     }
 
     bool operator==(const PlaceholderType& lhs, const PlaceholderType& rhs) {
