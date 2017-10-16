@@ -678,33 +678,30 @@ class TypeSolver(NodeVisitor):
                 # If the signature is a non-function type, it may designate a
                 # call to a type constructor. In that case, all constructors
                 # of the type become candidates.
-                # if isinstance(signature, TypeBase):
-                #     if 'new' not in signature.members:
-                #         continue
-                #     constructors = self.environment[signature.members['new']]
-                #
-                #     if not isinstance(constructors, TypeUnion):
-                #         constructors = (constructors,)
-                #
-                #     for constructor in constructors:
-                #         # If the constructor is a variable, it means we don't
-                #         # know its signature yet. But we do know its codomain
-                #         # (as it's a constructor), so we add the type to the
-                #         # set of pre-selected codomains.
-                #         if isinstance(constructor, TypeVariable):
-                #             selected_codomains.append(signature)
-                #             continue
-                #
-                #         # Otherwise, we'll build a new signature that doesn't
-                #         # require the first `self` parameter (for automatic
-                #         # self binding), and we'll list it as a candidate.
-                #         assert isinstance(constructor, FunctionType)
-                #         candidates.append(FunctionType(
-                #             domain             = constructor.domain[1:],
-                #             codomain           = constructor.codomain,
-                #             labels             = constructor.labels[1:],
-                #             attributes         = constructor.attributes[1:],
-                #             generic_parameters = constructor.generic_parameters))
+                if isinstance(signature, StructType):
+                    if '__new__' not in signature.members:
+                        continue
+
+                    constructors = self.environment[signature.members['__new__']]
+                    if not isinstance(constructors, TypeUnion):
+                        constructors = (constructors,)
+
+                    for constructor in constructors:
+                        # If the constructor is a variable, we may not know
+                        # its signature yet, but we know its codomain anyway,
+                        # so we can add it to the pre-selected codomains.
+                        if isinstance(constructor, TypeVariable):
+                            selected_codomains.append(signature)
+
+                        # Otherwise, we build a new signature `(...) -> T`
+                        # that represents the constructor.
+                        assert isinstance(constructor, FunctionType)
+                        candidates.append(type_factory.make_function(
+                            domain   = list(constructor.domain)[1:],
+                            labels   = list(constructor.labels)[1:],
+                            codomain = signature))
+
+                        # TODO: Generic placeholders.
 
             # If we can't find any candidate, we return the codomains we've
             # selected so far (if any).
