@@ -189,8 +189,8 @@ class Substitution(object):
             return self.matches(b, a)
 
         if isinstance(a, StructType) and isinstance(b, StructType):
-            return (a.modifiers == b.modifiers
-                and a.name == b.name
+            return ((a.modifiers == b.modifiers)
+                and (a.name == b.name)
                 and not (set(a.members.keys()) ^ set(b.members.keys()))
                 and all(self.matches(a.members[it], b.members[it]) for it in a.members.keys()))
 
@@ -356,10 +356,10 @@ class TypeSolver(NodeVisitor):
 
         # If there's an initial value, we infer its type.
         if node.initial_value:
-            rvalue_type = self.read_type_instance(node.initial_value)
+            rvalue_type = self.analyse(node.initial_value)
             if node.type_annotation:
                 inferred_type = self.unify_assignment(
-                    lvalue_type = self.read_type_reference(node.type_annotation),
+                    lvalue_type = self.analyse_type_expression(node.type_annotation),
                     op          = node.initial_binding,
                     rvalue_type = rvalue_type)
             else:
@@ -371,7 +371,7 @@ class TypeSolver(NodeVisitor):
         # If there isn't an initializing value, we should simply use the type
         # annotation.
         else:
-            inferred_type = self.read_type_reference(node.type_annotation)
+            inferred_type = self.analyse_type_expression(node.type_annotation)
 
         # Finally, we should unify the inferred type with the type variable
         # corresponding to the symbol under declaration.
@@ -395,7 +395,7 @@ class TypeSolver(NodeVisitor):
         parameter_types = []
         parameter_names = []
         for parameter in node.parameters:
-            type_annotation = self.read_type_reference(parameter.type_annotation)
+            type_annotation = self.analyse_type_expression(parameter.type_annotation)
 
             # We should unify the type we read from the annotations with the
             # type variable corresponding to the parameter name, so that it'll
@@ -409,7 +409,7 @@ class TypeSolver(NodeVisitor):
 
         # The type of the codomain is either a type identifier, or Nothing.
         if node.codomain_annotation:
-            codomain = self.read_type_reference(node.codomain_annotation)
+            codomain = self.analyse_type_expression(node.codomain_annotation)
         else:
             codomain = Nothing
 
@@ -500,7 +500,7 @@ class TypeSolver(NodeVisitor):
     def visit_Assignment(self, node):
         # We first infer the types of the lvalue and rvalue.
         lvalue_type = self.analyse(node.lvalue)
-        rvalue_type = self.read_type_instance(node.rvalue)
+        rvalue_type = self.analyse(node.rvalue)
 
         # We unify both of those types according to the semantics of the
         # binding operator.
@@ -516,7 +516,7 @@ class TypeSolver(NodeVisitor):
 
     def visit_If(self, node):
         # We infer the type of the node's condition.
-        condition_type = self.read_type_instance(node.condition)
+        condition_type = self.analyse(node.condition)
 
         # The condition of an if expressions should always be a boolean, so we
         # can unify the type of the node's condition with Bool.
@@ -529,57 +529,33 @@ class TypeSolver(NodeVisitor):
             self.visit(node.else_block)
 
     def visit_Return(self, node):
-        self.read_type_instance(node.value)
+        self.analyse(node.value)
 
     def analyse(self, node):
-        # If the node is a dummy TypeNode, we should simply return the types
-        # it represents.
-        # if isinstance(node, TypeSolver.TypeNode):
-        #     return node.type
-
         # If the node is a simple literal, its type should have been inferred
         # by the parser already.
         if isinstance(node, (IntLiteral, DoubleLiteral, StringLiteral, BoolLiteral)):
+            return type_factory.make_variants(node.__meta__['type'])
+
+        # If the node is an identifier ...
+        if isinstance(node, Identifier):
+            # Create a fresh variable, unless we already did.
+            if node.__meta__['type'] is None:
+                node.__meta__['type'] = self.environment[varof(node)]
+            if isinstance(node.__meta__['type'], TypeName):
+                # FIXME: If the identifier isn't used a callee or as the owner
+                # of a select expression, we should return `Type` here, rather
+                # than the referred type. This might be tricky to ensure
+                # thought, which is why we may consider adopting Swift's
+                # `SomeType.self` syntax.
+                node.__meta__['type'] = node.__meta__['type'].type
+
             return node.__meta__['type']
 
-        if isinstance(node, Identifier):
-            # We get the identifier's type from the environment.
-            result = self.environment[varof(node)]
-
-            # If the identifier's symbol is associated with a function
-            # declaration, we need to make sure we preserve its overloads.
-            # Therefore we've to dissociate this node's type and that of the
-            # symbol, unless its a unique non-generic type.
-            if isinstance(node.__meta__['scope'][node.name].code, FunDecl):
-                # Create a fresh variable, unless we already did.
-                if node.__meta__['type'] is None:
-                    node.__meta__['type'] = type_factory.make_variable()
-                identifer_type = node.__meta__['type']
-
-                # FIXME
-                # If the symbol's type is a union, we unify this identifier's
-                # type variable with a copy of that union, so that subsequent
-                # unifications don't alter the original union.
-
-                # If the symbol's type is unique and non-generic, there's no
-                # risk that it'd get altered by unification. Hence we can
-                # unifgy it with this identifier's type variable.
-                if not (isinstance(result, TypeVariable) or result.is_generic):
-                    self.environment.unify(identifer_type, result)
-                    return identifer_type
-
-                # Otherwise, we don't unify it with this identifiers's type
-                # variable. This implies that the atual (or specialized)
-                # identifer's type will have to be inferred from a larger
-                # context, such as a function call for instance.
-                return identifer_type
-
-            node.__meta__['type'] = result
-            return result
-
+        # If the node is a select expression ...
         if isinstance(node, Select):
             # First, we need to infer the type of the owner.
-            owner_types = self.read_type_reference(node.owner)
+            owner_types = self.analyse(node.owner)
             if isinstance(owner_types, TypeUnion):
                 prospects = owner_types
             else:
@@ -634,18 +610,10 @@ class TypeSolver(NodeVisitor):
 
             # TODO: Handle genericity.
 
-
+        # If the node is a call expression ...
         if isinstance(node, Call):
-            # First, we get the possible types of the callee.
-            callee_type = self.read_type_reference(node.callee)
-
-            # If the callee's type is a variable, and the callee is a possibly
-            # overloaded identifier, we use instead the type of its symbol.
-            if (isinstance(callee_type, TypeVariable)
-                and isinstance(node.callee, Identifier)
-                and isinstance(node.callee.__meta__['scope'][node.callee.name].code, FunDecl)):
-
-                callee_type = node.callee.__meta__['scope'][node.callee.name].type
+            # First, we get the type of the callee's node.
+            callee_type = self.analyse(node.callee)
 
             if isinstance(callee_type, TypeUnion):
                 prospects = callee_type
@@ -724,7 +692,7 @@ class TypeSolver(NodeVisitor):
             argument_types = []
             for argument in node.arguments:
                 # FIXME read the type of the whole argument (for binding policy)
-                argument_type = self.read_type_instance(argument.value)
+                argument_type = self.analyse(argument.value)
                 argument_types.append(argument_type)
 
             # Either the return type was already inferred in a previous pass,
@@ -805,9 +773,14 @@ class TypeSolver(NodeVisitor):
                     "function call do not match any candidate in '{}'".format(
                         ', '.join(map(str, callee_type))))
 
-            # We unify the callee node's type with the selected candidates.
+            # NOTE: We can't unify here, because the callee's type might be
+            # associated with the symbol of the function (or type) used as
+            # callee. This would be problematic if that symbol's type is
+            # overloaded and/or generic.
+            # So instead we dissociate the symbol's type from that associated
+            # with the callee's node.
             selected_candidates = TypeUnion(selected_candidates)
-            self.environment.unify(node.callee.__meta__['type'], selected_candidates)
+            node.callee.__meta__['type'] = selected_candidates
 
             # We unify the argument types of the node with the domain of the
             # selected candidates, to propagate type constraints.
@@ -859,26 +832,65 @@ class TypeSolver(NodeVisitor):
             # we'll adopt for variadics parameters, we might have to check
             # multiple configurations of argument groups.
 
-        if isinstance(node, FunSign):
-            # If the node is a function signature, we build a FunctionType.
+        assert False, "no type inference for node '{}'".format(node.__class__.__name__)
+
+    def analyse_type_expression(self, node):
+        assert isinstance(node, TypeIdentifier)
+
+        # If the node doesn't have a signature (i.e. it only specifies
+        # type attributes), we create a type variable.
+        if node.signature is None:
+            return type_factory.make_variable(
+                modifiers = node.modifiers,
+                id        = hex(id(node)))
+
+            # FIXME: Do we need a better variable ID?
+
+        # If the signature is an identifier, we'll check the environment.
+        if isinstance(node.signature, Identifier):
+            # Associate the node with a fresh variable.
+            if node.__meta__['type'] is None:
+                node.__meta__['type'] = type_factory.make_variable()
+
+            # Get the type associated with the identifier in its scope.
+            t = self.environment[varof(node.signature)]
+
+            # If the type is unkown yet, we can't infer further.
+            if isinstance(t, TypeVariable):
+                return node.__meta__['type']
+
+            # Otherwise it should be a type name, from which we'll extract the
+            # actual referred type.
+            assert isinstance(t, TypeName)
+            assert isinstance(t.type, (StructType, PlaceholderType,))
+            t = t.type
+
+            # Finally apply the type modifiers.
+            t = type_factory.updating(t, modifiers=node.modifiers)
+            self.environment.unify(node.__meta__['type'], t)
+            return t
+
+        # If the signature is a function signature, we'll create the
+        # corresponding function type.
+        elif isinstance(node.signature, FunSign):
             domain = []
             labels = []
-            for parameter in node.parameters:
-                type_annotation = self.read_type_reference(parameter.type_annotation)
+            for parameter in node.signature.parameters:
+                type_annotation = self.analyse_type_expression(parameter.type_annotation)
                 domain.append(type_annotation)
                 labels.append(parameter.label)
 
-            codomain = self.read_type_reference(node.codomain_annotation)
+            codomain = self.analyse_type_expression(node.signature.codomain_annotation)
 
-            function_type = type_factory.make_function(
+            node.__meta__['type'] = type_factory.make_function(
+                modifiers  = node.modifiers,
                 domain     = domain,
                 labels     = labels,
                 codomain   = codomain)
+            return node.__meta__['type']
 
-            node.__meta__['type'] = function_type
-            return function_type
-
-        assert False, "no type inference for node '{}'".format(node.__class__.__name__)
+        # TODO: Handle tuple signatures.
+        assert False, f"unexpected type signature '{node.__class__}'"
 
     def unify_assignment(self, lvalue_type, op, rvalue_type):
         # First, we have to override the modifiers of the rvalue's type, so
@@ -963,75 +975,6 @@ class TypeSolver(NodeVisitor):
 
         return rvalue_type
 
-    def read_type_instance(self, node):
-        t = self.analyse(node)
-        if isinstance(t, TypeName):
-            t = Type
-
-        # If the type isn't an union or a variable, and doesn't specify any
-        # modifier, we return an union of all possible combinations of type
-        # modifiers so that we can infer them later, by elimination.
-        if not isinstance(t, (TypeUnion, TypeVariable)) and (t.modifiers == 0):
-            return type_factory.make_variants(t)
-        return t
-
-    def read_type_reference(self, node):
-        # If the node is a type identifier, we first build a type instance
-        # from the signature it represents.
-        if isinstance(node, TypeIdentifier):
-            # If the node doesn't have a signature (i.e. it only specifies
-            # type attributes), we create a type variable.
-            if node.signature is None:
-                return type_factory.make_variable(
-                    id        = hex(id(node)),
-                    modifiers = node.modifiers)
-
-                # FIXME: Do we need a better variable ID?
-
-            t = self.analyse(node.signature)
-
-            # If provided, the signature of a TypeIdentifier is either a name
-            # referring to a nominal type or a structural type (e.g. a
-            # function signature). In the former case, we've to use the
-            # denoted type rather than that of the symbol.
-            if isinstance(t, TypeName):
-                t = t.type
-
-            # The signature of a TypeIdentifier should never be a TypeUnion,
-            # nor a TypeVariable.
-            assert not isinstance(t, (TypeUnion, TypeVariable))
-
-            # Finally we have to apply the type modifiers, as specified by the
-            # type identifier.
-            return type_factory.updating(t, modifiers=node.modifiers)
-
-        t = self.analyse(node)
-
-        # If the node represents a typename, we've to use the denoted type
-        # rather than that of the symbol.
-        if isinstance(t, TypeName):
-            t = t.type
-
-        # If the type isn't an union or a variable, and doesn't specify any
-        # modifier, we return an union of all possible combinations of type
-        # modifiers so that we can infer them later, by elimination.
-        if not isinstance(t, (TypeUnion, TypeVariable)) and (t.modifiers == 0):
-            return type_factory.make_variants(t)
-        return t
-
-    def is_typename(self, node):
-        if isinstance(node, Identifier):
-            return (('scope' in node.__meta__)
-                and (node.name in node.__meta__['scope'].typenames))
-
-        if isinstance(node, Select):
-            return self.is_typename(node.member)
-
-        if isinstance(node, TypeSolver.TypeNode):
-            return node.is_typename
-
-        return False
-
 
 class Dispatcher(NodeVisitor):
 
@@ -1078,7 +1021,7 @@ def specialize_with_pattern(unspecialized, specializer, call_node, specializatio
                 yield TypeVariable(id=(id(candidate), id(call_node)))
             elif unspecialized.modifiers == candidate.modifiers:
                 yield type_factory.make_placeholder(
-                    modifiers      = candidate.modifiers,
+                    modifiers      = unspecialized.modifiers,
                     id             = unspecialized.id,
                     specialization = candidate)
 
