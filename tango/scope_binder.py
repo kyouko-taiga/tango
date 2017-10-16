@@ -126,8 +126,9 @@ class ScopeBinder(NodeVisitor):
         for parameter in node.parameters:
             self.visit(parameter.type_annotation)
 
-        # Visit the codomain annotation of the function.
-        self.visit(node.codomain_annotation)
+        # Visit the codomain annotation of the function (if any).
+        if node.codomain_annotation:
+            self.visit(node.codomain_annotation)
 
         # Add the parameter names to the function's scope.
         for parameter in node.parameters:
