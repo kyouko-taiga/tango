@@ -452,6 +452,10 @@ class TypeSolver(NodeVisitor):
             return_value_type = statement.value.__meta__['type']
             self.environment.unify(return_value_type, function_type.codomain)
 
+        # NOTE: Checking whether or not the function has a return statement in
+        # all its execution paths shouldn't be performed here, but in the pass
+        # that analyses the program's CFG.
+
         for symbol in node.__meta__['scope'].getlist(node.name):
             if symbol.code == node:
                 symbol.type = function_type
