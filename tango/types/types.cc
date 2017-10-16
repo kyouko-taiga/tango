@@ -46,6 +46,12 @@ namespace tango {
         // created, we'll never have to use this function again, as we'll rely
         // on pointer equality instead.
 
+        // FIXME: Unfortunately that assumption doesn't hold. It's may be
+        // desirable to build a nominal type even after it can reference itself
+        // in two situations in the type solving phase:
+        // 1. When struct types are reified.
+        // 2. When struct types are being specialized.
+
         bool result = (lhs.modifiers == rhs.modifiers)
                    && (lhs.name == rhs.name)
                    && (lhs.members.size() == rhs.members.size());

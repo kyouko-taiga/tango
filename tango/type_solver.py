@@ -34,6 +34,11 @@ def infer_types(node, max_iter=100):
     # TODO: Restrict unions of type variants to the most restricted set of
     # modifiers.
 
+    # QUESTION: Is there any reason why we should deepwalk the type variables
+    # during the type inference? Right now it's being done by the TypesFinder
+    # and the during the specialization of generic functions, but I wonder if
+    # that's just legacy from previous versions of the solver.
+
     # Solve the static dispatching of function calls.
     dispatcher = Dispatcher()
     dispatcher.visit(node)
@@ -223,12 +228,18 @@ class Substitution(object):
             return result
 
         if isinstance(t, StructType):
-            memo[t] = t
-            for name in t.members.keys():
-                t.members[name] = self.deepwalk(t.members[name], memo)
-            return t
+            # memo[t] = t
+            # for name in t.members.keys():
+            #     t.members[name] = self.deepwalk(t.members[name], memo)
+            # return t
 
-            # FIXME
+            # FIXME: Updating the members of a nominal type as above would
+            # bypass the equality check of the factory, which could make the
+            # returned type unequal to the original one under `==`.
+            # Unfortunately, we can't call `type_factory.make_struct` without
+            # first waling all the struct's members, which means we're faced
+            # with a cycle issue.
+            pass
 
         if isinstance(t, FunctionType):
             return type_factory.make_function(
