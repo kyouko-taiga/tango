@@ -483,27 +483,21 @@ class TypeSolver(NodeVisitor):
                 members = {
                     name: member_type(name) for name in node.body.__meta__['symbols']
                 })
-            type_name = type_factory.make_name(name=node.name, type=inferred_type)
+            inferred_type = type_factory.make_name(name=node.name, type=inferred_type)
 
-            node.__meta__['scope'][node.name].type = type_name
-            self.environment.unify(varof(node), type_name)
+            node.__meta__['scope'][node.name].type = inferred_type
+            self.environment.unify(varof(node), inferred_type)
 
             # Bind the `Self` placeholder.
-            inner_scope['Self'].type = type_name
+            inner_scope['Self'].type = inferred_type
             self.environment.unify(
                 type_factory.make_variable(id=(inner_scope, 'Self')),
-                type_name)
+                inferred_type)
 
         self.visit(node.body)
-
         node.__meta__['type'] = inferred_type
 
     def visit_Assignment(self, node):
-        # NOTE: For now, we assume lvalues to always represent identifiers.
-        # This'll change when we'll implement properties and subscripts.
-        if not isinstance(node.lvalue, Identifier):
-            assert False, '{} is not a valid lvalue'.format(node.target.__class__.__name__)
-
         # We first infer the types of the lvalue and rvalue.
         lvalue_type = self.analyse(node.lvalue)
         rvalue_type = self.read_type_instance(node.rvalue)
@@ -514,11 +508,6 @@ class TypeSolver(NodeVisitor):
             lvalue_type = lvalue_type,
             op          = node.operator,
             rvalue_type = rvalue_type)
-
-        # If the lvalue is an identifer, we unify its name with the unified
-        # type as well, so as to assign it a type.
-        if isinstance(node.lvalue, Identifier):
-            self.environment.unify(varof(node.lvalue), inferred_type)
 
     def visit_Call(self, node):
         # While we don't need to unify the return type of the function, we
@@ -617,18 +606,18 @@ class TypeSolver(NodeVisitor):
                 if (isinstance(owner_type, StructType)
                     and node.member.name in owner_type.members.keys()):
 
-                    members = self.environment[owner_type.members[node.member.name]]
-                    if not isinstance(members, TypeUnion):
-                        members = (members,)
+                    member_types = self.environment[owner_type.members[node.member.name]]
+                    if not isinstance(member_types, TypeUnion):
+                        member_types = (member_types,)
 
-                    for member in members:
-                        if as_instance_member and isinstance(member, FunctionType):
+                    for member_type in member_types:
+                        if as_instance_member and isinstance(member_type, FunctionType):
                             candidates.append(type_factory.make_function(
-                                domain   = list(member.domain)[1:],
-                                labels   = list(member.labels)[1:],
-                                codomain = member.codomain))
+                                domain   = list(member_type.domain)[1:],
+                                labels   = list(member_type.labels)[1:],
+                                codomain = member_type.codomain))
                         else:
-                            candidates.append(member)
+                            candidates.append(member_type)
 
             if len(candidates) == 0:
                 raise InferenceError(
