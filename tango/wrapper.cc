@@ -265,10 +265,12 @@ BOOST_PYTHON_MODULE(wrapper) {
         .def_readwrite("body",                &StructDecl::body);
 
     class_<ParamDecl, bases<ASTNode>>(
-        "ParamDecl", init<std::string, optional<ASTNodePtr>>((
+        "ParamDecl", init<std::string, std::string, optional<ASTNodePtr>>((
             arg("name"),
+            arg("label"),
             arg("type_annotation"))))
         .def_readwrite("name",                &ParamDecl::name)
+        .def_readwrite("label",               &ParamDecl::label)
         .def_readwrite("type_annotation",     &ParamDecl::type_annotation);
 
     class_<FunDecl, bases<ASTNode>>(

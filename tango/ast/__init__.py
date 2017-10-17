@@ -224,10 +224,16 @@ PropDecl.__str__  = PropDecl_str
 
 
 def ParamDecl_str(self):
-    return '{}: {}'.format(self.name, self.type_annotation)
+    if self.label == self.name:
+        result = f'{self.name}'
+    else:
+        result = f'{self.label} {self.name}'
+    if self.type_annotation:
+        result += f': {self.type_annotation}'
+    return result
 
 monkeypatch_init(ParamDecl)
-ParamDecl._fields  = ('name', 'type_annotation',)
+ParamDecl._fields  = ('name', 'label', 'type_annotation',)
 ParamDecl.__str__  = ParamDecl_str
 
 

@@ -93,9 +93,25 @@ class ParseTreeTransformer(Transformer_NoRecurse):
         return tree.children
 
     def param_decl(self, tree):
+        index = 1
+        if isinstance(tree.children[1], Token) and (tree.children[1].type == 'NAME'):
+            label = tree.children[0].value
+            name  = tree.children[1].value
+            index += 1
+        else:
+            label = tree.children[0].value
+            name  = label
+
+        if isinstance(tree.children[index], ast.TypeIdentifier):
+            type_annotation = tree.children[index]
+            index += 1
+        else:
+            type_annotation = None
+
         return ast.ParamDecl(
-            name            = tree.children[0].value,
-            type_annotation = tree.children[1],
+            name            = name,
+            label           = label,
+            type_annotation = type_annotation,
             meta            = {
                 'start': (tree.line, tree.column),
                 'end'  : (tree.end_line, tree.end_col),

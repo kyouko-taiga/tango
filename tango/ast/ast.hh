@@ -114,15 +114,16 @@ namespace tango {
     /// AST node for function parameters.
     struct ParamDecl: public ASTNode {
         ParamDecl(
-            const std::string&   name,
-            ASTNodePtr           type = ASTNodePtr())
-            : name(name),
-              type_annotation(type) {}
+            const std::string& name,
+            const std::string& label,
+            ASTNodePtr         type = ASTNodePtr())
+            : name(name), label(label), type_annotation(type) {}
 
         void accept(ASTNodeVisitor& visitor);
 
-        std::string          name;
-        ASTNodePtr           type_annotation;
+        std::string name;
+        std::string label;
+        ASTNodePtr  type_annotation;
     };
 
     // -----------------------------------------------------------------------
