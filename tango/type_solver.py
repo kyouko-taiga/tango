@@ -357,16 +357,24 @@ class TypeSolver(NodeVisitor):
         # If there's an initial value, we infer its type.
         if node.initial_value:
             rvalue_type = self.analyse(node.initial_value)
+
+            # If there's a type annotation, we read that signature, otherwise
+            # we assume a type variable with modifiers `@cst @stk @val`.
             if node.type_annotation:
-                inferred_type = self.unify_assignment(
-                    lvalue_type = self.analyse_type_expression(node.type_annotation),
-                    op          = node.initial_binding,
-                    rvalue_type = rvalue_type)
+                annotation_type = self.analyse_type_expression(node.type_annotation)
             else:
-                inferred_type = self.unify_assignment(
-                    lvalue_type = None,
-                    op          = node.initial_binding,
-                    rvalue_type = rvalue_type)
+                annotation_type = type_factory.make_variable(
+                    modifiers = TM.cst | TM.stk | TM.val,
+                    id        = (node.__meta__['scope'], node.name))
+
+            # Infer the property's type from its binding and propagate the
+            # type constraints accordingly.
+            (lts, rts) = infer_binding_types(annotation_type, node.initial_binding, rvalue_type)
+            print(rts)
+            print('---')
+            self.environment.unify(rvalue_type, rts)
+            self.environment.unify(annotation_type, lts)
+            inferred_type = lts
 
         # If there isn't an initializing value, we should simply use the type
         # annotation.
@@ -392,8 +400,8 @@ class TypeSolver(NodeVisitor):
 
         # Unlike variables, function parameters are always declared with a
         # type annotation, so we can type them directly.
-        parameter_types = []
-        parameter_names = []
+        parameter_types  = []
+        parameter_labels = []
         for parameter in node.parameters:
             type_annotation = self.analyse_type_expression(parameter.type_annotation)
 
@@ -405,7 +413,7 @@ class TypeSolver(NodeVisitor):
             parameter.__meta__['type'] = type_annotation
 
             parameter_types.append(type_annotation)
-            parameter_names.append(parameter.name)
+            parameter_labels.append(parameter.label)
 
         # The type of the codomain is either a type identifier, or Nothing.
         if node.codomain_annotation:
@@ -418,7 +426,7 @@ class TypeSolver(NodeVisitor):
         function_type = type_factory.make_function(
             modifiers = TM.cst | TM.stk | TM.val,
             domain    = parameter_types,
-            labels    = parameter_names,
+            labels    = parameter_labels,
             codomain  = codomain)
 
         # As functions may be overloaded, we can't unify the function type
@@ -501,6 +509,8 @@ class TypeSolver(NodeVisitor):
         # We first infer the types of the lvalue and rvalue.
         lvalue_type = self.analyse(node.lvalue)
         rvalue_type = self.analyse(node.rvalue)
+
+        rvalue_type = self.assignment_transforms(node.operator)
 
         # We unify both of those types according to the semantics of the
         # binding operator.
@@ -770,8 +780,7 @@ class TypeSolver(NodeVisitor):
             # some pre-selected codomains.
             if not selected_candidates and not selected_codomains:
                 raise InferenceError(
-                    "function call do not match any candidate in '{}'".format(
-                        ', '.join(map(str, callee_type))))
+                    f"function call do not match any candidate in '{callee_type}'")
 
             # NOTE: We can't unify here, because the callee's type might be
             # associated with the symbol of the function (or type) used as
@@ -781,6 +790,19 @@ class TypeSolver(NodeVisitor):
             # with the callee's node.
             selected_candidates = TypeUnion(selected_candidates)
             node.callee.__meta__['type'] = selected_candidates
+
+            # Unify the types of the arguments with the domain of the selected
+            # candidates to propagate type constraints.
+            for candidate in selected_candidates:
+                for i, argument_type in enumerate(argument_types):
+                    arg = self.environment[candidate.domain[i]]
+                    if isinstance(arg, PlaceholderType):
+                        assert arg.specialization is not None, 'unexpected partial specialization'
+                        arg = arg.specialization
+
+
+
+                    # FIXME: Will this work with generic types as arguments?
 
             # We unify the argument types of the node with the domain of the
             # selected candidates, to propagate type constraints.
@@ -893,85 +915,13 @@ class TypeSolver(NodeVisitor):
         assert False, f"unexpected type signature '{node.__class__}'"
 
     def unify_assignment(self, lvalue_type, op, rvalue_type):
-        # First, we have to override the modifiers of the rvalue's type, so
-        # they match the return type of the binding operator.
-        ts = rvalue_type.types if isinstance(rvalue_type, TypeUnion) else [rvalue_type]
-
-        # A copy binding produces the rvalue's type, with the lvalue's type
-        # modifiers. That's what enables implicit dereferences of the lvalue
-        # and or rvalue.
-        if op == Operator.cpy:
-            cst_stk_val = TM.cst | TM.stk | TM.val
-            if lvalue_type is None:
-                modifiers = [cst_stk_val]
-            elif isinstance(lvalue_type, TypeUnion):
-                modifiers = [(t.modifiers or cst_stk_val) for t in lvalue_type]
-            else:
-                modifiers = [lvalue_type.modifiers or cst_stk_val]
-
-            candidates = []
-            for m in modifiers:
-                candidates += [type_factory.updating(t, modifiers=m) for t in ts]
-            ts = candidates
-
-        # A move binding always produces `@val` types.
-        elif op == Operator.mov:
-            ts = [
-                type_factory.updating(t, modifiers=t.modifiers & ~TM.ref | TM.val)
-                for t in ts
-            ]
-
-        # NOTE: If the rvalue is a `@ref` type, we could forbid the use of a
-        # move binding operator here. But we'll leave that error to be handled
-        # by the reference checker.
-
-        # NOTE: The statement `x <- y` is illegal if `x` is a shared variable,
-        # but we'll let that error to be handled by the reference checker.
-
-        # A reference binding always produces `@ref` types.
-        elif op == Operator.ref:
-            ts = [
-                type_factory.updating(
-                    t, modifiers=t.modifiers & ~TM.shd & ~TM.val | TM.stk | TM.ref)
-
-                # As we forbid reference of references, the statement `x &- y`
-                # is illegal if `y` is a reference. That's why we filter out
-                # rvalue's type candidates that are references.
-                for t in ts if not (t.modifiers & TM.ref)
-            ]
-
-            if not ts:
-                raise InferenceError("invalid use of reference operator on reference rvalue")
-
-        # In order to handle mutable lvalues, we should add a mutable version
-        # of every type of the rvalue so that unification may select a mutable
-        # type if necessary.
-        for t in [t for t in ts if not (t.modifiers & TM.mut)]:
-            ts.append(type_factory.updating(t, modifiers=t.modifiers & ~TM.cst | TM.mut))
-
-        # NOTE: The statements `x <- y` and `x &- y` are illegal if `x` is a
-        # mutable and `y` is constant, but we'll let that error to be handled
-        # by the reference checker.
+        rvalue_type = assignment_transforms(rvalue_type, op, lvalue_type=lvalue_type)
 
         # If we already could infer a type for the lvalue, we'll unify it with
         # the types for the rvalue we just inferred to filter out invalid
         # modifiers, and potentially unify unknown type names.
         if lvalue_type is not None:
-            rvalue_type = TypeUnion(ts)
-            if len(rvalue_type) == 1:
-                rvalue_type = rvalue_type.types[0]
-
             self.environment.unify(lvalue_type, rvalue_type)
-
-        # Variable may be declared without any type annotation. As such we
-        # can't restrict the inferred variants using lvalue's type modifiers.
-        # In those instances, we'll select the most restrictive variant by
-        # default.
-        else:
-            ts = [t for t in ts if t.modifiers & TM.cst] or ts
-            ts = [t for t in ts if t.modifiers & TM.stk] or ts
-            ts = [t for t in ts if t.modifiers & TM.val] or ts
-            rvalue_type = TypeUnion(ts)
 
         return rvalue_type
 
@@ -999,6 +949,81 @@ class Dispatcher(NodeVisitor):
 
         # TODO: Propagate the specialization requirements to all reachable
         # scopes the callee's symbol is defined in.
+
+
+def infer_binding_types(lvalue_type, op, rvalue_type):
+    if not isinstance(lvalue_type, TypeUnion):
+        lvalue_type = TypeUnion([lvalue_type])
+    if not isinstance(rvalue_type, TypeUnion):
+        rvalue_type = TypeUnion([rvalue_type])
+
+    # A copy binding preserves the rvalue's type, but takes the lvalue's type
+    # modifiers. The lvalue's type can have any modifier.
+    if op == Operator.cpy:
+        # The rvalue's type can be any of the lvalue's type variants.
+        rresult = TypeUnion()
+        for lty in lvalue_type:
+            for t in type_factory.make_variants(lty):
+                rresult.add(t)
+
+        # We preserve the modifiers of the lvalue's types.
+        lresult = TypeUnion()
+        for lty in lvalue_type:
+            # QUESTION: What if lty.modifers == 0 ?
+            for rty in rvalue_type:
+                lresult.add(type_factory.updating(rty, modifiers=lty.modifiers))
+
+    # A move binding always produces `@val` types.
+    if op == Operator.mov:
+        # TODO: Handle zero modifiers.
+
+        # The rvalue's type can be any of the lvalue's type `@val` variants.
+        rresult = TypeUnion([
+            type_factory.updating(lty, modifiers=lty.modifiers & ~TM.ref | TM.val)
+            for lty in lvalue_type
+        ])
+
+        # The same can be said for the lvalue's type.
+        lresult = TypeUnion([
+            type_factory.updating(rty, modifiers=rty.modifiers & ~TM.ref | TM.val)
+            for rty in rvalue_type
+        ])
+
+        # NOTE: If the rvalue is a `@ref` type, we could forbid the use of a
+        # move binding operator here. But we'll leave that error to be handled
+        # by the reference checker.
+
+        # NOTE: The statement `x <- y` is illegal if `x` is a shared variable,
+        # but we'll let that error to be handled by the reference checker.
+
+    # A reference binding always produces `@ref` types.
+    if op == Operator.ref:
+        # TODO: Handle zero modifiers.
+
+        # The rvalue's type can be any of the lvalue's type variants.
+        rresult = TypeUnion()
+        for lty in lvalue_type:
+            for t in type_factory.make_variants(lty):
+                rresult.add(t)
+
+        # The lvalue's type can be any `@ref` variant of the rvalue's type.
+        lresult = TypeUnion([
+            type_factory.updating(rty, modifiers=rty.modifiers & ~TM.val | TM.ref)
+            for rty in rvalue_type
+        ])
+
+        # NOTE: The statement `x <- y` is illegal if `x` is a shared variable,
+        # but we'll let that error to be handled by the reference checker.
+
+    # Avoid singletons.
+    if len(lresult) == 1:
+        lresult = lresult.types[0]
+    if len(rresult) == 1:
+        rresult = rresult.types[0]
+
+    return (lresult, rresult)
+
+    assert False
 
 
 def specialize_with_pattern(unspecialized, specializer, call_node, specializations=None):

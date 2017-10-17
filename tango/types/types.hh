@@ -146,7 +146,6 @@ namespace tango {
         // specialization list, so as to represent "some type specialized as
         // such". This would reduce the number of variables we have to create,
         // but would also make matching and unification harder.
-        // bool is_generic() const { return false; }
 
         bool isa(TypeClass tc) const { return tc & tc_variable; }
 
