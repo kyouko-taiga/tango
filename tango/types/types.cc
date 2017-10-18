@@ -113,6 +113,9 @@ namespace tango {
     }
 
     void TypeUnion::add(TypePtr t) {
+        // Make sure we don't create nested unions.
+        assert(!t->isa(tc_union) && "nested union");
+
         if (this->types.find(t) == this->types.end()) {
             this->types.insert(t);
         }

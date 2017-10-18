@@ -286,14 +286,6 @@ class ParseTreeTransformer(Transformer_NoRecurse):
         if (modifiers & TM.val) and (modifiers & TM.ref):
             raise CompilerError("error - '@val' modifier cannot be used together with '@ref'")
 
-        # Set implicit type modifiers.
-        if not (modifiers & TM.mut):
-            modifiers |= TM.cst if not (modifiers & TM.shd) else TM.mut
-        if not (modifiers & TM.shd):
-            modifiers |= TM.stk
-        if not (modifiers & TM.ref):
-            modifiers |= TM.val
-
         return ast.TypeIdentifier(
             modifiers = modifiers,
             signature = signature,

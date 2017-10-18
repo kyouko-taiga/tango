@@ -5,7 +5,7 @@ from .builtin import Bool, Nothing, Type
 from .errors import InferenceError
 from .scope import Scope
 from .types import (
-    TypeModifier as TM,
+    TypeModifier as TM, TM_COMBINATIONS,
     TypeBase, TypeName, TypeUnion, TypeVariable,
     PlaceholderType, FunctionType, StructType,
     type_factory)
@@ -81,7 +81,19 @@ class Substitution(object):
     def __contains__(self, variable):
         return variable in self.storage
 
+    def flatten_type_set(self, type_set):
+        result = set()
+        for t in type_set:
+            t = self[t]
+            if isinstance(t, TypeUnion):
+                result |= self.flatten_type_set(t.types)
+            else:
+                result.add(t)
+        return result
+
     def unify(self, t, u, memo=None):
+        assert isinstance(t, TypeBase) and isinstance(u, TypeBase)
+
         if memo is None:
             memo = set()
         if (t, u) in memo:
@@ -94,57 +106,74 @@ class Substitution(object):
         if a == b:
             return
 
-        elif isinstance(a, TypeVariable):
+        if isinstance(a, TypeVariable):
             if (a.modifiers == 0) or (a.modifiers == b.modifiers):
                 self.storage[a] = b
 
-            elif (b.modifiers == 0) and isinstance(b, TypeVariable):
-                self.storage[b] = a
-
             elif isinstance(b, TypeUnion):
-                ts = TypeUnion([t for t in b if t.modifiers == a.modifiers])
-                if not ts.types:
-                    raise InferenceError("no type in '{}' matches '{}'".format(b, a))
-                self.storage[a] = ts
-                self.unify(ts, b)
+                matching_types = []
+                for itb in (self[t] for t in b):
+                    if (itb.modifiers == 0) or (a.modifiers == itb.modifiers):
+                        matching_types.append(itb)
+                if not matching_types:
+                    raise InferenceError(f"cannot unify '{a}' with any candidate in '{b}'")
+                self.storage[a] = b
+                b.types = matching_types
 
             else:
-                raise InferenceError("type '{}' does not match '{}'".format(a, b))
+                raise InferenceError(f"cannot unify '{a}' with '{b}'")
 
         elif isinstance(b, TypeVariable):
             self.unify(b, a, memo)
 
         elif isinstance(a, TypeUnion) and isinstance(b, TypeUnion):
-            results = []
-            for ita, itb in product(a, b):
+            walked_a = [self[t] for t in a]
+            walked_b = [self[t] for t in b]
+
+            # Compute the intersection of a and b.
+            types = []
+            for ita, itb in product(walked_a, walked_b):
                 if self.matches(ita, itb):
-                    self.unify(ita, itb, memo)
-                    results.append(ita)
+                    types.append(ita)
+            if not types:
+                raise InferenceError(f"cannot '{a}' with '{b}'")
 
-            if not results:
-                raise InferenceError("no types in '{}' matches a type in '{}'".format(a, b))
-            a.types = results
-            b.types = results
+            # Unify all variables of a with b.
+            for ita in walked_a:
+                if isinstance(ita, TypeVariable):
+                    try:
+                        self.unify(ita, TypeUnion(walked_b))
+                    except InferenceError:
+                        continue
 
-        elif isinstance(a, TypeUnion) and isinstance(b, TypeBase):
-            for it in a:
-                if self.matches(it, b):
-                    self.unify(it, b, memo)
-                    a.types = [it]
-                    break
-            else:
-                raise InferenceError("no type in '{}' matches '{}'".format(a, b))
+            # Unify all variables of b with a.
+            for itb in walked_b:
+                if isinstance(itb, TypeVariable):
+                    try:
+                        self.unify(itb, TypeUnion(walked_a))
+                    except InferenceError:
+                        continue
 
-            # TODO When we'll implement abstract types and/or protocols, we
-            # might have to to unify multiple result instead of simply the
-            # first type that matches in the union.
+            # a = b = a & b
+            a.types = types
+            b.types = types
 
-        elif isinstance(b, TypeUnion) and isinstance(a, TypeBase):
+        elif isinstance(a, TypeUnion):
+            result = []
+            for ita in a:
+                try:
+                    self.unify(ita, b, memo)
+                    result.append(ita)
+                except InferenceError:
+                    continue
+            a.types = list(self.flatten_type_set(result))
+
+        elif isinstance(b, TypeUnion):
             self.unify(b, a, memo)
 
         elif isinstance(a, StructType) and isinstance(b, StructType):
             if (a.name != b.name) or (set(a.members.keys()) ^ set(b.members.keys())):
-                raise InferenceError("type '{}' does not match '{}'".format(a, b))
+                raise InferenceError(f"cannot unify '{a}' with '{b}'")
             for it in a.members.keys():
                 self.unify(a.members[it], b.members[it], memo)
 
@@ -155,14 +184,8 @@ class Substitution(object):
                 self.unify(ita, itb, memo)
             self.unify(a.codomain, b.codomain, memo)
 
-        elif isinstance(a, TypeBase) and isinstance(b, TypeBase):
-            if a != b:
-                raise InferenceError("type '{}' does not match '{}'".format(a, b))
-
-        # TODO: Take interface conformance into account.
-
         else:
-            assert False, f'cannot unify {a} ({a.__class__}) and {b}({b.__class__})'
+            raise InferenceError(f"cannot unify '{a}' with '{b}'")
 
     def matches(self, t, u):
         a = self[t]
@@ -352,6 +375,11 @@ class TypeSolver(NodeVisitor):
         # If there isn't neither a type annotation, nor an initial value, we
         # can't infer any additional type information.
         if not (node.type_annotation or node.initial_value):
+            # IDEA: Maybe we should create a default type annotation while we
+            # build the AST with the default modifiers, so that we would fall
+            # back to the inference of a annotated variables below. It'd be
+            # easier to ensure that properties declared with type annotations
+            # are treated the same way properties declared without are.
             return
 
         # If there's an initial value, we infer its type.
@@ -359,19 +387,17 @@ class TypeSolver(NodeVisitor):
             rvalue_type = self.analyse(node.initial_value)
 
             # If there's a type annotation, we read that signature, otherwise
-            # we assume a type variable with modifiers `@cst @stk @val`.
+            # we assume a type variable with modifiers `@cst`.
             if node.type_annotation:
                 annotation_type = self.analyse_type_expression(node.type_annotation)
             else:
-                annotation_type = type_factory.make_variable(
-                    modifiers = TM.cst | TM.stk | TM.val,
-                    id        = (node.__meta__['scope'], node.name))
+                if 'annotation_type' not in node.__meta__:
+                    node.__meta__['annotation_type'] = type_factory.make_variable()
+                annotation_type = node.__meta__['annotation_type']
 
             # Infer the property's type from its binding and propagate the
             # type constraints accordingly.
             (lts, rts) = infer_binding_types(annotation_type, node.initial_binding, rvalue_type)
-            print(rts)
-            print('---')
             self.environment.unify(rvalue_type, rts)
             self.environment.unify(annotation_type, lts)
             inferred_type = lts
@@ -380,6 +406,25 @@ class TypeSolver(NodeVisitor):
         # annotation.
         else:
             inferred_type = self.analyse_type_expression(node.type_annotation)
+
+        # Choose the most restrictive variant of the inferred type.
+        if isinstance(inferred_type, TypeUnion):
+            candidates = set([
+                type_factory.updating(t, modifiers=0) for t in inferred_type
+            ])
+
+            result = TypeUnion()
+            for candidate in candidates:
+                for modifiers in TM_COMBINATIONS:
+                    t = type_factory.updating(candidate, modifiers=modifiers)
+                    if t in inferred_type:
+                        result.add(t)
+                        break
+
+            if len(result) == 1:
+                inferred_type = result.types[0]
+            else:
+                inferred_type = result
 
         # Finally, we should unify the inferred type with the type variable
         # corresponding to the symbol under declaration.
@@ -510,14 +555,11 @@ class TypeSolver(NodeVisitor):
         lvalue_type = self.analyse(node.lvalue)
         rvalue_type = self.analyse(node.rvalue)
 
-        rvalue_type = self.assignment_transforms(node.operator)
-
-        # We unify both of those types according to the semantics of the
-        # binding operator.
-        inferred_type = self.unify_assignment(
-            lvalue_type = lvalue_type,
-            op          = node.operator,
-            rvalue_type = rvalue_type)
+        # Infer the expressions' types from the binding operator and propagate
+        # the type constraints accordingly.
+        (lts, rts) = infer_binding_types(lvalue_type, node.operator, rvalue_type)
+        self.environment.unify(lvalue_type, lts)
+        self.environment.unify(rvalue_type, rts)
 
     def visit_Call(self, node):
         # While we don't need to unify the return type of the function, we
@@ -552,6 +594,7 @@ class TypeSolver(NodeVisitor):
             # Create a fresh variable, unless we already did.
             if node.__meta__['type'] is None:
                 node.__meta__['type'] = self.environment[varof(node)]
+
             if isinstance(node.__meta__['type'], TypeName):
                 # FIXME: If the identifier isn't used a callee or as the owner
                 # of a select expression, we should return `Type` here, rather
@@ -615,8 +658,7 @@ class TypeSolver(NodeVisitor):
             else:
                 result = TypeUnion(candidates)
 
-            node.__meta__['type'] = result
-            return result
+            self.unify_node_type(node, result)
 
             # TODO: Handle genericity.
 
@@ -695,7 +737,7 @@ class TypeSolver(NodeVisitor):
                 else:
                     return_type = TypeUnion(selected_codomains)
 
-                node.__meta__['type'] = return_type
+                self.unify_node_type(node, return_type)
                 return return_type
 
             # Then, we have to infer the type of each argument.
@@ -800,8 +842,6 @@ class TypeSolver(NodeVisitor):
                         assert arg.specialization is not None, 'unexpected partial specialization'
                         arg = arg.specialization
 
-
-
                     # FIXME: Will this work with generic types as arguments?
 
             # We unify the argument types of the node with the domain of the
@@ -839,7 +879,7 @@ class TypeSolver(NodeVisitor):
             if len(selected_candidates) == 1:
                 selected_candidates = selected_candidates.types[0]
 
-            node.__meta__['type'] = return_type
+            self.unify_node_type(node, return_type)
             node.__meta__['dispatch_type'] = selected_candidates
             return return_type
 
@@ -862,18 +902,16 @@ class TypeSolver(NodeVisitor):
         # If the node doesn't have a signature (i.e. it only specifies
         # type attributes), we create a type variable.
         if node.signature is None:
-            return type_factory.make_variable(
-                modifiers = node.modifiers,
-                id        = hex(id(node)))
-
             # FIXME: Do we need a better variable ID?
+            var_id = hex(id(node))
+
+            result = TypeUnion()
+            for modifiers in TM_COMBINATIONS:
+                if modifiers & node.modifiers:
+                    result.add(type_factory.make_variable(modifiers=modifiers, id=var_id))
 
         # If the signature is an identifier, we'll check the environment.
-        if isinstance(node.signature, Identifier):
-            # Associate the node with a fresh variable.
-            if node.__meta__['type'] is None:
-                node.__meta__['type'] = type_factory.make_variable()
-
+        elif isinstance(node.signature, Identifier):
             # Get the type associated with the identifier in its scope.
             t = self.environment[varof(node.signature)]
 
@@ -888,9 +926,8 @@ class TypeSolver(NodeVisitor):
             t = t.type
 
             # Finally apply the type modifiers.
-            t = type_factory.updating(t, modifiers=node.modifiers)
-            self.environment.unify(node.__meta__['type'], t)
-            return t
+            result = type_factory.updating(
+                t, modifiers=node.modifiers or (TM.cst | TM.stk | TM.val))
 
         # If the signature is a function signature, we'll create the
         # corresponding function type.
@@ -904,26 +941,26 @@ class TypeSolver(NodeVisitor):
 
             codomain = self.analyse_type_expression(node.signature.codomain_annotation)
 
-            node.__meta__['type'] = type_factory.make_function(
-                modifiers  = node.modifiers,
+            result = type_factory.make_function(
+                modifiers  = node.modifiers or (TM.cst | TM.stk | TM.val),
                 domain     = domain,
                 labels     = labels,
                 codomain   = codomain)
-            return node.__meta__['type']
 
-        # TODO: Handle tuple signatures.
-        assert False, f"unexpected type signature '{node.__class__}'"
+        else:
+            # TODO: Handle tuple signatures.
+            assert False, f"unexpected type signature '{node.__class__}'"
 
-    def unify_assignment(self, lvalue_type, op, rvalue_type):
-        rvalue_type = assignment_transforms(rvalue_type, op, lvalue_type=lvalue_type)
+        if isinstance(result, TypeUnion) and len(result) == 1:
+            result = result.types[0]
+        node.__meta__['type'] = result
+        return result
 
-        # If we already could infer a type for the lvalue, we'll unify it with
-        # the types for the rvalue we just inferred to filter out invalid
-        # modifiers, and potentially unify unknown type names.
-        if lvalue_type is not None:
-            self.environment.unify(lvalue_type, rvalue_type)
-
-        return rvalue_type
+    def unify_node_type(self, node, node_type):
+        if node.__meta__['type'] is not None:
+            self.environment.unify(node.__meta__['type'], node_type)
+        else:
+            node.__meta__['type'] = node_type
 
 
 class Dispatcher(NodeVisitor):
@@ -934,7 +971,8 @@ class Dispatcher(NodeVisitor):
             scope = node.callee.__meta__['scope']
 
             dispatch_type = node.__meta__['dispatch_type']
-            assert not isinstance(dispatch_type, (TypeUnion, list))
+            if isinstance(dispatch_type, (TypeUnion, list)):
+                raise InferenceError(f"multiple candidates found to call '{node}'")
 
             found = False
             for symbol in scope.getlist(node.callee.name):
@@ -969,25 +1007,27 @@ def infer_binding_types(lvalue_type, op, rvalue_type):
         # We preserve the modifiers of the lvalue's types.
         lresult = TypeUnion()
         for lty in lvalue_type:
-            # QUESTION: What if lty.modifers == 0 ?
+            # If the lvalue's type doesn't have any modifiers, we assume
+            # `@cst @stk @val` by default.
+            modifiers = lty.modifiers or (TM.cst | TM.stk | TM.val)
             for rty in rvalue_type:
-                lresult.add(type_factory.updating(rty, modifiers=lty.modifiers))
+                lresult.add(type_factory.updating(rty, modifiers=modifiers))
 
     # A move binding always produces `@val` types.
     if op == Operator.mov:
-        # TODO: Handle zero modifiers.
-
         # The rvalue's type can be any of the lvalue's type `@val` variants.
-        rresult = TypeUnion([
-            type_factory.updating(lty, modifiers=lty.modifiers & ~TM.ref | TM.val)
-            for lty in lvalue_type
-        ])
+        rresult = TypeUnion()
+        for lty in lvalue_type:
+            for t in type_factory.make_variants(lty):
+                if t.modifiers & TM.val:
+                    rresult.add(t)
 
         # The same can be said for the lvalue's type.
-        lresult = TypeUnion([
-            type_factory.updating(rty, modifiers=rty.modifiers & ~TM.ref | TM.val)
-            for rty in rvalue_type
-        ])
+        lresult = TypeUnion()
+        for rty in rvalue_type:
+            for t in type_factory.make_variants(rty):
+                if t.modifiers & TM.val:
+                    lresult.add(t)
 
         # NOTE: If the rvalue is a `@ref` type, we could forbid the use of a
         # move binding operator here. But we'll leave that error to be handled
@@ -998,8 +1038,6 @@ def infer_binding_types(lvalue_type, op, rvalue_type):
 
     # A reference binding always produces `@ref` types.
     if op == Operator.ref:
-        # TODO: Handle zero modifiers.
-
         # The rvalue's type can be any of the lvalue's type variants.
         rresult = TypeUnion()
         for lty in lvalue_type:
@@ -1007,10 +1045,11 @@ def infer_binding_types(lvalue_type, op, rvalue_type):
                 rresult.add(t)
 
         # The lvalue's type can be any `@ref` variant of the rvalue's type.
-        lresult = TypeUnion([
-            type_factory.updating(rty, modifiers=rty.modifiers & ~TM.val | TM.ref)
-            for rty in rvalue_type
-        ])
+        lresult = TypeUnion()
+        for rty in rvalue_type:
+            for t in type_factory.make_variants(rty):
+                if t.modifiers & TM.ref:
+                    lresult.add(t)
 
         # NOTE: The statement `x <- y` is illegal if `x` is a shared variable,
         # but we'll let that error to be handled by the reference checker.

@@ -139,7 +139,7 @@ def TypeFactory_updating(self, ty, **kwargs):
 
     assert False, 'cannot update instances of {}'.format(ty.__class__.__name__)
 
-modifiers_combinations = [
+TM_COMBINATIONS = [
     TM.cst | TM.stk | TM.val,
     TM.cst | TM.stk | TM.ref,
     TM.mut | TM.stk | TM.val,
@@ -149,7 +149,7 @@ modifiers_combinations = [
 
 def TypeFactory_make_variants(self, ty):
     result = TypeUnion()
-    for modifiers in modifiers_combinations:
+    for modifiers in TM_COMBINATIONS:
         result.add(self.updating(ty, modifiers=modifiers))
     return result
 
