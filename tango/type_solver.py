@@ -26,6 +26,15 @@ def infer_types(node, max_iter=100):
         if types_finder.types == previous:
             break
 
+        if len(types_finder.types) != (previous):
+            print('lenght')
+        for key in types_finder.types:
+            if types_finder.types[key] != previous[key]:
+                print(types_finder.types[key], '|', previous[key])
+        print()
+        if i > 4:
+            exit()
+
         i += 1
         if i > max_iter:
             raise InferenceError(
@@ -740,20 +749,8 @@ class TypeSolver(NodeVisitor):
                 self.unify_node_type(node, return_type)
                 return return_type
 
-            # Then, we have to infer the type of each argument.
-            argument_types = []
-            for argument in node.arguments:
-                # FIXME read the type of the whole argument (for binding policy)
-                argument_type = self.analyse(argument.value)
-                argument_types.append(argument_type)
-
-            # Either the return type was already inferred in a previous pass,
-            # or create a new variable for it.
-            return_type = node.__meta__['type'] or type_factory.make_variable()
-
-            # Once we've got signature candidates and argument types, we can
-            # filter out signatures that aren't compatible with the argument
-            # types we inferred.
+            # Once we've got signature candidates, we can filter those whose
+            # profile doesn't match the call node.
             compatible_candidates = []
             for signature in candidates:
                 assert isinstance(signature, FunctionType)
@@ -783,6 +780,16 @@ class TypeSolver(NodeVisitor):
                 # or codomain doesn't match the argument and return types of
                 # our node here, before they are specialized.
 
+            # Then, we to infer the type of each argument (as an rvalue).
+            argument_types = []
+            for argument in node.arguments:
+                argument_type = self.analyse(argument.value)
+                argument_types.append(argument_type)
+
+            # Either the return type was already inferred in a previous pass,
+            # or we create a new variable for it.
+            return_type = node.__meta__['type'] or type_factory.make_variable()
+
             # Once we've identified compatible candidates, we can specialize
             # each of them for the argument types we inferred, and possibly
             # the return type we inferred from a previous pass.
@@ -790,24 +797,49 @@ class TypeSolver(NodeVisitor):
             choices.append(return_type if isinstance(return_type, TypeUnion) else (return_type,))
 
             specialized_candidates = []
-            for types in product(*choices):
-                specializer = type_factory.make_function(
-                    domain   = list(types[0:-1]),
-                    labels   = ['_' for _ in range(len(types) - 1)],
-                    codomain = types[-1])
+            for candidate in compatible_candidates:
+                candidate = self.environment.deepwalk(candidate)
 
-                specialized_candidates.extend(flatten(
-                    specialize_with_pattern(
-                        self.environment.deepwalk(candidate), specializer, node)
-                    for candidate in compatible_candidates))
+                # If the candidate isn't generic, we can directy add it to the
+                # list of specialized candidates.
+                if not candidate.is_generic:
+                    specialized_candidates.append(candidate)
+                    continue
+
+                # Otherwise we should create a specialization for each
+                # possible combination of domain/codomain we could infer.
+                for types in product(*choices):
+                    passed_types = [None] * len(node.arguments)
+                    for i in range(len(node.arguments)):
+                        # Infer the type of the argument once passed, from the
+                        # binding operator that is used.
+                        (lts, _) = infer_binding_types(
+                            candidate.domain[i], node.arguments[i].operator, types[i])
+                        passed_types[i] = lts if isinstance(lts, TypeUnion) else [lts]
+
+                    for domain in product(passed_types):
+                        # Create a specializer from with the inferred domain
+                        # and codomain.
+                        specializer = type_factory.make_function(
+                            domain   = list(domain),
+                            labels   = list(candidate.labels),
+                            codomain = types[-1])
+
+                        # NOTE: Let's take a moment to admire the wonderful
+                        # combinatorial explosion we have here ...
+
+                        specialized_candidates.extend(
+                            specialize_with_pattern(candidate, specializer, node))
 
             # Then we filter out the specialized candidates whose signature
-            # doesn't match the node's arguments or return type.
+            # don't match passed arguments' types or return type.
             selected_candidates = []
             for signature in specialized_candidates:
                 valid = True
-                for expected_type, argument_type in zip(signature.domain, argument_types):
-                    if not self.environment.matches(expected_type, argument_type):
+                for i in range(len(node.arguments)):
+                    (passed_type, _) = infer_binding_types(
+                        signature.domain[i], node.arguments[i].operator, argument_types[i])
+                    if not self.environment.matches(signature.domain[i], passed_type):
                         valid = False
                         break
                 if not valid:
@@ -907,7 +939,9 @@ class TypeSolver(NodeVisitor):
 
             result = TypeUnion()
             for modifiers in TM_COMBINATIONS:
-                if modifiers & node.modifiers:
+                # We know it can't be the zero modifier, because the node
+                # doesn't have a type signature.
+                if (modifiers & node.modifiers) == node.modifiers:
                     result.add(type_factory.make_variable(modifiers=modifiers, id=var_id))
 
         # If the signature is an identifier, we'll check the environment.
@@ -917,6 +951,7 @@ class TypeSolver(NodeVisitor):
 
             # If the type is unkown yet, we can't infer further.
             if isinstance(t, TypeVariable):
+                assert False, 'FIXME'
                 return node.__meta__['type']
 
             # Otherwise it should be a type name, from which we'll extract the
@@ -925,9 +960,12 @@ class TypeSolver(NodeVisitor):
             assert isinstance(t.type, (StructType, PlaceholderType,))
             t = t.type
 
-            # Finally apply the type modifiers.
-            result = type_factory.updating(
-                t, modifiers=node.modifiers or (TM.cst | TM.stk | TM.val))
+            # Choose the most restrictive variant that's compatible with the
+            # provided type modifiers.
+            for modifiers in TM_COMBINATIONS:
+                if (modifiers & node.modifiers) == node.modifiers:
+                    result = type_factory.updating(t, modifiers=modifiers)
+                    break
 
         # If the signature is a function signature, we'll create the
         # corresponding function type.
@@ -941,15 +979,34 @@ class TypeSolver(NodeVisitor):
 
             codomain = self.analyse_type_expression(node.signature.codomain_annotation)
 
-            result = type_factory.make_function(
-                modifiers  = node.modifiers or (TM.cst | TM.stk | TM.val),
-                domain     = domain,
-                labels     = labels,
-                codomain   = codomain)
+            # Choose the most restrictive variant that's compatible with the
+            # provided type modifiers.
+            for modifiers in TM_COMBINATIONS:
+                if (modifiers & node.modifiers) == node.modifiers:
+                    result = type_factory.make_function(
+                        modifiers = modifiers,
+                        domain    = domain,
+                        labels    = labels,
+                        codomain  = codomain)
+                    break
 
         else:
             # TODO: Handle tuple signatures.
             assert False, f"unexpected type signature '{node.__class__}'"
+
+        # NOTE: We say that a type expression without signature is incomplete.
+        # For such signature, we allow non-specified modifiers to be inferred
+        # in their context. That means statements like `let x: @mut &- y` will
+        # pass type inference, and type `x` with `@mut @stk @ref`. However, we
+        # always choose the most restrictive variant of complete signatures.
+        # This means that statements like `let x: Int &- y` won't pass type
+        # inference, because the type of `x` will be implictly interpreted as
+        # `@cst @stk @val Int`.
+        # The rationale between this difference is that incomplete signatures
+        # may only be used in assignment expressions, where the binding
+        # operator makes it clear what type should be inferred, while complete
+        # signatures may appear as function domain/codomain, where the actual
+        # type may not be ambiguously defined.
 
         if isinstance(result, TypeUnion) and len(result) == 1:
             result = result.types[0]

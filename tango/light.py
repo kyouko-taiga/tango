@@ -7,7 +7,7 @@ from lark.tree import Tree, Transformer_NoRecurse
 from . import ast
 from .errors import CompilerError, UnknownModifierError
 from .builtin import Int, Double, String, Bool
-from .types import TypeModifier as TM
+from .types import TM
 
 
 operator_table = {

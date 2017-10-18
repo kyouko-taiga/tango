@@ -1,7 +1,7 @@
 from copy import deepcopy
 
 from tango.wrapper import (
-    TypeModifier, Operator,
+    Operator,
     Node, NodeMetadata, NodeList,
     ModuleDecl, Block,
     PropDecl, StructDecl, ParamDecl, FunDecl,
@@ -9,8 +9,7 @@ from tango.wrapper import (
     Argument, Call, Select, BinaryExpr,
     Identifier, TypeIdentifier, FunSignParam, FunSign,
     IntLiteral, DoubleLiteral, StringLiteral, BoolLiteral)
-
-from tango.types import modifiers_to_str
+from tango.types import TM
 
 
 class NodeVisitor(object):
@@ -72,6 +71,19 @@ def make_descriptor(name):
 # Following are some helper methods and properties we add by monkeypatching
 # the C++ classes, so as to have a nicer API to work with.
 
+def modifiers_to_str(modifiers):
+    result = []
+    if (modifiers & TM.mut) and (modifiers & TM.stk):
+        result.append('@mut')
+    if modifiers & TM.ref:
+        result.append('@ref')
+    if modifiers & TM.shd:
+        result.append('@shd')
+    if modifiers & TM.own:
+        result.append('@own')
+    return ' '.join(result)
+
+
 operator_str = {
     Operator.add: '+',
     Operator.sub: '-',
@@ -81,6 +93,7 @@ operator_str = {
     Operator.ref: '&-',
     Operator.mov: '<-',
 }
+
 
 def Node_to_dict(self):
     data = {'__meta__': self.__meta__._py_attrs}
@@ -117,18 +130,6 @@ def Node_deepcopy(self, memo):
 
 Node.to_dict      = Node_to_dict
 Node.__deepcopy__ = Node_deepcopy
-
-
-def TypeModifier_str(self):
-    return ('@cst' if self == TypeModifier.cst else
-            '@mut' if self == TypeModifier.mut else
-            '@stk' if self == TypeModifier.stk else
-            '@shd' if self == TypeModifier.shd else
-            '@val' if self == TypeModifier.val else
-            '@ref' if self == TypeModifier.ref else
-            '@own' if self == TypeModifier.own else '')
-
-TypeModifier.__str__ = TypeModifier_str
 
 
 NodeMetadata_initializer = NodeMetadata.__init__
